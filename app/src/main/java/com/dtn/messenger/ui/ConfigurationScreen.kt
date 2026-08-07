@@ -1,6 +1,7 @@
 package com.dtn.messenger.ui
 
 import android.content.Context
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiInfo
@@ -10,6 +11,7 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import com.dtn.messenger.service.DtnEngineService
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -154,7 +157,7 @@ fun ConfigurationScreen(
 
 @Composable
 fun LocalNodeIdentityCard(context: Context = LocalContext.current) {
-    val prefs = remember { context.getSharedPreferences("dtn_prefs", Context.MODE_PRIVATE) }
+    val prefs = remember { com.dtn.messenger.util.PreferencesHelper.getEncryptedSharedPreferences(context) }
     var localNodeName by remember { mutableStateOf(prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node") }
 
     Card(
@@ -341,7 +344,16 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
         // List of profiles
         profiles.forEach { profile ->
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        profileId = profile.profileId
+                        name = profile.name
+                        type = profile.triggerType
+                        condition = profile.triggerCondition ?: ""
+                        address = profile.targetAddress
+                        Toast.makeText(context, "Loaded profile for editing", Toast.LENGTH_SHORT).show()
+                    },
                 shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(containerColor = GlassCardColor),
                 border = BorderStroke(1.dp, Color(0x08FFFFFF))
@@ -361,10 +373,27 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                             Text("Cond: ${profile.triggerCondition}", color = NeonPurple, fontSize = 11.sp)
                         }
                     }
-                    IconButton(onClick = {
-                        scope.launch { dao.delete(profile) }
-                    }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = GlowRed)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (profile.triggerType == TriggerType.PERIODIC_INTERNET || profile.triggerType == TriggerType.WIFI_SSID) {
+                            IconButton(onClick = {
+                                val intent = Intent(context, DtnEngineService::class.java).apply {
+                                    action = "FORCE_PULL"
+                                    putExtra("address", profile.targetAddress)
+                                }
+                                context.startService(intent)
+                                Toast.makeText(context, "Forcing connection to ${profile.targetAddress}...", Toast.LENGTH_SHORT).show()
+                            }) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = "Force Connection", tint = NeonCyan)
+                            }
+                        }
+                        IconButton(onClick = {
+                            scope.launch { dao.delete(profile) }
+                        }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = GlowRed)
+                        }
                     }
                 }
             }
@@ -475,7 +504,7 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
     var nodeId by remember { mutableStateOf("") }
     var secretHex by remember { mutableStateOf("") }
 
-    val prefs = remember { context.getSharedPreferences("dtn_prefs", Context.MODE_PRIVATE) }
+    val prefs = remember { com.dtn.messenger.util.PreferencesHelper.getEncryptedSharedPreferences(context) }
     var policy by remember { mutableStateOf(prefs.getString("bpsec_policy", "none") ?: "none") }
     var policyExpanded by remember { mutableStateOf(false) }
 

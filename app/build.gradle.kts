@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.dtn.messenger"
-        minSdk = 26
+        minSdk = 23
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -85,6 +85,9 @@ dependencies {
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // Jetpack Security Crypto for EncryptedSharedPreferences
+    implementation("androidx.security:security-crypto:1.0.0")
 
     // Android Auto
     implementation("androidx.car.app:app:1.4.0")

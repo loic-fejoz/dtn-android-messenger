@@ -42,6 +42,8 @@ class DtnEngineService : Service() {
     
     private var flushJob: Job? = null
     private var cleanupJob: Job? = null
+    private var pullJob: Job? = null
+    private val lastPullTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     companion object {
         const val CHANNEL_ID = "dtn_engine_channel"
@@ -92,27 +94,55 @@ class DtnEngineService : Service() {
     }
 
     private fun startPeriodicTasks() {
-        // Queue flusher: runs every 10 seconds
+        // Run initial queue flush on startup after settling
         flushJob = serviceScope.launch {
-            while (isActive) {
-                try {
-                    flushQueue()
-                } catch (e: Exception) {
-                    log("WARN", "Queue flush error: ${e.message}")
-                }
-                delay(10000)
+            delay(2000)
+            try {
+                flushQueue()
+            } catch (e: Exception) {
+                log("WARN", "Initial queue flush error: ${e.message}")
             }
         }
 
-        // Cleanup task: runs every 60 seconds
+        // Periodic Internet Pull scheduler: checks profile configurations every 30 seconds
+        pullJob = serviceScope.launch {
+            while (isActive) {
+                try {
+                    val profiles = convergenceProfileDao.getAllList()
+                    val currentTime = System.currentTimeMillis()
+                    for (profile in profiles) {
+                        if (profile.triggerType == TriggerType.PERIODIC_INTERNET) {
+                            val intervalMins = profile.triggerCondition?.toIntOrNull() ?: 15
+                            val intervalMs = intervalMins * 60 * 1000L
+                            val lastPull = lastPullTimes[profile.profileId] ?: 0L
+                            if (currentTime - lastPull >= intervalMs) {
+                                val adapter = adapters.find { it.name.lowercase() == "tcpclv4" }
+                                if (adapter != null) {
+                                    log("INFO", "Performing configured periodic pull connection to ${profile.targetAddress} (interval: ${intervalMins}m)")
+                                    lastPullTimes[profile.profileId] = currentTime
+                                    launch {
+                                        adapter.sendBundle(ByteArray(0), profile.targetAddress)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    log("WARN", "Periodic pull scheduler error: ${e.message}")
+                }
+                delay(30000)
+            }
+        }
+
+        // Cleanup task: runs every 15 minutes (900,000 ms) to purge expired bundles
         cleanupJob = serviceScope.launch {
             while (isActive) {
+                delay(900000)
                 try {
                     cleanupExpiredBundles()
                 } catch (e: Exception) {
                     log("WARN", "Cleanup task error: ${e.message}")
                 }
-                delay(60000)
             }
         }
     }
@@ -145,7 +175,7 @@ class DtnEngineService : Service() {
             // Check BPSec BIB integrity
             var bpsecStatus = BpsecStatus.UNVERIFIED
             val bib = bundle.bibBlock
-            val prefs = getSharedPreferences("dtn_prefs", Context.MODE_PRIVATE)
+            val prefs = com.dtn.messenger.util.PreferencesHelper.getEncryptedSharedPreferences(this)
             val policy = prefs.getString("bpsec_policy", "none") ?: "none"
 
             if (bib != null) {
@@ -251,8 +281,10 @@ class DtnEngineService : Service() {
                 }
             } else {
                 // For store-and-forward, we received a transit bundle.
-                // It will be forwarded during next queue flush because its state is OUTBOX.
-                log("INFO", "Received transit bundle targeting ${primary.destination.uri}. Scheduled for forwarding.")
+                log("INFO", "Received transit bundle targeting ${primary.destination.uri}. Forwarding immediately.")
+                serviceScope.launch {
+                    flushQueue()
+                }
             }
 
         } catch (e: Exception) {
@@ -500,9 +532,23 @@ class DtnEngineService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "FLUSH_QUEUE") {
-            serviceScope.launch {
-                flushQueue()
+        when (intent?.action) {
+            "FLUSH_QUEUE" -> {
+                serviceScope.launch {
+                    flushQueue()
+                }
+            }
+            "FORCE_PULL" -> {
+                val address = intent.getStringExtra("address")
+                if (address != null) {
+                    serviceScope.launch {
+                        val adapter = adapters.find { it.name.lowercase().contains("tcp") }
+                        if (adapter != null) {
+                            log("INFO", "Forced pull connection triggered to $address")
+                            adapter.sendBundle(ByteArray(0), address)
+                        }
+                    }
+                }
             }
         }
         return START_STICKY
@@ -514,6 +560,7 @@ class DtnEngineService : Service() {
         isBluetoothActive.value = false
         flushJob?.cancel()
         cleanupJob?.cancel()
+        pullJob?.cancel()
         adapters.forEach { it.stop() }
         serviceScope.cancel()
         super.onDestroy()

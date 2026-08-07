@@ -71,7 +71,7 @@ fun SendBundleScreen(
     var destination by remember { mutableStateOf(preFilledDest) }
     
     // Read local node name/EID from preferences
-    val prefs = remember { context.getSharedPreferences("dtn_prefs", Context.MODE_PRIVATE) }
+    val prefs = remember { com.dtn.messenger.util.PreferencesHelper.getEncryptedSharedPreferences(context) }
     val localNodeName = remember { mutableStateOf(prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node") }
     
     var sourceService by remember { mutableStateOf(preFilledSourceService.ifEmpty { "chat" }) }
@@ -85,13 +85,18 @@ fun SendBundleScreen(
 
     LaunchedEffect(selectedFileUri) {
         selectedFileUri?.let { uri ->
-            selectedFileName = getFileNameFromUri(context, uri)
-            try {
-                context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { fd ->
-                    selectedFileSize = fd.length
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val name = getFileNameFromUri(context, uri)
+                var size = 0L
+                try {
+                    context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { fd ->
+                        size = fd.length
+                    }
+                } catch (e: java.lang.Exception) {
+                    size = 0L
                 }
-            } catch (e: Exception) {
-                selectedFileSize = 0L
+                selectedFileName = name
+                selectedFileSize = size
             }
         }
     }

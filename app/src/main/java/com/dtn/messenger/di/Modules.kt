@@ -11,7 +11,9 @@ val appModule = module {
             androidContext(),
             AppDatabase::class.java,
             "dtn_messenger_database"
-        ).fallbackToDestructiveMigration().build()
+        )
+        // .fallbackToDestructiveMigration() // Disabled for production safety. Provide explicit Migration paths instead.
+        .build()
     }
 
     single { get<AppDatabase>().localServiceDao() }

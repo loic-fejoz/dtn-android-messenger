@@ -44,7 +44,7 @@ class TcpClAdapter(
     }
 
     private fun getLocalNodeName(): String {
-        val prefs = context.getSharedPreferences("dtn_prefs", Context.MODE_PRIVATE)
+        val prefs = com.dtn.messenger.util.PreferencesHelper.getEncryptedSharedPreferences(context)
         return (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim()
     }
 
@@ -96,91 +96,93 @@ class TcpClAdapter(
         val input = socket.openReadChannel()
         val output = socket.openWriteChannel(autoFlush = true)
         try {
-            // Read 6 bytes contact header (RFC 9174)
-            val clientHeader = ByteArray(6)
-            input.readFully(clientHeader, 0, 6)
-            if (clientHeader[0] != 'd'.code.toByte() || clientHeader[1] != 't'.code.toByte() ||
-                clientHeader[2] != 'n'.code.toByte() || clientHeader[3] != '!'.code.toByte()) {
-                log("WARN", "Invalid contact header from client")
-                socket.close()
-                return
+            // Handshake phase with 10s timeout
+            withTimeout(10000) {
+                // Read 6 bytes contact header (RFC 9174)
+                val clientHeader = ByteArray(6)
+                input.readFully(clientHeader, 0, 6)
+                if (clientHeader[0] != 'd'.code.toByte() || clientHeader[1] != 't'.code.toByte() ||
+                    clientHeader[2] != 'n'.code.toByte() || clientHeader[3] != '!'.code.toByte()) {
+                    throw Exception("Invalid contact header from client")
+                }
+
+                // Send contact header back (6 bytes)
+                val serverHeader = byteArrayOf(
+                    'd'.code.toByte(), 't'.code.toByte(), 'n'.code.toByte(), '!'.code.toByte(),
+                    4, 0
+                )
+                output.writeFully(serverHeader, 0, 6)
+
+                // Read SESS_INIT (type 7)
+                val sessInitType = input.readByte().toInt()
+                if (sessInitType != 7) {
+                    throw Exception("Expected SESS_INIT from client, got type $sessInitType")
+                }
+                val staticBody = ByteArray(20)
+                input.readFully(staticBody, 0, 20)
+                val nodeIdLen = java.nio.ByteBuffer.wrap(staticBody, 18, 2).short.toInt() and 0xFFFF
+                if (nodeIdLen > 0) {
+                    val nodeIdBytes = ByteArray(nodeIdLen)
+                    input.readFully(nodeIdBytes, 0, nodeIdLen)
+                }
+                val extLenBytes = ByteArray(4)
+                input.readFully(extLenBytes, 0, 4)
+                val extLen = java.nio.ByteBuffer.wrap(extLenBytes).int
+                if (extLen > 0) {
+                    val extBytes = ByteArray(extLen)
+                    input.readFully(extBytes, 0, extLen)
+                }
+
+                // Send SESS_INIT back
+                val serverSessInit = buildSessInit(getLocalNodeName())
+                output.writeFully(serverSessInit, 0, serverSessInit.size)
             }
 
-            // Send contact header back (6 bytes)
-            val serverHeader = byteArrayOf(
-                'd'.code.toByte(), 't'.code.toByte(), 'n'.code.toByte(), '!'.code.toByte(),
-                4, 0
-            )
-            output.writeFully(serverHeader, 0, 6)
-
-            // Read SESS_INIT (type 7)
-            val sessInitType = input.readByte().toInt()
-            if (sessInitType != 7) {
-                log("WARN", "Expected SESS_INIT from client, got type $sessInitType")
-                socket.close()
-                return
-            }
-            val staticBody = ByteArray(20)
-            input.readFully(staticBody, 0, 20)
-            val nodeIdLen = java.nio.ByteBuffer.wrap(staticBody, 18, 2).short.toInt() and 0xFFFF
-            if (nodeIdLen > 0) {
-                val nodeIdBytes = ByteArray(nodeIdLen)
-                input.readFully(nodeIdBytes, 0, nodeIdLen)
-            }
-            val extLenBytes = ByteArray(4)
-            input.readFully(extLenBytes, 0, 4)
-            val extLen = java.nio.ByteBuffer.wrap(extLenBytes).int
-            if (extLen > 0) {
-                val extBytes = ByteArray(extLen)
-                input.readFully(extBytes, 0, extLen)
-            }
-
-            // Send SESS_INIT back
-            val serverSessInit = buildSessInit(getLocalNodeName())
-            output.writeFully(serverSessInit, 0, serverSessInit.size)
-
+            // Message transmission phase
             while (socket.isActive) {
-                val msgType = input.readByte().toInt()
+                val msgType = withTimeout(45000) { input.readByte().toInt() }
                 when (msgType) {
                     1 -> { // XFER_SEGMENT
-                        val flags = input.readByte().toInt()
-                        val transferId = input.readLong()
-                        
-                        // Parse extension length if START is set (bit 0)
-                        if ((flags and 1) != 0) {
-                            val extByteLen = input.readInt()
-                            if (extByteLen > 0) {
-                                val extBytes = ByteArray(extByteLen)
-                                input.readFully(extBytes, 0, extByteLen)
+                        withTimeout(15000) {
+                            val flags = input.readByte().toInt()
+                            val transferId = input.readLong()
+                            
+                            // Parse extension length if START is set (bit 0)
+                            if ((flags and 1) != 0) {
+                                val extByteLen = input.readInt()
+                                if (extByteLen > 0) {
+                                    val extBytes = ByteArray(extByteLen)
+                                    input.readFully(extBytes, 0, extByteLen)
+                                }
                             }
-                        }
-                        
-                        val length = input.readLong().toInt()
-                        if (length <= 0 || length > 10 * 1024 * 1024) {
-                            log("WARN", "Invalid segment length: $length")
-                            break
-                        }
-                        val bundleBytes = ByteArray(length)
-                        input.readFully(bundleBytes, 0, length)
-                        log("INFO", "Received bundle ($length bytes)")
-                        listener?.invoke(bundleBytes)
+                            
+                            val length = input.readLong().toInt()
+                            if (length <= 0 || length > 10 * 1024 * 1024) {
+                                throw Exception("Invalid segment length: $length")
+                            }
+                            val bundleBytes = ByteArray(length)
+                            input.readFully(bundleBytes, 0, length)
+                            log("INFO", "Received bundle ($length bytes)")
+                            listener?.invoke(bundleBytes)
 
-                        // Send XFER_ACK (type 2)
-                        // header (1) + flags (1) + transferId (8) + ackLen (8) = 18 bytes
-                        val ackMsg = ByteArray(18)
-                        ackMsg[0] = 2 // XFER_ACK
-                        ackMsg[1] = flags.toByte() // Flags (mirrors incoming segment flags)
-                        java.nio.ByteBuffer.wrap(ackMsg, 2, 8).putLong(transferId)
-                        java.nio.ByteBuffer.wrap(ackMsg, 10, 8).putLong(length.toLong())
-                        output.writeFully(ackMsg, 0, 18)
+                            // Send XFER_ACK (type 2)
+                            val ackMsg = ByteArray(18)
+                            ackMsg[0] = 2 // XFER_ACK
+                            ackMsg[1] = flags.toByte()
+                            java.nio.ByteBuffer.wrap(ackMsg, 2, 8).putLong(transferId)
+                            java.nio.ByteBuffer.wrap(ackMsg, 10, 8).putLong(length.toLong())
+                            output.writeFully(ackMsg, 0, 18)
+                        }
                     }
                     4 -> { // KEEPALIVE
-                        // Keepalive packet - ignore
+                        // Ignore
                     }
                     5 -> { // SESS_TERM
-                        val termFlags = input.readByte()
-                        val termReason = input.readByte()
-                        log("INFO", "Received session term from client (reason $termReason)")
+                        withTimeout(5000) {
+                            val termFlags = input.readByte()
+                            val termReason = input.readByte()
+                            log("INFO", "Received session term from client (reason $termReason)")
+                        }
                         break
                     }
                     else -> {
@@ -205,80 +207,84 @@ class TcpClAdapter(
 
             log("INFO", "Connecting to $host:$destPort")
             val sel = ActorSelectorManager(Dispatchers.IO)
-            socket = aSocket(sel).tcp().connect(host, destPort)
+            socket = withTimeout(10000) {
+                aSocket(sel).tcp().connect(host, destPort)
+            }
 
             val input = socket.openReadChannel()
             val output = socket.openWriteChannel(autoFlush = true)
 
-            // 1. Send contact header (6 bytes in TCPCLv4)
-            val clientHeader = byteArrayOf(
-                'd'.code.toByte(), 't'.code.toByte(), 'n'.code.toByte(), '!'.code.toByte(),
-                4, 0
-            )
-            output.writeFully(clientHeader, 0, 6)
+            // Handshake phase
+            withTimeout(15000) {
+                // 1. Send contact header (6 bytes in TCPCLv4)
+                val clientHeader = byteArrayOf(
+                    'd'.code.toByte(), 't'.code.toByte(), 'n'.code.toByte(), '!'.code.toByte(),
+                    4, 0
+                )
+                output.writeFully(clientHeader, 0, 6)
 
-            // Read contact header response
-            val serverHeader = ByteArray(6)
-            input.readFully(serverHeader, 0, 6)
+                // Read contact header response
+                val serverHeader = ByteArray(6)
+                input.readFully(serverHeader, 0, 6)
 
-            if (serverHeader[0] != 'd'.code.toByte() || serverHeader[1] != 't'.code.toByte() ||
-                serverHeader[2] != 'n'.code.toByte() || serverHeader[3] != '!'.code.toByte() ||
-                serverHeader[4] != 4.toByte()) {
-                log("ERROR", "Invalid contact header version from server")
-                return@withContext false
-            }
+                if (serverHeader[0] != 'd'.code.toByte() || serverHeader[1] != 't'.code.toByte() ||
+                    serverHeader[2] != 'n'.code.toByte() || serverHeader[3] != '!'.code.toByte() ||
+                    serverHeader[4] != 4.toByte()) {
+                    throw Exception("Invalid contact header version from server")
+                }
 
-            // 2. Exchange SESS_INIT
-            // Send SESS_INIT
-            val sessInit = buildSessInit(getLocalNodeName())
-            output.writeFully(sessInit, 0, sessInit.size)
+                // 2. Exchange SESS_INIT
+                // Send SESS_INIT
+                val sessInit = buildSessInit(getLocalNodeName())
+                output.writeFully(sessInit, 0, sessInit.size)
 
-            // Read SESS_INIT back from server
-            val sessInitType = input.readByte().toInt()
-            if (sessInitType != 7) {
-                log("ERROR", "Expected SESS_INIT from server, got type $sessInitType")
-                return@withContext false
-            }
-            val staticBody = ByteArray(20)
-            input.readFully(staticBody, 0, 20)
-            val nodeIdLen = java.nio.ByteBuffer.wrap(staticBody, 18, 2).short.toInt() and 0xFFFF
-            if (nodeIdLen > 0) {
-                val nodeIdBytes = ByteArray(nodeIdLen)
-                input.readFully(nodeIdBytes, 0, nodeIdLen)
-            }
-            val extLenBytes = ByteArray(4)
-            input.readFully(extLenBytes, 0, 4)
-            val extLen = java.nio.ByteBuffer.wrap(extLenBytes).int
-            if (extLen > 0) {
-                val extBytes = ByteArray(extLen)
-                input.readFully(extBytes, 0, extLen)
+                // Read SESS_INIT back from server
+                val sessInitType = input.readByte().toInt()
+                if (sessInitType != 7) {
+                    throw Exception("Expected SESS_INIT from server, got type $sessInitType")
+                }
+                val staticBody = ByteArray(20)
+                input.readFully(staticBody, 0, 20)
+                val nodeIdLen = java.nio.ByteBuffer.wrap(staticBody, 18, 2).short.toInt() and 0xFFFF
+                if (nodeIdLen > 0) {
+                    val nodeIdBytes = ByteArray(nodeIdLen)
+                    input.readFully(nodeIdBytes, 0, nodeIdLen)
+                }
+                val extLenBytes = ByteArray(4)
+                input.readFully(extLenBytes, 0, 4)
+                val extLen = java.nio.ByteBuffer.wrap(extLenBytes).int
+                if (extLen > 0) {
+                    val extBytes = ByteArray(extLen)
+                    input.readFully(extBytes, 0, extLen)
+                }
             }
 
             // 3. Send XFER_SEGMENT if we have bytes to send (START and END flags set = 3)
             if (bundleBytes.isNotEmpty()) {
-                val xferHeader = ByteArray(22)
-                xferHeader[0] = 1 // MSG_XFER_SEGMENT
-                xferHeader[1] = 3 // START (1) | END (2)
-                java.nio.ByteBuffer.wrap(xferHeader, 2, 8).putLong(1L) // Transfer ID
-                xferHeader[10] = 0 // Extensions length
-                xferHeader[11] = 0
-                xferHeader[12] = 0
-                xferHeader[13] = 0
-                java.nio.ByteBuffer.wrap(xferHeader, 14, 8).putLong(bundleBytes.size.toLong()) // Data length
-                
-                output.writeFully(xferHeader, 0, 22)
-                output.writeFully(bundleBytes, 0, bundleBytes.size)
+                withTimeout(20000) {
+                    val xferHeader = ByteArray(22)
+                    xferHeader[0] = 1 // MSG_XFER_SEGMENT
+                    xferHeader[1] = 3 // START (1) | END (2)
+                    java.nio.ByteBuffer.wrap(xferHeader, 2, 8).putLong(1L) // Transfer ID
+                    xferHeader[10] = 0 // Extensions length
+                    xferHeader[11] = 0
+                    xferHeader[12] = 0
+                    xferHeader[13] = 0
+                    java.nio.ByteBuffer.wrap(xferHeader, 14, 8).putLong(bundleBytes.size.toLong()) // Data length
+                    
+                    output.writeFully(xferHeader, 0, 22)
+                    output.writeFully(bundleBytes, 0, bundleBytes.size)
 
-                // Wait for XFER_ACK
-                val ackType = input.readByte().toInt()
-                if (ackType == 2) {
-                    val ackBody = ByteArray(17)
-                    input.readFully(ackBody, 0, 17)
-                    val ackLen = java.nio.ByteBuffer.wrap(ackBody, 9, 8).long
-                    log("INFO", "Successfully sent bundle to $targetAddress, acknowledged $ackLen bytes")
-                } else {
-                    log("WARN", "Expected XFER_ACK (2), got type $ackType")
-                    return@withContext false
+                    // Wait for XFER_ACK
+                    val ackType = input.readByte().toInt()
+                    if (ackType == 2) {
+                        val ackBody = ByteArray(17)
+                        input.readFully(ackBody, 0, 17)
+                        val ackLen = java.nio.ByteBuffer.wrap(ackBody, 9, 8).long
+                        log("INFO", "Successfully sent bundle to $targetAddress, acknowledged $ackLen bytes")
+                    } else {
+                        throw Exception("Expected XFER_ACK (2), got type $ackType")
+                    }
                 }
             }
 
@@ -286,7 +292,7 @@ class TcpClAdapter(
             log("INFO", "Entering client receive loop to pull bundles from $targetAddress...")
             while (socket.isActive) {
                 val msgType = try {
-                    input.readByte().toInt()
+                    withTimeout(45000) { input.readByte().toInt() }
                 } catch (e: java.io.EOFException) {
                     break
                 } catch (e: Exception) {
@@ -294,36 +300,40 @@ class TcpClAdapter(
                 }
                 when (msgType) {
                     1 -> { // XFER_SEGMENT (Server sending to client)
-                        val flags = input.readByte().toInt()
-                        val transferId = input.readLong()
-                        if ((flags and 1) != 0) { // START
-                            val extByteLen = input.readInt()
-                            if (extByteLen > 0) {
-                                val extBytes = ByteArray(extByteLen)
-                                input.readFully(extBytes, 0, extByteLen)
+                        withTimeout(15000) {
+                            val flags = input.readByte().toInt()
+                            val transferId = input.readLong()
+                            if ((flags and 1) != 0) { // START
+                                val extByteLen = input.readInt()
+                                if (extByteLen > 0) {
+                                    val extBytes = ByteArray(extByteLen)
+                                    input.readFully(extBytes, 0, extByteLen)
+                                }
                             }
-                        }
-                        val length = input.readLong().toInt()
-                        val rxBundle = ByteArray(length)
-                        input.readFully(rxBundle, 0, length)
-                        log("INFO", "Received bundle from server ($length bytes)")
-                        listener?.invoke(rxBundle)
+                            val length = input.readLong().toInt()
+                            val rxBundle = ByteArray(length)
+                            input.readFully(rxBundle, 0, length)
+                            log("INFO", "Received bundle from server ($length bytes)")
+                            listener?.invoke(rxBundle)
 
-                        // Send XFER_ACK back
-                        val ackMsg = ByteArray(18)
-                        ackMsg[0] = 2 // XFER_ACK
-                        ackMsg[1] = flags.toByte() // Flags (mirrors incoming segment flags)
-                        java.nio.ByteBuffer.wrap(ackMsg, 2, 8).putLong(transferId)
-                        java.nio.ByteBuffer.wrap(ackMsg, 10, 8).putLong(length.toLong())
-                        output.writeFully(ackMsg, 0, 18)
+                            // Send XFER_ACK back
+                            val ackMsg = ByteArray(18)
+                            ackMsg[0] = 2 // XFER_ACK
+                            ackMsg[1] = flags.toByte()
+                            java.nio.ByteBuffer.wrap(ackMsg, 2, 8).putLong(transferId)
+                            java.nio.ByteBuffer.wrap(ackMsg, 10, 8).putLong(length.toLong())
+                            output.writeFully(ackMsg, 0, 18)
+                        }
                     }
                     4 -> { // KEEPALIVE
                         // Ignore
                     }
                     5 -> { // SESS_TERM
-                        val termFlags = input.readByte()
-                        val termReason = input.readByte()
-                        log("INFO", "Server terminated session (reason $termReason)")
+                        withTimeout(5000) {
+                            val termFlags = input.readByte()
+                            val termReason = input.readByte()
+                            log("INFO", "Server terminated session (reason $termReason)")
+                        }
                         break
                     }
                     else -> {
@@ -335,7 +345,9 @@ class TcpClAdapter(
             // Send polite SESS_TERM
             val sessTerm = byteArrayOf(5, 0, 1) // SESS_TERM, flags = 0, reason = 1 (normal shutdown)
             try {
-                output.writeFully(sessTerm, 0, 3)
+                withTimeout(2000) {
+                    output.writeFully(sessTerm, 0, 3)
+                }
             } catch (e: Exception) {}
 
             return@withContext true
@@ -365,6 +377,7 @@ class BluetoothClassicAdapter(
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private var listener: ((ByteArray) -> Unit)? = null
 
+    private val activeSockets = java.util.Collections.synchronizedList(mutableListOf<BluetoothSocket>())
     private var adapterScope: CoroutineScope? = null
 
     private fun log(level: String, msg: String) {
@@ -380,8 +393,13 @@ class BluetoothClassicAdapter(
             log("WARN", "Bluetooth is not supported on this device")
             return
         }
-        if (!bluetoothAdapter.isEnabled) {
-            log("WARN", "Bluetooth is currently disabled")
+        try {
+            if (!bluetoothAdapter.isEnabled) {
+                log("WARN", "Bluetooth is currently disabled")
+                return
+            }
+        } catch (e: SecurityException) {
+            log("ERROR", "Bluetooth permission denied on isEnabled: ${e.message}")
             return
         }
 
@@ -403,6 +421,7 @@ class BluetoothClassicAdapter(
     }
 
     private fun handleIncomingRfcomm(socket: BluetoothSocket) {
+        activeSockets.add(socket)
         log("INFO", "Bluetooth device connected")
         var inputStream: InputStream? = null
         try {
@@ -435,6 +454,7 @@ class BluetoothClassicAdapter(
         } catch (e: Exception) {
             log("INFO", "RFCOMM session finished or failed: ${e.message}")
         } finally {
+            activeSockets.remove(socket)
             try { inputStream?.close() } catch (e: Exception) {}
             try { socket.close() } catch (e: Exception) {}
         }
@@ -474,6 +494,12 @@ class BluetoothClassicAdapter(
 
     override fun stop() {
         try { serverSocket?.close() } catch (e: Exception) {}
+        synchronized(activeSockets) {
+            for (socket in activeSockets) {
+                try { socket.close() } catch (e: Exception) {}
+            }
+            activeSockets.clear()
+        }
         serverJob?.cancel()
     }
 }

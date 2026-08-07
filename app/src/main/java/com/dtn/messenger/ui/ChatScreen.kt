@@ -84,36 +84,7 @@ fun ChatScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(service?.displayName ?: "CHAT", fontWeight = FontWeight.Bold, color = NeonCyan)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Box(
-                            modifier = Modifier
-                                .background(Color(0x11FFFFFF), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 4.dp)
-                        ) {
-                            BasicTextField(
-                                value = recipientEid,
-                                onValueChange = { recipientEid = it },
-                                textStyle = TextStyle(
-                                    color = NeonCyan,
-                                    fontSize = 11.sp,
-                                    textAlign = TextAlign.Center
-                                ),
-                                cursorBrush = SolidColor(NeonCyan),
-                                decorationBox = { innerTextField ->
-                                    Box(
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (recipientEid.isEmpty()) {
-                                            Text("Enter EID...", color = TextGray, fontSize = 11.sp)
-                                        }
-                                        innerTextField()
-                                    }
-                                }
-                            )
-                        }
-                    }
+                    Text(service?.displayName ?: "CHAT", fontWeight = FontWeight.Bold, color = NeonCyan)
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
@@ -130,6 +101,49 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // Recipient EID Input Card (beautiful glassmorphic design)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = GlassCardColor),
+                border = BorderStroke(1.dp, Color(0x1AFFFFFF))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "TO:",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NeonCyan,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    BasicTextField(
+                        value = recipientEid,
+                        onValueChange = { recipientEid = it },
+                        textStyle = TextStyle(
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        ),
+                        cursorBrush = SolidColor(NeonCyan),
+                        modifier = Modifier.weight(1f),
+                        decorationBox = { innerTextField ->
+                            Box(contentAlignment = Alignment.CenterStart) {
+                                if (recipientEid.isEmpty()) {
+                                    Text("Enter destination EID...", color = TextGray, fontSize = 13.sp)
+                                }
+                                innerTextField()
+                            }
+                        }
+                    )
+                }
+            }
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
@@ -150,11 +164,15 @@ fun ChatScreen(
                     val bubbleColor = if (isMe) NeonPurple.copy(alpha = 0.4f) else GlassCardColor
                     val outlineColor = if (isMe) NeonPurple else Color(0x33FFFFFF)
                     
-                    val text = try {
-                        val file = File(msg.payloadFilePath)
-                        if (file.exists()) String(file.readBytes(), Charsets.UTF_8) else "No content"
-                    } catch (e: Exception) {
-                        "Binary data"
+                    val text by produceState(initialValue = "Loading...", msg.payloadFilePath) {
+                        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            try {
+                                val file = File(msg.payloadFilePath)
+                                if (file.exists()) String(file.readBytes(), Charsets.UTF_8) else "No content"
+                            } catch (e: Exception) {
+                                "Binary data"
+                            }
+                        }
                     }
 
                     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
