@@ -62,7 +62,7 @@ class DtnApplication : Application() {
                             name = "Hardy Instance f4jxq-2 (TCPCL)",
                             triggerType = TriggerType.PERIODIC_INTERNET,
                             targetAddress = "10.0.2.2:4556", // 10.0.2.2 points to the host loopback from the emulator
-                            triggerCondition = "1" // Check every 1 minute
+                            triggerCondition = "120" // Check every 120 minutes (2 hours)
                         )
                     )
                     convergenceProfileDao.insert(
