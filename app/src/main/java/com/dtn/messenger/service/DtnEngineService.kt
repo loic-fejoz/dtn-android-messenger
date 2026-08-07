@@ -43,6 +43,7 @@ class DtnEngineService : Service() {
     private var flushJob: Job? = null
     private var cleanupJob: Job? = null
     private var pullJob: Job? = null
+    private var periodicFlushJob: Job? = null
     private val lastPullTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     companion object {
@@ -155,6 +156,35 @@ class DtnEngineService : Service() {
                     cleanupExpiredBundles()
                 } catch (e: Exception) {
                     log("WARN", "Cleanup task error: ${e.message}")
+                }
+            }
+        }
+
+        // Periodic Queue Flush: checks for pending outgoing messages with exponential backoff
+        periodicFlushJob = serviceScope.launch {
+            var currentDelay = 30000L
+            val minDelay = 30000L
+            val maxDelay = 300000L // 5 minutes
+            
+            while (isActive) {
+                delay(currentDelay)
+                try {
+                    val outbox = bundleRecordDao.getByState(BundleState.OUTBOX)
+                    val transit = bundleRecordDao.getByState(BundleState.TRANSIT)
+                    if (outbox.isNotEmpty() || transit.isNotEmpty()) {
+                        log("INFO", "Periodic queue flush: found ${outbox.size + transit.size} pending bundle(s), attempting transmission...")
+                        val success = flushQueue()
+                        if (success) {
+                            currentDelay = minDelay // Reset delay on success
+                        } else {
+                            currentDelay = (currentDelay * 2).coerceAtMost(maxDelay) // Exponential backoff on failure
+                            log("INFO", "Transmission failed. Backing off retry delay to ${currentDelay / 1000}s")
+                        }
+                    } else {
+                        currentDelay = minDelay // Reset delay if outbox is empty
+                    }
+                } catch (e: Exception) {
+                    log("WARN", "Periodic queue flush error: ${e.message}")
                 }
             }
         }
@@ -275,10 +305,7 @@ class DtnEngineService : Service() {
 
             // Check if we also need to forward it (multicast/anycast or transit routing)
             val nextHop = resolveNextHop(primary.destination.uri)
-            val hasRoute = nextHop != primary.destination.uri || routingRuleDao.getAllList().any { 
-                primary.destination.uri.startsWith(it.destinationEidPattern.replace("*", ""))
-            }
-            val shouldForward = hasRoute && findProfileForNextHop(nextHop) != null
+            val shouldForward = findProfileForNextHop(nextHop) != null
 
             val record = BundleRecord(
                 bundleId = bundleId,
@@ -388,7 +415,7 @@ class DtnEngineService : Service() {
         notificationManager.notify(record.bundleId.hashCode(), builder.build())
     }
 
-    private suspend fun flushQueue() {
+    private suspend fun flushQueue(): Boolean {
         val outbox = bundleRecordDao.getByState(BundleState.OUTBOX)
         val transit = bundleRecordDao.getByState(BundleState.TRANSIT)
         val allOutgoing = outbox + transit
@@ -404,10 +431,11 @@ class DtnEngineService : Service() {
                     }
                 }
             }
-            return
+            return false
         }
 
         log("INFO", "Flushing queue, ${allOutgoing.size} outgoing bundle(s)")
+        var anySuccess = false
 
         for (record in allOutgoing) {
             val file = File(record.payloadFilePath)
@@ -495,21 +523,23 @@ class DtnEngineService : Service() {
             log("INFO", "Transmitting bundle ${record.bundleId} via ${adapter.name} to ${profile.targetAddress}")
             val success = adapter.sendBundle(bundleBytes, profile.targetAddress)
             if (success) {
-                val nextState = if (record.destinationEid == nextHop) BundleState.DELIVERED else BundleState.TRANSIT
+                val nextState = BundleState.DELIVERED
                 bundleRecordDao.updateState(record.bundleId, nextState)
                 log("INFO", "Bundle ${record.bundleId} successfully sent! New state: $nextState")
+                anySuccess = true
                 updateTrigger.emit(Unit)
             } else {
                 log("WARN", "Transmission failed for bundle ${record.bundleId}")
             }
         }
+        return anySuccess
     }
 
     private suspend fun resolveNextHop(destination: String): String {
         val rules = routingRuleDao.getAllList()
         for (rule in rules) {
-            val pattern = rule.destinationEidPattern.replace("*", "")
-            if (destination.startsWith(pattern)) {
+            val pattern = rule.destinationEidPattern.replace("*", "").trimEnd('/')
+            if (com.dtn.messenger.util.PayloadUtils.isPrefixMatch(pattern, destination)) {
                 return rule.nextHopEid
             }
         }
@@ -600,6 +630,7 @@ class DtnEngineService : Service() {
         flushJob?.cancel()
         cleanupJob?.cancel()
         pullJob?.cancel()
+        periodicFlushJob?.cancel()
         adapters.forEach { it.stop() }
         serviceScope.cancel()
         super.onDestroy()

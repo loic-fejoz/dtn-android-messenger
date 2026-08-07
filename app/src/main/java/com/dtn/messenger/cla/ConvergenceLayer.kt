@@ -4,6 +4,8 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import com.dtn.messenger.data.model.SystemLog
 import com.dtn.messenger.data.dao.SystemLogDao
 import io.ktor.network.selector.*
@@ -46,6 +48,19 @@ class TcpClAdapter(
     private fun getLocalNodeName(): String {
         val prefs = com.dtn.messenger.util.PreferencesHelper.getEncryptedSharedPreferences(context)
         return (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim()
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val activeNetwork = cm.activeNetwork ?: return false
+            val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return false
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+        } catch (e: Exception) {
+            true // Fallback to true if connectivity check fails
+        }
     }
 
     private fun buildSessInit(nodeId: String): ByteArray {
@@ -199,12 +214,19 @@ class TcpClAdapter(
     }
 
     override suspend fun sendBundle(bundleBytes: ByteArray, targetAddress: String): Boolean = withContext(Dispatchers.IO) {
+        val parts = targetAddress.split(":")
+        val host = parts[0]
+        val destPort = parts.getOrNull(1)?.toIntOrNull() ?: port
+
+        // Do not attempt internet connections if no network transport (wifi/cellular) is active.
+        // We bypass the check for local/loopback hostnames for local testing (emulator).
+        if (host != "127.0.0.1" && host != "localhost" && host != "10.0.2.2" && !isNetworkAvailable()) {
+            log("WARN", "Network unavailable, aborting connection attempt to $host")
+            return@withContext false
+        }
+
         var socket: Socket? = null
         try {
-            val parts = targetAddress.split(":")
-            val host = parts[0]
-            val destPort = parts.getOrNull(1)?.toIntOrNull() ?: port
-
             log("INFO", "Connecting to $host:$destPort")
             val sel = ActorSelectorManager(Dispatchers.IO)
             socket = withTimeout(10000) {
@@ -393,29 +415,46 @@ class BluetoothClassicAdapter(
             log("WARN", "Bluetooth is not supported on this device")
             return
         }
-        try {
-            if (!bluetoothAdapter.isEnabled) {
-                log("WARN", "Bluetooth is currently disabled")
-                return
-            }
-        } catch (e: SecurityException) {
-            log("ERROR", "Bluetooth permission denied on isEnabled: ${e.message}")
-            return
-        }
 
         serverJob = scope.launch(Dispatchers.IO) {
-            try {
-                // In Android 12+, we need BLUETOOTH_CONNECT. We will handle permissions before launching, but catch SecurityException here.
-                serverSocket = bluetoothAdapter.listenUsingRfcommWithServiceRecord("DtnMessenger", SPP_UUID)
-                log("INFO", "RFCOMM server socket opened")
-                while (isActive) {
-                    val socket = serverSocket?.accept() ?: break
-                    launch { handleIncomingRfcomm(socket) }
+            var wasDisabledLogged = false
+            while (isActive) {
+                try {
+                    if (!bluetoothAdapter.isEnabled) {
+                        if (!wasDisabledLogged) {
+                            log("WARN", "Bluetooth is currently disabled. Waiting for activation...")
+                            wasDisabledLogged = true
+                        }
+                        delay(15000) // Sleep 15s when disabled (uses near-0 CPU)
+                        continue
+                    }
+                    wasDisabledLogged = false
+
+                    var serverSock: BluetoothServerSocket? = null
+                    try {
+                        // In Android 12+, we need BLUETOOTH_CONNECT.
+                        serverSock = bluetoothAdapter.listenUsingRfcommWithServiceRecord("DtnMessenger", SPP_UUID)
+                        serverSocket = serverSock
+                        log("INFO", "RFCOMM server socket opened")
+                        while (isActive && bluetoothAdapter.isEnabled) {
+                            val socket = serverSock.accept()
+                            launch { handleIncomingRfcomm(socket) }
+                        }
+                    } catch (e: SecurityException) {
+                        log("ERROR", "Bluetooth permission denied: ${e.message}")
+                        break
+                    } catch (e: Exception) {
+                        if (isActive) {
+                            log("WARN", "RFCOMM listener error, restarting in 5s: ${e.message}")
+                            delay(5000)
+                        }
+                    } finally {
+                        try { serverSock?.close() } catch (e: Exception) {}
+                    }
+                } catch (e: SecurityException) {
+                    log("ERROR", "Bluetooth permission check denied: ${e.message}")
+                    break
                 }
-            } catch (e: SecurityException) {
-                log("ERROR", "Bluetooth permission denied: ${e.message}")
-            } catch (e: Exception) {
-                log("WARN", "RFCOMM listener error: ${e.message}")
             }
         }
     }
@@ -450,6 +489,14 @@ class BluetoothClassicAdapter(
                 }
                 log("INFO", "Received bundle via RFCOMM ($length bytes)")
                 listener?.invoke(bundleBytes)
+
+                // Send 1-byte ACK back to client to confirm full receipt before they close
+                try {
+                    socket.outputStream.write(1)
+                    socket.outputStream.flush()
+                } catch (e: Exception) {
+                    // Ignore write failures on acknowledgment
+                }
             }
         } catch (e: Exception) {
             log("INFO", "RFCOMM session finished or failed: ${e.message}")
@@ -461,8 +508,8 @@ class BluetoothClassicAdapter(
     }
 
     override suspend fun sendBundle(bundleBytes: ByteArray, targetAddress: String): Boolean = withContext(Dispatchers.IO) {
-        if (bluetoothAdapter == null) {
-            log("WARN", "Bluetooth is not supported")
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+            log("WARN", "Bluetooth is not supported or currently disabled")
             return@withContext false
         }
         var socket: BluetoothSocket? = null
@@ -478,6 +525,17 @@ class BluetoothClassicAdapter(
             outputStream.write(sizeBuf)
             outputStream.write(bundleBytes)
             outputStream.flush()
+
+            // Wait for 1-byte ACK from receiver to verify full reception before closing the connection.
+            // A 5-second timeout ensures backward-compatibility with older nodes that don't send an ACK.
+            try {
+                kotlinx.coroutines.withTimeoutOrNull(5000) {
+                    socket.inputStream.read()
+                }
+            } catch (e: Exception) {
+                // Proceed to close even if ACK read fails/times out
+            }
+
             log("INFO", "Successfully sent bundle of size ${bundleBytes.size} to $targetAddress")
             return@withContext true
         } catch (e: SecurityException) {
