@@ -547,6 +547,14 @@ class DtnEngineService : Service() {
             }
             updateTrigger.emit(Unit)
         }
+
+        // Auto-prune logs older than 3 days to avoid database disk bloat
+        try {
+            val logCutoff = now - (3 * 24 * 60 * 60 * 1000L) // 3 days
+            logDao.deleteLogsOlderThan(logCutoff)
+        } catch (e: Exception) {
+            // Keep going if pruning fails
+        }
     }
 
     private fun dtnTimeFromSystem(systemMillis: Long): Long {

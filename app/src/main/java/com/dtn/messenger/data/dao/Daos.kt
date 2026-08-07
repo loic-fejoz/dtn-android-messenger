@@ -117,6 +117,9 @@ interface SystemLogDao {
     @Query("DELETE FROM system_logs")
     suspend fun clearAll()
 
+    @Query("DELETE FROM system_logs WHERE timestamp < :cutoff")
+    suspend fun deleteLogsOlderThan(cutoff: Long)
+
     @Query("SELECT * FROM system_logs ORDER BY timestamp ASC LIMIT :limit")
     suspend fun getOldestLogs(limit: Int): List<SystemLog>
 }
