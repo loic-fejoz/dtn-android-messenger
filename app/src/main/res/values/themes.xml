@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.DtnMessenger" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Application theme customization. -->
+    </style>
+</resources>

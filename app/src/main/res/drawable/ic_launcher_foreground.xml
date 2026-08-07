@@ -1,0 +1,23 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer Cyan Glow ring -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M54,22 C37.4,22 24,33.6 24,48 C24,55.2 28,61.7 34.6,66 L31,80 L45,72.6 C47.8,73.5 50.8,74 54,74 C70.6,74 84,62.4 84,48 C84,33.6 70.6,22 54,22 Z" />
+    
+    <!-- Inner Dark Fill to show contrast -->
+    <path
+        android:fillColor="#1A1A1A"
+        android:pathData="M54,26 C40.2,26 29,35.8 29,48 C29,54.1 32.3,59.6 37.8,63.2 L34.8,75 L46.5,68.8 C48.8,69.6 51.3,70 54,70 C67.8,70 79,60.2 79,48 C79,35.8 67.8,26 54,26 Z" />
+
+    <!-- Cyan Horizontal Node lines representing data packets -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M40,40 H68 M40,48 H62 M40,56 H54"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round" />
+</vector>

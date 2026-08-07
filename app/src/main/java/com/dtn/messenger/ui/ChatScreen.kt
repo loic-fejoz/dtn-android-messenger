@@ -1,0 +1,286 @@
+package com.dtn.messenger.ui
+
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
+import com.dtn.messenger.data.dao.BundleRecordDao
+import com.dtn.messenger.data.dao.LocalServiceDao
+import com.dtn.messenger.data.model.BpsecStatus
+import com.dtn.messenger.data.model.BundleRecord
+import com.dtn.messenger.data.model.BundleState
+import com.dtn.messenger.data.model.LocalService
+import com.dtn.messenger.service.DtnEngineService
+import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.UUID
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatScreen(
+    navController: NavController,
+    serviceEid: String,
+    localServiceDao: LocalServiceDao,
+    bundleRecordDao: BundleRecordDao
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var service by remember { mutableStateOf<LocalService?>(null) }
+    val allBundles by bundleRecordDao.getAll().collectAsState(initial = emptyList())
+    
+    // Find all chats for this service
+    val messages = allBundles.filter { it.destinationEid == serviceEid || it.sourceEid == serviceEid }
+    
+    var recipientEid by remember { mutableStateOf("") }
+    var replyText by remember { mutableStateOf("") }
+    
+    LaunchedEffect(serviceEid, messages) {
+        val s = localServiceDao.getById(serviceEid)
+        service = s
+        if (recipientEid.isEmpty()) {
+            if (s?.defaultDestinationEid != null && s.defaultDestinationEid.isNotBlank()) {
+                recipientEid = s.defaultDestinationEid
+            } else {
+                val partner = messages.firstOrNull { it.sourceEid != serviceEid }?.sourceEid
+                    ?: messages.firstOrNull { it.destinationEid != serviceEid }?.destinationEid
+                    ?: "dtn://remote-node/chat"
+                recipientEid = partner
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(service?.displayName ?: "CHAT", fontWeight = FontWeight.Bold, color = NeonCyan)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0x11FFFFFF), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                        ) {
+                            BasicTextField(
+                                value = recipientEid,
+                                onValueChange = { recipientEid = it },
+                                textStyle = TextStyle(
+                                    color = NeonCyan,
+                                    fontSize = 11.sp,
+                                    textAlign = TextAlign.Center
+                                ),
+                                cursorBrush = SolidColor(NeonCyan),
+                                decorationBox = { innerTextField ->
+                                    Box(
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (recipientEid.isEmpty()) {
+                                            Text("Enter EID...", color = TextGray, fontSize = 11.sp)
+                                        }
+                                        innerTextField()
+                                    }
+                                }
+                            )
+                        }
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NeonCyan)
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = CharcoalBg)
+            )
+        },
+        containerColor = CharcoalBg
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                reverseLayout = true
+            ) {
+                items(messages) { msg ->
+                    // Mark as read
+                    LaunchedEffect(msg.bundleId) {
+                        if (!msg.isRead && msg.destinationEid == serviceEid) {
+                            bundleRecordDao.markAsRead(msg.bundleId, true)
+                        }
+                    }
+
+                    val isMe = msg.sourceEid == serviceEid
+                    val alignment = if (isMe) Alignment.End else Alignment.Start
+                    val bubbleColor = if (isMe) NeonPurple.copy(alpha = 0.4f) else GlassCardColor
+                    val outlineColor = if (isMe) NeonPurple else Color(0x33FFFFFF)
+                    
+                    val text = try {
+                        val file = File(msg.payloadFilePath)
+                        if (file.exists()) String(file.readBytes(), Charsets.UTF_8) else "No content"
+                    } catch (e: Exception) {
+                        "Binary data"
+                    }
+
+                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
+                        Card(
+                            shape = RoundedCornerShape(
+                                topStart = 16.dp,
+                                topEnd = 16.dp,
+                                bottomStart = if (isMe) 16.dp else 0.dp,
+                                bottomEnd = if (isMe) 0.dp else 16.dp
+                            ),
+                            colors = CardDefaults.cardColors(containerColor = bubbleColor),
+                            border = BorderStroke(1.dp, outlineColor),
+                            modifier = Modifier
+                                .widthIn(max = 280.dp)
+                                .clickable {
+                                    val target = if (isMe) msg.destinationEid else msg.sourceEid
+                                    recipientEid = target
+                                    Toast.makeText(context, "Recipient set to: $target", Toast.LENGTH_SHORT).show()
+                                }
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                if (!isMe) {
+                                    Text(
+                                        msg.sourceEid,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = NeonCyan,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                }
+                                Text(text, color = Color.White, fontSize = 15.sp)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier.align(Alignment.End),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(msg.creationTimestamp)),
+                                        fontSize = 10.sp,
+                                        color = TextGray
+                                    )
+                                    Icon(
+                                        imageVector = when (msg.bpsecStatus) {
+                                            BpsecStatus.VALID -> Icons.Default.CheckCircle
+                                            BpsecStatus.INVALID -> Icons.Default.Warning
+                                            BpsecStatus.UNVERIFIED -> Icons.Default.Info
+                                        },
+                                        contentDescription = "BPSec",
+                                        tint = when (msg.bpsecStatus) {
+                                            BpsecStatus.VALID -> GlowGreen
+                                            BpsecStatus.INVALID -> GlowRed
+                                            BpsecStatus.UNVERIFIED -> TextGray
+                                        },
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Bottom reply bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = replyText,
+                    onValueChange = { replyText = it },
+                    placeholder = { Text("Write a message...", color = TextGray) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(24.dp)
+                )
+                IconButton(
+                    onClick = {
+                        if (replyText.isNotBlank()) {
+                            if (!com.dtn.messenger.util.PayloadUtils.isValidEid(recipientEid)) {
+                                Toast.makeText(context, "Invalid Recipient EID format! (Must start with dtn:// or ipn:)", Toast.LENGTH_LONG).show()
+                                return@IconButton
+                            }
+                            scope.launch {
+                                // Save payload
+                                val payloadsDir = File(context.filesDir, "payloads")
+                                if (!payloadsDir.exists()) payloadsDir.mkdirs()
+
+                                val bundleId = UUID.randomUUID().toString()
+                                val payloadFile = File(payloadsDir, "$bundleId.bin")
+                                FileOutputStream(payloadFile).use { fos ->
+                                    fos.write(replyText.toByteArray(Charsets.UTF_8))
+                                }
+
+                                val record = BundleRecord(
+                                    bundleId = bundleId,
+                                    destinationEid = recipientEid,
+                                    sourceEid = serviceEid,
+                                    creationTimestamp = System.currentTimeMillis(),
+                                    sequenceNumber = System.currentTimeMillis() % 100000,
+                                    lifetimeMs = 3600000L,
+                                    payloadFilePath = payloadFile.absolutePath,
+                                    state = BundleState.OUTBOX,
+                                    isRead = true,
+                                    bpsecStatus = BpsecStatus.UNVERIFIED,
+                                    hopCount = 0
+                                )
+                                bundleRecordDao.insert(record)
+                                replyText = ""
+
+                                // Trigger service flush
+                                context.startService(Intent(context, DtnEngineService::class.java).apply {
+                                    action = "FLUSH_QUEUE"
+                                })
+                            }
+                        }
+                    },
+                    modifier = Modifier.background(NeonCyan, RoundedCornerShape(24.dp))
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.Black)
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,34 @@
+# Built-in Git Ignore Template for Android Projects
+
+# Gradle files
+.gradle/
+build/
+**/build/
+
+# Local configuration file (SDK paths, etc.)
+local.properties
+
+# Log Files
+*.log
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+.idea/kotlinc.xml
+
+# Keystore files
+*.jks
+*.keystore
+*.pk8
+*.pem
+
+# Crashlytics / Firebase
+google-services.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Output APKs/AARs
+*.apk
+*.aar
