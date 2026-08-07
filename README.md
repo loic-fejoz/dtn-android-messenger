@@ -81,7 +81,30 @@ The application database is pre-populated with a convergence profile specificall
 
 ---
 
-## 4. SECURITY & AMATEUR RADIO REGULATORY COMPLIANCE
+## 4. BLUETOOTH PEER CONFIGURATION & MAC ADDRESSES
+
+To establish peer-to-peer communication between two devices via Bluetooth, you must configure the destination device's Bluetooth MAC address in the convergence profiles of the sending device.
+
+### How to Find Your Bluetooth MAC Address on Android:
+1. Open the Android **Settings** app.
+2. Scroll down and tap **About phone** (or **About tablet** / **About device**).
+3. Select **Status** or **Status information**.
+4. Look for **Bluetooth address** (e.g., `04:29:2E:CF:DF:B4`).
+   > [!IMPORTANT]
+   > Programmatic access to a device's own Bluetooth MAC address is restricted by Android (since API 23+ / Android 6.0) for privacy reasons, returning a dummy `02:00:00:00:00:00`. You must manually read this address from the device settings and enter it into the profile configuration screen of the peer.
+
+### Default Database Pre-populated Values:
+If the application starts with a clean database, it will automatically populate the following default configurations:
+* **Local Services**:
+  * `dtn://my-node/chat` (Default Chat Service)
+  * `dtn://my-node/files` (Default File Exchange)
+* **Convergence Profiles**:
+  * `dtn://f4jxq-2` : Pointing to `10.0.2.2:4556` (representing the host PC loopback from the emulator via TCPCL)
+  * `dtn://node-bt` : Pointing to a dummy Bluetooth MAC address `00:11:22:33:44:55` (edit this in the **Profiles Config** tab of settings to match your remote phone's actual address).
+
+---
+
+## 5. SECURITY & AMATEUR RADIO REGULATORY COMPLIANCE
 
 This application is designed to be compatible with **Amateur Radio (Ham Radio) regulations** (such as ITU and FCC Part 97 rules):
 *   **No Payload Encryption:** Obscuring the meaning of messages (encryption) is legally prohibited on amateur bands. Therefore, this implementation **does not and will not support payload encryption** (BPSec BCB - Block Confidentiality Block).
