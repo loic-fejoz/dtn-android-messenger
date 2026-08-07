@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -57,10 +58,15 @@ fun ChatScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var service by remember { mutableStateOf<LocalService?>(null) }
+    var selectedBundle by remember { mutableStateOf<BundleRecord?>(null) }
     val allBundles by bundleRecordDao.getAll().collectAsState(initial = emptyList())
     
-    // Find all chats for this service
-    val messages = allBundles.filter { it.destinationEid == serviceEid || it.sourceEid == serviceEid }
+    val messages = allBundles.filter { 
+        com.dtn.messenger.util.PayloadUtils.isPrefixMatch(serviceEid, it.destinationEid) ||
+        com.dtn.messenger.util.PayloadUtils.isPrefixMatch(it.destinationEid, serviceEid) ||
+        com.dtn.messenger.util.PayloadUtils.isPrefixMatch(serviceEid, it.sourceEid) ||
+        com.dtn.messenger.util.PayloadUtils.isPrefixMatch(it.sourceEid, serviceEid)
+    }
     
     var recipientEid by remember { mutableStateOf("") }
     var replyText by remember { mutableStateOf("") }
@@ -223,13 +229,17 @@ fun ChatScreen(
                                             BpsecStatus.INVALID -> Icons.Default.Warning
                                             BpsecStatus.UNVERIFIED -> Icons.Default.Info
                                         },
-                                        contentDescription = "BPSec",
+                                        contentDescription = "BPSec Details",
                                         tint = when (msg.bpsecStatus) {
                                             BpsecStatus.VALID -> GlowGreen
                                             BpsecStatus.INVALID -> GlowRed
                                             BpsecStatus.UNVERIFIED -> TextGray
                                         },
-                                        modifier = Modifier.size(12.dp)
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .clickable {
+                                                selectedBundle = msg
+                                            }
                                     )
                                 }
                             }
@@ -297,6 +307,38 @@ fun ChatScreen(
                     modifier = Modifier.background(NeonCyan, RoundedCornerShape(24.dp))
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.Black)
+                }
+            }
+        }
+    }
+
+    if (selectedBundle != null) {
+        Dialog(
+            onDismissRequest = { selectedBundle = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = CharcoalBg
+            ) {
+                Column {
+                    CenterAlignedTopAppBar(
+                        title = { Text("BUNDLE DETAILS", fontWeight = FontWeight.Bold, color = NeonCyan) },
+                        navigationIcon = {
+                            IconButton(onClick = { selectedBundle = null }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NeonCyan)
+                            }
+                        },
+                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = CharcoalBg)
+                    )
+                    Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+                        BundleDetailPane(
+                            bundle = selectedBundle!!,
+                            navController = navController,
+                            bundleRecordDao = bundleRecordDao,
+                            onClose = { selectedBundle = null }
+                        )
+                    }
                 }
             }
         }

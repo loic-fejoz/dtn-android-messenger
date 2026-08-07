@@ -805,8 +805,7 @@ fun ServicesConfigTab(dao: LocalServiceDao, scope: CoroutineScope) {
                     value = eid,
                     onValueChange = { eid = it },
                     label = { Text("Service EID (ex: dtn://my-node/chat)", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isEditMode // Disable editing EID primary key
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 OutlinedTextField(
@@ -855,20 +854,20 @@ fun ServicesConfigTab(dao: LocalServiceDao, scope: CoroutineScope) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     if (isEditMode) {
-                        Button(
-                            onClick = {
-                                isEditMode = false
-                                eid = ""
-                                name = ""
-                                defaultDest = ""
-                                viewerType = ViewerType.CHAT
-                                editingService = null
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray, contentColor = Color.White)
-                        ) {
-                            Text("CANCEL", fontWeight = FontWeight.Bold)
-                        }
+                         Button(
+                             onClick = {
+                                 isEditMode = false
+                                 eid = ""
+                                 name = ""
+                                 defaultDest = ""
+                                 viewerType = ViewerType.CHAT
+                                 editingService = null
+                             },
+                             modifier = Modifier.weight(1f),
+                             colors = ButtonDefaults.buttonColors(containerColor = Color.Gray, contentColor = Color.White)
+                         ) {
+                             Text("CANCEL", fontWeight = FontWeight.Bold)
+                         }
                     }
 
                     Button(
@@ -878,9 +877,13 @@ fun ServicesConfigTab(dao: LocalServiceDao, scope: CoroutineScope) {
                                 return@Button
                             }
                             scope.launch {
+                                val newEid = eid.trim()
+                                if (isEditMode && editingService != null && editingService!!.serviceEid != newEid) {
+                                    dao.delete(editingService!!)
+                                }
                                 dao.insert(
                                     LocalService(
-                                        serviceEid = eid.trim(),
+                                        serviceEid = newEid,
                                         displayName = name,
                                         viewerType = viewerType,
                                         defaultDestinationEid = defaultDest.trim()

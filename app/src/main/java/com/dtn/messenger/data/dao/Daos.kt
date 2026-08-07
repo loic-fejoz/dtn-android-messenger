@@ -9,6 +9,9 @@ interface LocalServiceDao {
     @Query("SELECT * FROM local_services")
     fun getAll(): Flow<List<LocalService>>
 
+    @Query("SELECT * FROM local_services")
+    suspend fun getAllList(): List<LocalService>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(service: LocalService)
 
@@ -89,6 +92,9 @@ interface ConvergenceProfileDao {
 interface BpsecKeyDao {
     @Query("SELECT * FROM bpsec_keys")
     fun getAll(): Flow<List<BpsecKey>>
+
+    @Query("SELECT * FROM bpsec_keys")
+    suspend fun getAllList(): List<BpsecKey>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(key: BpsecKey)

@@ -180,4 +180,35 @@ class Bpv7Test {
         )
         assertFalse(sig1.contentEquals(sigModifiedPayload))
     }
+
+    @Test
+    fun testHardySignedBundleVerification() {
+        val hex = "9f890700028201692f2f626561636f6e2f82016d2f2f4e3043414c4c2f6368617482016d2f2f4e3043414c4c2f63686174821b000000c3724c49f41a0009bc571a0036ee80440c9ffc9a850b020000583e8101010182016d2f2f4e3043414c4c2f6368617481820105818182015820f95b5e95493c5e24bbbd71e06ee8fc4c4fdb6957cc1c5da51028f6fe33a19e508501010400581d4e3043414c4c207369676e656420626561636f6e2072616469616e740aff"
+        val bytes = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val bundle = Bpv7Parser.deserialize(bytes)
+
+        val key = byteArrayOf(
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+            0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20
+        )
+
+        val bib = bundle.bibBlock!!
+        val rawPrimaryBytes = bundle.primaryBlock.rawBytes ?: Bpv7Parser.serializePrimaryBlock(bundle.primaryBlock).EncodeToBytes()
+
+        val computedSignature = Bpv7Parser.computeHmac(
+            secretKey = key,
+            primaryBlockBytes = rawPrimaryBytes,
+            targetBlockType = 1,
+            targetBlockNumber = bundle.payloadBlock.blockNumber,
+            targetBlockFlags = bundle.payloadBlock.blockControlFlags,
+            securityBlockType = 11,
+            securityBlockNumber = bib.blockNumber,
+            securityBlockFlags = bib.blockControlFlags,
+            payloadBytes = bundle.payloadBlock.data,
+            scopeFlags = bib.scopeFlags
+        )
+
+        assertArrayEquals(bib.signature, computedSignature)
+    }
 }
+

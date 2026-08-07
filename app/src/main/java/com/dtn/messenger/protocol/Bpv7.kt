@@ -67,13 +67,17 @@ data class PrimaryBlock(
     val reportTo: Eid,
     val creationTimestamp: Pair<Long, Long>, // <dtnTimeSeconds, sequenceNumber>
     val lifetimeMs: Long
-)
+) {
+    var rawBytes: ByteArray? = null
+}
 
 data class PayloadBlock(
     val blockNumber: Int = 1,
     val blockControlFlags: Long = 0,
     val data: ByteArray
 ) {
+    var rawBytes: ByteArray? = null
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -110,6 +114,8 @@ data class BibBlock(
     val scopeFlags: Int = 7,            // all included
     val signature: ByteArray
 ) {
+    var rawBytes: ByteArray? = null
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -181,7 +187,9 @@ object Bpv7Parser {
 
         val lifetime = cbor[7].AsInt64()
 
-        return PrimaryBlock(version, flags, crcType, destination, source, reportTo, Pair(creationTime, seq), lifetime)
+        return PrimaryBlock(version, flags, crcType, destination, source, reportTo, Pair(creationTime, seq), lifetime).apply {
+            rawBytes = cbor.EncodeToBytes()
+        }
     }
 
     fun serializeCanonicalBlock(type: Int, number: Int, flags: Long, crcType: Int, blockData: ByteArray): CBORObject {
@@ -213,21 +221,21 @@ object Bpv7Parser {
     }
 
     fun serializeBibBlock(block: BibBlock): CBORObject {
-        val bibData = CBORObject.NewArray()
+        val stream = java.io.ByteArrayOutputStream()
 
         // 1. Targets
         val targetsArray = CBORObject.NewArray()
         block.targets.forEach { targetsArray.Add(it) }
-        bibData.Add(targetsArray)
+        targetsArray.WriteTo(stream)
 
         // 2. Security Context
-        bibData.Add(block.securityContext)
+        CBORObject.FromObject(block.securityContext).WriteTo(stream)
 
         // 3. Security Context Flags
-        bibData.Add(block.securityContextFlags)
+        CBORObject.FromObject(block.securityContextFlags).WriteTo(stream)
 
-        // 4. Security Source
-        bibData.Add(block.securitySource.toCbor())
+        // 4. Security Source (always present)
+        block.securitySource.toCbor().WriteTo(stream)
 
         // 5. Parameters (if flag bit 0 is set)
         if ((block.securityContextFlags and 1L) != 0L) {
@@ -243,7 +251,7 @@ object Bpv7Parser {
             p3.Add(block.scopeFlags)
             paramsArray.Add(p3)
 
-            bibData.Add(paramsArray)
+            paramsArray.WriteTo(stream)
         }
 
         // 6. Results
@@ -254,9 +262,9 @@ object Bpv7Parser {
         r1.Add(CBORObject.FromObject(block.signature))
         targetResults.Add(r1)
         resultsArray.Add(targetResults)
-        bibData.Add(resultsArray)
+        resultsArray.WriteTo(stream)
 
-        val blockDataBytes = bibData.EncodeToBytes()
+        val blockDataBytes = stream.toByteArray()
         return serializeCanonicalBlock(11, block.blockNumber, block.blockControlFlags, 0, blockDataBytes)
     }
 
@@ -265,23 +273,31 @@ object Bpv7Parser {
         val flags = cbor[2].AsInt64()
         val dataBytes = cbor[4].GetByteString()
 
-        val bibData = CBORObject.DecodeFromBytes(dataBytes)
-        val targetsArray = bibData[0]
+        val stream = java.io.ByteArrayInputStream(dataBytes)
+
+        // 1. Targets
+        val targetsArray = CBORObject.Read(stream)
         val targets = mutableListOf<Int>()
         for (i in 0 until targetsArray.size()) {
             targets.add(targetsArray[i].AsInt32())
         }
-        val securityContext = bibData[1].AsInt32()
-        val securityContextFlags = bibData[2].AsInt64()
-        val securitySource = Eid.fromCbor(bibData[3])
+
+        // 2. Security Context
+        val securityContext = CBORObject.Read(stream).AsInt32()
+
+        // 3. Security Context Flags
+        val securityContextFlags = CBORObject.Read(stream).AsInt64()
+
+        // 4. Security Source (always present)
+        val securitySource = Eid.fromCbor(CBORObject.Read(stream))
 
         var variant = 5
         var scopeFlags = 7
         var signature = ByteArray(0)
 
-        var nextIdx = 4
+        // 5. Parameters (present if bit 0 of flags is set)
         if ((securityContextFlags and 1L) != 0L) {
-            val paramsArray = bibData[nextIdx]
+            val paramsArray = CBORObject.Read(stream)
             for (i in 0 until paramsArray.size()) {
                 val param = paramsArray[i]
                 val paramId = param[0].AsInt32()
@@ -289,10 +305,10 @@ object Bpv7Parser {
                 if (paramId == 1) variant = paramVal
                 if (paramId == 3) scopeFlags = paramVal
             }
-            nextIdx++
         }
 
-        val resultsArray = bibData[nextIdx]
+        // 6. Results
+        val resultsArray = CBORObject.Read(stream)
         val targetResults = resultsArray[0]
         for (i in 0 until targetResults.size()) {
             val r = targetResults[i]
@@ -330,13 +346,17 @@ object Bpv7Parser {
                     val number = blockCbor[1].AsInt32()
                     val flags = blockCbor[2].AsInt64()
                     val data = blockCbor[4].GetByteString()
-                    payload = PayloadBlock(number, flags, data)
+                    payload = PayloadBlock(number, flags, data).apply {
+                        rawBytes = blockCbor.EncodeToBytes()
+                    }
                 }
                 10 -> {
                     hopCount = deserializeHopCountBlock(blockCbor)
                 }
                 11 -> {
-                    bib = deserializeBibBlock(blockCbor)
+                    bib = deserializeBibBlock(blockCbor).apply {
+                        rawBytes = blockCbor.EncodeToBytes()
+                    }
                 }
             }
         }

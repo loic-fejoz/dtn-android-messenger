@@ -69,4 +69,12 @@ object PayloadUtils {
         if (trimmed.isEmpty()) return false
         return trimmed.startsWith("dtn://") || trimmed.startsWith("ipn:")
     }
+
+    fun isPrefixMatch(parent: String, child: String): Boolean {
+        val p = parent.trim().lowercase()
+        val c = child.trim().lowercase()
+        if (p == c) return true
+        val normalizedParent = if (p.endsWith("/")) p else "$p/"
+        return c.startsWith(normalizedParent)
+    }
 }

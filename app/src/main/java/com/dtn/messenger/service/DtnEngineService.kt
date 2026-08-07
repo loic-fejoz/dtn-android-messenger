@@ -57,8 +57,21 @@ class DtnEngineService : Service() {
     }
 
     private fun log(level: String, message: String) {
+        when (level) {
+            "ERROR" -> android.util.Log.e("DtnEngineService", message)
+            "WARN" -> android.util.Log.w("DtnEngineService", message)
+            else -> android.util.Log.i("DtnEngineService", message)
+        }
         serviceScope.launch {
             logDao.insert(SystemLog(timestamp = System.currentTimeMillis(), level = level, message = message))
+        }
+    }
+
+    private suspend fun findBpsecKey(sourceEid: String): BpsecKey? {
+        val keys = bpsecKeyDao.getAllList()
+        return keys.find { key ->
+            com.dtn.messenger.util.PayloadUtils.isPrefixMatch(key.nodeEid, sourceEid) ||
+            com.dtn.messenger.util.PayloadUtils.isPrefixMatch(sourceEid, key.nodeEid)
         }
     }
 
@@ -179,7 +192,7 @@ class DtnEngineService : Service() {
             val policy = prefs.getString("bpsec_policy", "none") ?: "none"
 
             if (bib != null) {
-                val keyRecord = bpsecKeyDao.getByKeyId(primary.source.uri)
+                val keyRecord = findBpsecKey(primary.source.uri)
                 if (keyRecord != null) {
                     val decryptedKey = try {
                         com.dtn.messenger.util.CryptoManager.decrypt(keyRecord.secretKey)
@@ -189,7 +202,7 @@ class DtnEngineService : Service() {
                     }
                     // Compute expected signature
                     // For calculation, we need raw primary block bytes.
-                    val rawPrimaryBytes = Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
+                    val rawPrimaryBytes = primary.rawBytes ?: Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
                     
                     val computedSignature = Bpv7Parser.computeHmac(
                         secretKey = decryptedKey,
@@ -228,7 +241,7 @@ class DtnEngineService : Service() {
                 }
             } else {
                 // Check if a key exists for this node EID
-                val keyRecord = bpsecKeyDao.getByKeyId(primary.source.uri)
+                val keyRecord = findBpsecKey(primary.source.uri)
                 if (keyRecord != null) {
                     if (policy == "strict") {
                         log("ERROR", "BPSec signature missing under STRICT policy. Discarding bundle from ${primary.source.uri}.")
@@ -252,9 +265,20 @@ class DtnEngineService : Service() {
             val payloadFile = File(payloadsDir, "$bundleId.$extension")
             tempFile.renameTo(payloadFile)
 
-            // Verify if it is for a local service on our node
-            val localServices = localServiceDao.getById(primary.destination.uri)
-            val isLocal = localServices != null
+            // Verify if it is for local services on our node (supporting prefix/multicast match for multiple services)
+            val localServices = localServiceDao.getAllList()
+            val matchedLocalServices = localServices.filter { service ->
+                com.dtn.messenger.util.PayloadUtils.isPrefixMatch(service.serviceEid, primary.destination.uri) ||
+                com.dtn.messenger.util.PayloadUtils.isPrefixMatch(primary.destination.uri, service.serviceEid)
+            }
+            val isLocal = matchedLocalServices.isNotEmpty()
+
+            // Check if we also need to forward it (multicast/anycast or transit routing)
+            val nextHop = resolveNextHop(primary.destination.uri)
+            val hasRoute = nextHop != primary.destination.uri || routingRuleDao.getAllList().any { 
+                primary.destination.uri.startsWith(it.destinationEidPattern.replace("*", ""))
+            }
+            val shouldForward = hasRoute && findProfileForNextHop(nextHop) != null
 
             val record = BundleRecord(
                 bundleId = bundleId,
@@ -264,7 +288,7 @@ class DtnEngineService : Service() {
                 sequenceNumber = seqNo,
                 lifetimeMs = primary.lifetimeMs,
                 payloadFilePath = payloadFile.absolutePath,
-                state = if (isLocal) BundleState.RECEIVED else BundleState.OUTBOX,
+                state = if (shouldForward) BundleState.OUTBOX else BundleState.RECEIVED,
                 isRead = false,
                 bpsecStatus = bpsecStatus,
                 hopCount = hopCount
@@ -275,20 +299,22 @@ class DtnEngineService : Service() {
             updateTrigger.emit(Unit)
 
             if (isLocal) {
-                // Post notification for local user
-                localServices?.let { service ->
+                // Post notification for all matched local services
+                matchedLocalServices.forEach { service ->
                     triggerMessageNotification(service, record, payload.data)
                 }
-            } else {
-                // For store-and-forward, we received a transit bundle.
-                log("INFO", "Received transit bundle targeting ${primary.destination.uri}. Forwarding immediately.")
+            }
+
+            if (shouldForward) {
+                // Forward immediately
+                log("INFO", "Received transit/multicast bundle targeting ${primary.destination.uri}. Forwarding immediately.")
                 serviceScope.launch {
                     flushQueue()
                 }
             }
 
         } catch (e: Exception) {
-            log("ERROR", "Error handling received bundle: ${e.message}")
+            log("ERROR", "Error handling received bundle: " + android.util.Log.getStackTraceString(e))
         }
     }
 
