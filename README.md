@@ -1,6 +1,43 @@
 # DTN-Android BPv7 Messenger
 
-An Android native Delay-Tolerant Networking (DTN) messaging and autonomous store-and-forward bundle transfer application built in **Kotlin** conforming to **RFC 9171 (BPv7)** and **RFC 9103 (BPSec BIB HMAC-SHA256)**.
+An Android native Delay/Disruption-Tolerant Networking (DTN) messaging and autonomous store-and-forward bundles transfer application built in **Kotlin** conforming to **RFC 9171 (BPv7)** and **RFC 9103 (BPSec BIB HMAC-SHA256)**.
+
+It is inspired by [picoD3TN](https://gitlab.com/d3tn/picod3tn) and [Hardy](https://github.com/ricktaylor/hardy/)
+with stimulations from the [RADIANT project](https://radiant.amsat-uk.org/).
+
+---
+
+## Main features
+
+* Services:
+  * Chat view
+  * Bundles list + bundle detail. Note that images and Markdown are automatically recognized.
+* Android Auto
+* Registred as Android File sharing
+* Convergence Layer (CLA):
+  * TCPCLv4 (tested against Hardy)
+  * Bluetooth (simple & dummy in-house)
+* Routing:
+  * Next hop forwading, aka static routes
+* BPSec:
+  * BIB HMAC-SHA256 (RFC 9103) only so as to not have encryption as I want to connect over hamradio as per regulation requirements.
+  * Configurable policy: no check, warn, strict
+
+---
+
+## Screenshots
+
+Here are screenshots of the application showcasing its main features:
+
+![Main Registry View](screencap.png)
+![Chat Service View](screencap_chat.png)
+![File Exchange Service View](screencap_files.png)
+![Bundle Detail View](screencap_bundle_detail.png)
+![Opportunistic Text Sender View](screencap_opportunistic_send.png)
+![Opportunistic Image Sender View](screencap_opportunistic_send_image.png)
+![Convergence Layers Configuration View](screencap_convergence_layers.png)
+![Routing Configuration View](screencap_routing.png)
+![Local Services Configuration View](screencap_local_services.png)
 
 ---
 
