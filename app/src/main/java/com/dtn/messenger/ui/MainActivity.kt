@@ -35,7 +35,9 @@ class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        // Permissions handled - log status or handle if needed
+        if (permissions.values.all { it }) {
+            startEngineService()
+        }
     }
 
     private val currentIntentState = mutableStateOf<android.content.Intent?>(null)
@@ -45,6 +47,10 @@ class MainActivity : ComponentActivity() {
 
         currentIntentState.value = intent
         checkAndRequestPermissions()
+
+        if (hasRequiredPermissions()) {
+            startEngineService()
+        }
 
         setContent {
             DtnTheme {
@@ -210,5 +216,26 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         currentIntentState.value = intent
+    }
+    private fun hasRequiredPermissions(): Boolean {
+        val permissions = mutableListOf(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE)
+        }
+        return permissions.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    private fun startEngineService() {
+        val serviceIntent = android.content.Intent(this, com.dtn.messenger.service.DtnEngineService::class.java)
+        androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent)
     }
 }

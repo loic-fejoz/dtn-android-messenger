@@ -568,9 +568,14 @@ class DtnEngineService : Service() {
                 val address = intent.getStringExtra("address")
                 if (address != null) {
                     serviceScope.launch {
+                        log("INFO", "Forced connection triggered to $address. Flushing queue first.")
+                        try {
+                            flushQueue()
+                        } catch (e: Exception) {
+                            log("WARN", "Forced queue flush error: ${e.message}")
+                        }
                         val adapter = adapters.find { it.name.lowercase().contains("tcp") }
                         if (adapter != null) {
-                            log("INFO", "Forced pull connection triggered to $address")
                             adapter.sendBundle(ByteArray(0), address)
                         }
                     }

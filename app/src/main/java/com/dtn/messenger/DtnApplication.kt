@@ -79,8 +79,5 @@ class DtnApplication : Application() {
             }
         }
 
-        // Launch Foreground DTN Engine service
-        val serviceIntent = Intent(this, DtnEngineService::class.java)
-        ContextCompat.startForegroundService(this, serviceIntent)
     }
 }
