@@ -336,6 +336,7 @@ fun BundleDetailPane(
             }
             item {
                 val isImage = com.dtn.messenger.util.PayloadUtils.isImagePayload(bundle.payloadFilePath)
+                val isAudio = com.dtn.messenger.util.PayloadUtils.isAudioPayload(bundle.payloadFilePath)
                 if (isImage) {
                     AsyncImage(
                         model = File(bundle.payloadFilePath),
@@ -345,6 +346,8 @@ fun BundleDetailPane(
                             .height(180.dp)
                             .background(Color.Black, RoundedCornerShape(8.dp))
                     )
+                } else if (isAudio) {
+                    AudioPlayerCard(filePath = bundle.payloadFilePath)
                 } else {
                     MarkdownText(payloadText)
                 }

@@ -34,6 +34,19 @@ object PayloadUtils {
                     if (header[0] == 0x42.toByte() && header[1] == 0x4D.toByte()) {
                         return "bmp"
                     }
+                    // Check OGG (OggS)
+                    if (header[0] == 0x4F.toByte() && header[1] == 0x67.toByte() && header[2] == 0x67.toByte() && header[3] == 0x53.toByte()) {
+                        return "ogg"
+                    }
+                    // Check MP3 (ID3 or MPEG frame sync FF FB/F3/F2)
+                    if ((header[0] == 0x49.toByte() && header[1] == 0x44.toByte() && header[2] == 0x33.toByte()) ||
+                        (header[0] == 0xFF.toByte() && (header[1].toInt() and 0xE0) == 0xE0)) {
+                        return "mp3"
+                    }
+                    // Check M4A/MP4 (ftyp at offset 4)
+                    if (bytesRead >= 8 && header[4] == 0x66.toByte() && header[5] == 0x74.toByte() && header[6] == 0x79.toByte() && header[7] == 0x70.toByte()) {
+                        return "m4a"
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -62,6 +75,11 @@ object PayloadUtils {
     fun isImagePayload(filePath: String): Boolean {
         val ext = getPayloadFileExtension(filePath)
         return ext in listOf("png", "jpg", "jpeg", "webp", "gif", "bmp")
+    }
+
+    fun isAudioPayload(filePath: String): Boolean {
+        val ext = getPayloadFileExtension(filePath)
+        return ext in listOf("ogg", "opus", "mp3", "m4a", "mp4", "wav", "amr")
     }
 
     fun isValidEid(eid: String): Boolean {

@@ -1,31 +1,46 @@
 package com.dtn.messenger.ui
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.dtn.messenger.data.dao.BundleRecordDao
@@ -38,6 +53,40 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
+
+val MicIcon: ImageVector
+    get() = ImageVector.Builder(
+        name = "Mic",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(fill = androidx.compose.ui.graphics.SolidColor(Color.White)) {
+            moveTo(12f, 14f)
+            curveTo(13.66f, 14f, 15f, 12.66f, 15f, 11f)
+            verticalLineTo(5f)
+            curveTo(15f, 3.34f, 13.66f, 2f, 12f, 2f)
+            curveTo(10.34f, 2f, 9f, 3.34f, 9f, 5f)
+            verticalLineTo(11f)
+            curveTo(9f, 12.66f, 10.34f, 14f, 12f, 14f)
+            close()
+            moveTo(17.3f, 11f)
+            curveTo(17.3f, 14f, 14.76f, 16.1f, 12f, 16.1f)
+            curveTo(9.24f, 16.1f, 6.7f, 14f, 6.7f, 11f)
+            horizontalLineTo(5f)
+            curveTo(5f, 14.42f, 7.72f, 17.23f, 11f, 17.72f)
+            verticalLineTo(21f)
+            horizontalLineTo(13f)
+            verticalLineTo(17.72f)
+            curveTo(16.28f, 17.23f, 19f, 14.42f, 19f, 11f)
+            horizontalLineTo(17.3f)
+            close()
+        }
+    }.build()
 
 private fun getFileNameFromUri(context: Context, uri: Uri): String {
     var name = ""
@@ -68,10 +117,13 @@ fun SendBundleScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var destination by remember { mutableStateOf(preFilledDest) }
     
     // Read local node name/EID from preferences
     val prefs = remember { com.dtn.messenger.util.PreferencesHelper.getEncryptedSharedPreferences(context) }
+    val lastDestination = remember { prefs.getString("last_destination_eid", "") ?: "" }
+    var destination by remember { mutableStateOf(preFilledDest.ifEmpty { lastDestination }) }
+    var ttlValue by remember { mutableStateOf("1") }
+    var ttlUnit by remember { mutableStateOf("h") }
     val localNodeName = remember { mutableStateOf(prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node") }
     
     var sourceService by remember { mutableStateOf(preFilledSourceService.ifEmpty { "chat" }) }
@@ -82,6 +134,104 @@ fun SendBundleScreen(
     var selectedFileUri by remember { mutableStateOf<Uri?>(if (preFilledFileUri.isNotEmpty()) Uri.parse(preFilledFileUri) else null) }
     var selectedFileName by remember { mutableStateOf("") }
     var selectedFileSize by remember { mutableStateOf(0L) }
+
+    // Audio recording state
+    var mediaRecorder by remember { mutableStateOf<MediaRecorder?>(null) }
+    var recordingFile by remember { mutableStateOf<File?>(null) }
+    var isRecording by remember { mutableStateOf(false) }
+    var recordingDuration by remember { mutableStateOf(0) }
+    var recordingCancelled by remember { mutableStateOf(false) }
+
+    var hasAudioPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasAudioPermission = granted
+        if (!granted) {
+            Toast.makeText(context, "Audio recording permission is required to record voice messages!", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun startRecording() {
+        try {
+            val extension = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) "ogg" else "m4a"
+            val tempFile = File(context.cacheDir, "temp_recording.$extension")
+            recordingFile = tempFile
+
+            val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(context)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
+
+            recorder.apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    setOutputFormat(MediaRecorder.OutputFormat.OGG)
+                    setAudioEncoder(MediaRecorder.AudioEncoder.OPUS)
+                } else {
+                    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                }
+                setOutputFile(tempFile.absolutePath)
+                prepare()
+                start()
+            }
+            mediaRecorder = recorder
+            isRecording = true
+            recordingCancelled = false
+            recordingDuration = 0
+        } catch (e: Exception) {
+            Toast.makeText(context, "Failed to start recording: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun stopRecording(save: Boolean) {
+        isRecording = false
+        try {
+            mediaRecorder?.apply {
+                stop()
+                release()
+            }
+        } catch (e: Exception) {
+            // Ignore if release failed
+        }
+        mediaRecorder = null
+
+        if (save && !recordingCancelled) {
+            val file = recordingFile
+            if (file != null && file.exists() && file.length() > 0) {
+                selectedFileUri = Uri.fromFile(file)
+                selectedFileName = file.name
+                selectedFileSize = file.length()
+                isFileMode = true
+                Toast.makeText(context, "Voice message recorded!", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Recording failed or too short", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            recordingFile?.delete()
+        }
+        recordingFile = null
+    }
+
+    LaunchedEffect(isRecording) {
+        if (isRecording) {
+            while (isRecording) {
+                kotlinx.coroutines.delay(1000)
+                recordingDuration += 1
+            }
+        }
+    }
 
     LaunchedEffect(selectedFileUri) {
         selectedFileUri?.let { uri ->
@@ -183,6 +333,57 @@ fun SendBundleScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // Time-To-Live (TTL) Configuration
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = ttlValue,
+                    onValueChange = { newValue ->
+                        if (newValue.all { it.isDigit() }) {
+                            ttlValue = newValue
+                        }
+                    },
+                    label = { Text("Lifetime / TTL", color = TextGray) },
+                    modifier = Modifier.weight(1.5f),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number
+                    )
+                )
+
+                var unitDropdownExpanded by remember { mutableStateOf(false) }
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedTextField(
+                        value = ttlUnit,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Unit", color = TextGray) },
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = {
+                            IconButton(onClick = { unitDropdownExpanded = true }) {
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Unit", tint = NeonCyan)
+                            }
+                        }
+                    )
+                    DropdownMenu(
+                        expanded = unitDropdownExpanded,
+                        onDismissRequest = { unitDropdownExpanded = false }
+                    ) {
+                        listOf("s", "mn", "h", "d").forEach { unit ->
+                            DropdownMenuItem(
+                                text = { Text(unit) },
+                                onClick = {
+                                    ttlUnit = unit
+                                    unitDropdownExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
             // Mode Selector
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -263,12 +464,43 @@ fun SendBundleScreen(
                             textAlign = TextAlign.Center
                         )
                         if (selectedFileUri != null) {
-                            Text(
-                                text = "Size: $selectedFileSize bytes",
-                                color = TextGray,
-                                fontSize = 12.sp
-                            )
-                            if (selectedFileName.lowercase().let { it.endsWith(".png") || it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".webp") || it.endsWith(".gif") }) {
+                            val isAudio = remember(selectedFileUri) {
+                                val uriString = selectedFileUri.toString()
+                                val ext = uriString.substringAfterLast('.').lowercase()
+                                ext in listOf("ogg", "opus", "mp3", "m4a", "mp4", "wav", "amr") || 
+                                selectedFileName.lowercase().let { it.endsWith(".ogg") || it.endsWith(".opus") || it.endsWith(".mp3") || it.endsWith(".m4a") || it.endsWith(".mp4") || it.endsWith(".wav") || it.endsWith(".amr") }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Size: $selectedFileSize bytes",
+                                        color = TextGray,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        selectedFileUri = null
+                                        selectedFileName = ""
+                                        selectedFileSize = 0L
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Clear file",
+                                        tint = GlowRed
+                                    )
+                                }
+                            }
+
+                            if (isAudio) {
+                                AudioPlayerCard(filePath = selectedFileUri.toString())
+                            } else if (selectedFileName.lowercase().let { it.endsWith(".png") || it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".webp") || it.endsWith(".gif") }) {
                                 AsyncImage(
                                     model = selectedFileUri,
                                     contentDescription = "Preview",
@@ -277,6 +509,120 @@ fun SendBundleScreen(
                                         .background(Color.Black, RoundedCornerShape(4.dp))
                                 )
                             }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("OR RECORD VOICE MESSAGE", fontSize = 10.sp, color = TextGray, fontWeight = FontWeight.Bold)
+
+                val infiniteTransition = rememberInfiniteTransition(label = "flashing")
+                val flashAlpha by infiniteTransition.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 0.2f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(800, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "flashAlpha"
+                )
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(hasAudioPermission) {
+                            awaitEachGesture {
+                                awaitFirstDown()
+                                if (!hasAudioPermission) {
+                                    permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    return@awaitEachGesture
+                                }
+                                scope.launch {
+                                    startRecording()
+                                }
+                                var cancelled = false
+                                var accumX = 0f
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val anyPressed = event.changes.any { it.pressed }
+                                    if (anyPressed) {
+                                        event.changes.forEach { change ->
+                                            accumX += change.positionChange().x
+                                            if (accumX < -150f && !cancelled) {
+                                                cancelled = true
+                                                recordingCancelled = true
+                                                scope.launch {
+                                                    stopRecording(false)
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        if (!cancelled) {
+                                            scope.launch {
+                                                stopRecording(true)
+                                            }
+                                        }
+                                        break
+                                    }
+                                }
+                            }
+                        },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isRecording) NeonPurple.copy(alpha = 0.2f) else GlassCardColor
+                    ),
+                    border = BorderStroke(1.dp, if (isRecording) NeonPurple else Color(0x1AFFFFFF))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (isRecording) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .background(GlowRed, RoundedCornerShape(5.dp))
+                                        .alpha(flashAlpha)
+                                )
+                                Text(
+                                    text = String.format("Recording: %02d:%02d", recordingDuration / 60, recordingDuration % 60),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                            Text(
+                                text = "<< SLIDE LEFT TO CANCEL",
+                                color = TextGray,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        } else {
+                            Icon(
+                                imageVector = MicIcon,
+                                contentDescription = "Record Voice Message",
+                                tint = NeonCyan,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Text(
+                                text = "TOUCH & HOLD TO RECORD VOICE MESSAGE",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = "Release to attach, slide left to cancel",
+                                color = TextGray,
+                                fontSize = 10.sp
+                            )
                         }
                     }
                 }
@@ -323,13 +669,26 @@ fun SendBundleScreen(
                                 }
                             }
 
+                            // Save last destination EID in preferences
+                            prefs.edit().putString("last_destination_eid", destination.trim()).apply()
+
+                            val parsedTtlValue = ttlValue.toLongOrNull() ?: 1L
+                            val multiplier = when (ttlUnit) {
+                                "s" -> 1000L
+                                "mn" -> 60 * 1000L
+                                "h" -> 3600 * 1000L
+                                "d" -> 24 * 3600 * 1000L
+                                else -> 3600 * 1000L
+                            }
+                            val calculatedLifetimeMs = parsedTtlValue * multiplier
+
                             val record = BundleRecord(
                                 bundleId = bundleId,
                                 destinationEid = destination.trim(),
                                 sourceEid = resolvedSourceEid,
                                 creationTimestamp = System.currentTimeMillis(),
                                 sequenceNumber = System.currentTimeMillis() % 100000,
-                                lifetimeMs = 3600000L,
+                                lifetimeMs = calculatedLifetimeMs,
                                 payloadFilePath = payloadFile.absolutePath,
                                 state = BundleState.OUTBOX,
                                 isRead = true,

@@ -170,11 +170,18 @@ fun ChatScreen(
                     val bubbleColor = if (isMe) NeonPurple.copy(alpha = 0.4f) else GlassCardColor
                     val outlineColor = if (isMe) NeonPurple else Color(0x33FFFFFF)
                     
+                    val isAudio = remember(msg.payloadFilePath) {
+                        com.dtn.messenger.util.PayloadUtils.isAudioPayload(msg.payloadFilePath)
+                    }
                     val text by produceState(initialValue = "Loading...", msg.payloadFilePath) {
                         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                             try {
-                                val file = File(msg.payloadFilePath)
-                                if (file.exists()) String(file.readBytes(), Charsets.UTF_8) else "No content"
+                                if (isAudio) {
+                                    "Audio message"
+                                } else {
+                                    val file = File(msg.payloadFilePath)
+                                    if (file.exists()) String(file.readBytes(), Charsets.UTF_8) else "No content"
+                                }
                             } catch (e: Exception) {
                                 "Binary data"
                             }
@@ -211,7 +218,11 @@ fun ChatScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                 }
-                                Text(text, color = Color.White, fontSize = 15.sp)
+                                if (isAudio) {
+                                    AudioPlayerCard(filePath = msg.payloadFilePath)
+                                } else {
+                                    Text(text, color = Color.White, fontSize = 15.sp)
+                                }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Row(
                                     modifier = Modifier.align(Alignment.End),
