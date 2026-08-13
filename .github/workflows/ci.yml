@@ -50,3 +50,15 @@ jobs:
 
       - name: Run Unit Tests
         run: ./gradlew test
+
+      - name: Generate CycloneDX SBOM
+        run: ./gradlew cyclonedxBom
+
+      - name: Upload SBOM Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-reports
+          path: |
+            build/reports/bom.json
+            build/reports/bom.xml
+

@@ -1,0 +1,1 @@
+Un client de messagerie fiable et tolérant aux délais sur Android, basé sur le protocole Bundle version 7 (BPv7). Permet une synchronisation transparente en arrière-plan via TCP et Bluetooth Classic, le stockage local des messages, et la vérification cryptographique d'intégrité. Conçu pour les radioamateurs et les communications d'urgence hors réseau.

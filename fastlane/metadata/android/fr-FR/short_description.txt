@@ -1,0 +1,1 @@
+Client de messagerie tolérant aux délais/disruptions utilisant BPv7 DTN.

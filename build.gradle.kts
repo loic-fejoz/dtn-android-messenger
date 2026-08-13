@@ -5,6 +5,14 @@ plugins {
     id("com.google.devtools.ksp") version "1.9.22-1.0.17" apply false
     id("io.gitlab.arturbosch.detekt") version "1.23.6"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
+    id("org.cyclonedx.bom") version "1.10.0"
+}
+
+group = "com.dtn.messenger"
+version = "1.0.0"
+
+tasks.named<org.cyclonedx.gradle.CycloneDxTask>("cyclonedxBom") {
+    includeConfigs.set(listOf("releaseRuntimeClasspath"))
 }
 
 allprojects {

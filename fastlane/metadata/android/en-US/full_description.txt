@@ -1,0 +1,1 @@
+A reliable, delay/disruption-tolerant messaging client using Bundle Protocol version 7 (BPv7). Features seamless background synchronization over TCP and Bluetooth Classic, local message storage, and secure cryptographic integrity verification. Optimized for radio amateurs and off-grid emergency communications.
