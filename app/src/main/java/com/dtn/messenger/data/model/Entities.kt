@@ -56,7 +56,8 @@ data class ConvergenceProfile(
     val name: String,
     val triggerType: TriggerType,
     val targetAddress: String, // IP/Port or Bluetooth MAC
-    val triggerCondition: String? = null // Wifi SSID or interval in mins
+    val triggerCondition: String? = null, // Wifi SSID or interval in mins
+    val isPaused: Boolean = false
 )
 
 @Entity(tableName = "bpsec_keys")

@@ -19,6 +19,9 @@ import com.dtn.messenger.data.dao.*
 import com.dtn.messenger.data.model.*
 import com.dtn.messenger.protocol.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
+import androidx.lifecycle.Observer
 import org.json.JSONArray
 import org.koin.android.ext.android.inject
 import java.io.File
@@ -45,6 +48,16 @@ class DtnEngineService : Service() {
     private var pullJob: Job? = null
     private var periodicFlushJob: Job? = null
     private val lastPullTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    private val isAndroidAutoActiveFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
+    private val carConnectionObserver = Observer<Int> { connectionState ->
+        val active = (connectionState == androidx.car.app.connection.CarConnection.CONNECTION_TYPE_PROJECTION ||
+                      connectionState == androidx.car.app.connection.CarConnection.CONNECTION_TYPE_NATIVE)
+        if (active != isAndroidAutoActiveFlow.value) {
+            isAndroidAutoActiveFlow.value = active
+            log("INFO", if (active) "Android Auto connected, temporarily pausing Bluetooth CLA" else "Android Auto disconnected, restoring Bluetooth CLA")
+        }
+    }
 
     companion object {
         const val CHANNEL_ID = "dtn_engine_channel"
@@ -89,17 +102,62 @@ class DtnEngineService : Service() {
         adapters.add(tcpClAdapter)
         adapters.add(bluetoothAdapter)
 
-        // Start adapters
-        adapters.forEach { adapter ->
-            adapter.start(serviceScope) { bundleBytes ->
-                serviceScope.launch {
-                    onBundleReceived(bundleBytes)
+        // Initialize CarConnection observer
+        try {
+            val carConnection = androidx.car.app.connection.CarConnection(this)
+            carConnection.type.observeForever(carConnectionObserver)
+        } catch (e: Exception) {
+            log("WARN", "CarConnection API not available: ${e.message}")
+        }
+
+        // Start/Stop adapters reactively based on profile status in db and Android Auto connectivity
+        serviceScope.launch {
+            combine(
+                convergenceProfileDao.getAll(),
+                isAndroidAutoActiveFlow
+            ) { profiles, autoActive ->
+                Pair(profiles, autoActive)
+            }.collect { (profiles, autoActive) ->
+                val bluetoothEnabled = profiles.any { it.triggerType == TriggerType.BLUETOOTH_ALWAYS && !it.isPaused } && !autoActive
+                val tcpEnabled = profiles.any { (it.triggerType == TriggerType.WIFI_SSID || it.triggerType == TriggerType.PERIODIC_INTERNET) && !it.isPaused }
+
+                // Manage Bluetooth Adapter
+                if (bluetoothEnabled) {
+                    if (!isBluetoothActive.value) {
+                        log("INFO", "Starting Bluetooth Adapter")
+                        bluetoothAdapter.start(serviceScope) { bundleBytes ->
+                            serviceScope.launch {
+                                onBundleReceived(bundleBytes)
+                            }
+                        }
+                        isBluetoothActive.value = true
+                    }
+                } else {
+                    if (isBluetoothActive.value) {
+                        log("INFO", "Stopping Bluetooth Adapter")
+                        bluetoothAdapter.stop()
+                        isBluetoothActive.value = false
+                    }
                 }
-            }
-            if (adapter.name.lowercase().contains("tcp")) {
-                isTcpActive.value = true
-            } else if (adapter.name.lowercase().contains("blue")) {
-                isBluetoothActive.value = true
+
+                // Manage TCPCLv4 Adapter
+                if (tcpEnabled) {
+                    if (!isTcpActive.value) {
+                        log("INFO", "Starting TCPCLv4 Adapter")
+                        tcpClAdapter.start(serviceScope) { bundleBytes ->
+                            serviceScope.launch {
+                                onBundleReceived(bundleBytes)
+                            }
+                        }
+                        isTcpActive.value = true
+                    }
+                } else {
+                    if (isTcpActive.value) {
+                        log("INFO", "Stopping TCPCLv4 Adapter")
+                        tcpClAdapter.stop()
+                        isTcpActive.value = false
+                    }
+                }
             }
         }
 
@@ -125,6 +183,7 @@ class DtnEngineService : Service() {
                     val profiles = convergenceProfileDao.getAllList()
                     val currentTime = System.currentTimeMillis()
                     for (profile in profiles) {
+                        if (profile.isPaused) continue
                         if (profile.triggerType == TriggerType.PERIODIC_INTERNET) {
                             val intervalMins = profile.triggerCondition?.toIntOrNull() ?: 15
                             val intervalMs = intervalMins * 60 * 1000L
@@ -423,6 +482,7 @@ class DtnEngineService : Service() {
         if (allOutgoing.isEmpty()) {
             val profiles = convergenceProfileDao.getAllList()
             for (profile in profiles) {
+                if (profile.isPaused) continue
                 if (profile.triggerType == TriggerType.PERIODIC_INTERNET) {
                     val adapter = adapters.find { it.name.lowercase() == "tcpclv4" }
                     if (adapter != null) {
@@ -549,7 +609,7 @@ class DtnEngineService : Service() {
     private suspend fun findProfileForNextHop(nextHop: String): ConvergenceProfile? {
         val profiles = convergenceProfileDao.getAllList()
         // Try direct profile ID or name match
-        var match = profiles.find { it.profileId == nextHop || it.name == nextHop }
+        var match = profiles.find { (it.profileId == nextHop || it.name == nextHop) && !it.isPaused }
         if (match == null) {
             // Check if profile ID matches node prefix correctly
             val nextHopNode = if (nextHop.startsWith("dtn://")) {
@@ -560,7 +620,7 @@ class DtnEngineService : Service() {
             } else {
                 nextHop
             }
-            match = profiles.find { it.profileId == nextHopNode || it.name == nextHopNode }
+            match = profiles.find { (it.profileId == nextHopNode || it.name == nextHopNode) && !it.isPaused }
         }
         return match
     }
@@ -625,6 +685,9 @@ class DtnEngineService : Service() {
 
     override fun onDestroy() {
         log("INFO", "DtnEngineService destroying")
+        try {
+            androidx.car.app.connection.CarConnection(this).type.removeObserver(carConnectionObserver)
+        } catch (e: Exception) {}
         isTcpActive.value = false
         isBluetoothActive.value = false
         flushJob?.cancel()

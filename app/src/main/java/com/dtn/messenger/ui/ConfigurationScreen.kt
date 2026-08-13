@@ -23,7 +23,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.BackHand
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,6 +43,8 @@ import com.dtn.messenger.data.dao.RoutingRuleDao
 import com.dtn.messenger.data.model.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.Observer
 
 private fun getAvailableWifiSsids(context: Context): List<String> {
     val ssids = mutableSetOf<String>()
@@ -189,6 +193,13 @@ fun LocalNodeIdentityCard(context: Context = LocalContext.current) {
 fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
     val context = LocalContext.current
     val profiles by dao.getAll().collectAsState(initial = emptyList())
+    
+    val carConnectionState by remember(context) {
+        androidx.car.app.connection.CarConnection(context).type
+    }.observeAsState(initial = androidx.car.app.connection.CarConnection.CONNECTION_TYPE_NOT_CONNECTED)
+    
+    val isAutoConnected = carConnectionState == androidx.car.app.connection.CarConnection.CONNECTION_TYPE_PROJECTION ||
+                          carConnectionState == androidx.car.app.connection.CarConnection.CONNECTION_TYPE_NATIVE
     var name by remember { mutableStateOf("") }
     var type by remember { mutableStateOf(TriggerType.WIFI_SSID) }
     var address by remember { mutableStateOf("") }
@@ -366,18 +377,40 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(profile.name, fontWeight = FontWeight.Bold, color = Color.White)
-                        Text("Target EID: ${profile.profileId}", color = NeonCyan, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
-                        Text("Type: ${profile.triggerType.name} | Dest: ${profile.targetAddress}", color = TextGray, fontSize = 12.sp)
+                        val isTemporarilyPaused = !profile.isPaused && isAutoConnected && profile.triggerType == TriggerType.BLUETOOTH_ALWAYS
+                        val titleColor = if (profile.isPaused || isTemporarilyPaused) Color.Gray else Color.White
+                        val statusText = when {
+                            profile.isPaused -> " (PAUSED)"
+                            isTemporarilyPaused -> " (AUTO-PAUSED)"
+                            else -> ""
+                        }
+                        Text(profile.name + statusText, fontWeight = FontWeight.Bold, color = titleColor)
+                        if (isTemporarilyPaused) {
+                            Text("Android Auto Connected - Bluetooth CLA temporarily paused to avoid interference", color = NeonPurple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        } else {
+                            Text("Target EID: ${profile.profileId}", color = if (profile.isPaused) Color.Gray else NeonCyan, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                        }
+                        Text("Type: ${profile.triggerType.name} | Dest: ${profile.targetAddress}", color = if (profile.isPaused || isTemporarilyPaused) Color.Gray else TextGray, fontSize = 12.sp)
                         if (!profile.triggerCondition.isNullOrBlank()) {
-                            Text("Cond: ${profile.triggerCondition}", color = NeonPurple, fontSize = 11.sp)
+                            Text("Cond: ${profile.triggerCondition}", color = if (profile.isPaused || isTemporarilyPaused) Color.Gray else NeonPurple, fontSize = 11.sp)
                         }
                     }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (profile.triggerType == TriggerType.PERIODIC_INTERNET || profile.triggerType == TriggerType.WIFI_SSID) {
+                        IconButton(onClick = {
+                            scope.launch {
+                                dao.insert(profile.copy(isPaused = !profile.isPaused))
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (profile.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                contentDescription = if (profile.isPaused) "Resume CLA" else "Pause CLA",
+                                tint = if (profile.isPaused) Color.LightGray else NeonCyan
+                            )
+                        }
+                        if (!profile.isPaused && (profile.triggerType == TriggerType.PERIODIC_INTERNET || profile.triggerType == TriggerType.WIFI_SSID)) {
                             IconButton(onClick = {
                                 val intent = Intent(context, DtnEngineService::class.java).apply {
                                     action = "FORCE_PULL"
@@ -386,7 +419,7 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                                 context.startService(intent)
                                 Toast.makeText(context, "Forcing connection to ${profile.targetAddress}...", Toast.LENGTH_SHORT).show()
                             }) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = "Force Connection", tint = NeonCyan)
+                                Icon(Icons.Default.BackHand, contentDescription = "Force Connection", tint = NeonCyan)
                             }
                         }
                         IconButton(onClick = {
@@ -949,4 +982,17 @@ fun ServicesConfigTab(dao: LocalServiceDao, scope: CoroutineScope) {
             }
         }
     }
+}
+
+@Composable
+fun <T> LiveData<T>.observeAsState(initial: T): State<T> {
+    val state = remember { mutableStateOf(initial) }
+    DisposableEffect(this) {
+        val observer = Observer<T> { state.value = it }
+        observeForever(observer)
+        onDispose {
+            removeObserver(observer)
+        }
+    }
+    return state
 }
