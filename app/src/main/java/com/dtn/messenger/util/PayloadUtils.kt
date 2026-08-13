@@ -26,8 +26,8 @@ object PayloadUtils {
                     }
                     // Check WEBP (RIFFxxxxWEBP)
                     if (bytesRead >= 12 &&
-                        header[0] == 'R'.toByte() && header[1] == 'I'.toByte() && header[2] == 'F'.toByte() && header[3] == 'F'.toByte() &&
-                        header[8] == 'W'.toByte() && header[9] == 'E'.toByte() && header[10] == 'B'.toByte() && header[11] == 'P'.toByte()
+                        header[0] == 'R'.code.toByte() && header[1] == 'I'.code.toByte() && header[2] == 'F'.code.toByte() && header[3] == 'F'.code.toByte() &&
+                        header[8] == 'W'.code.toByte() && header[9] == 'E'.code.toByte() && header[10] == 'B'.code.toByte() && header[11] == 'P'.code.toByte()
                     ) {
                         return "webp"
                     }

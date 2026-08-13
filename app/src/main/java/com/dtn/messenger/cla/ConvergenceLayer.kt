@@ -214,7 +214,7 @@ class TcpClAdapter(
                     }
                     5 -> { // SESS_TERM
                         withTimeout(5000) {
-                            val termFlags = input.readByte()
+                            input.readByte()
                             val termReason = input.readByte()
                             log("INFO", "Received session term from client (reason $termReason)")
                         }
@@ -384,7 +384,7 @@ class TcpClAdapter(
                         }
                         5 -> { // SESS_TERM
                             withTimeout(5000) {
-                                val termFlags = input.readByte()
+                                input.readByte()
                                 val termReason = input.readByte()
                                 log("INFO", "Server terminated session (reason $termReason)")
                             }
@@ -429,7 +429,7 @@ class BluetoothClassicAdapter(
     private val SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     private var serverJob: Job? = null
     private var serverSocket: BluetoothServerSocket? = null
-    private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+    private val bluetoothAdapter: BluetoothAdapter? = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)?.adapter
     private var listener: ((ByteArray) -> Unit)? = null
 
     private val activeSockets = java.util.Collections.synchronizedList(mutableListOf<BluetoothSocket>())

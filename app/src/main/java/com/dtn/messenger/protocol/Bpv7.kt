@@ -44,7 +44,7 @@ data class Eid(val uri: String) {
             val scheme = if (schemeCode == 1) "dtn" else "ipn"
             val ssp =
                 if (sspObj.type == CBORType.Array) {
-                    "${sspObj[0].AsInt64()}.${sspObj[1].AsInt64()}"
+                    "${sspObj[0].AsInt64Value()}.${sspObj[1].AsInt64Value()}"
                 } else {
                     sspObj.AsString()
                 }
@@ -175,17 +175,17 @@ object Bpv7Parser {
 
     fun deserializePrimaryBlock(cbor: CBORObject): PrimaryBlock {
         val version = cbor[0].AsInt32()
-        val flags = cbor[1].AsInt64()
+        val flags = cbor[1].AsInt64Value()
         val crcType = cbor[2].AsInt32()
         val destination = Eid.fromCbor(cbor[3])
         val source = Eid.fromCbor(cbor[4])
         val reportTo = Eid.fromCbor(cbor[5])
 
         val timestampArray = cbor[6]
-        val creationTime = timestampArray[0].AsInt64()
-        val seq = timestampArray[1].AsInt64()
+        val creationTime = timestampArray[0].AsInt64Value()
+        val seq = timestampArray[1].AsInt64Value()
 
-        val lifetime = cbor[7].AsInt64()
+        val lifetime = cbor[7].AsInt64Value()
 
         return PrimaryBlock(version, flags, crcType, destination, source, reportTo, Pair(creationTime, seq), lifetime).apply {
             rawBytes = cbor.EncodeToBytes()
@@ -218,7 +218,7 @@ object Bpv7Parser {
 
     fun deserializeHopCountBlock(cbor: CBORObject): HopCountBlock {
         val number = cbor[1].AsInt32()
-        val flags = cbor[2].AsInt64()
+        val flags = cbor[2].AsInt64Value()
         val dataBytes = cbor[4].GetByteString()
         val hcData = CBORObject.DecodeFromBytes(dataBytes)
         val hopLimit = hcData[0].AsInt32()
@@ -276,7 +276,7 @@ object Bpv7Parser {
 
     fun deserializeBibBlock(cbor: CBORObject): BibBlock {
         val number = cbor[1].AsInt32()
-        val flags = cbor[2].AsInt64()
+        val flags = cbor[2].AsInt64Value()
         val dataBytes = cbor[4].GetByteString()
 
         val stream = java.io.ByteArrayInputStream(dataBytes)
@@ -292,7 +292,7 @@ object Bpv7Parser {
         val securityContext = CBORObject.Read(stream).AsInt32()
 
         // 3. Security Context Flags
-        val securityContextFlags = CBORObject.Read(stream).AsInt64()
+        val securityContextFlags = CBORObject.Read(stream).AsInt64Value()
 
         // 4. Security Source (always present)
         val securitySource = Eid.fromCbor(CBORObject.Read(stream))
@@ -352,7 +352,7 @@ object Bpv7Parser {
             when (type) {
                 1 -> {
                     val number = blockCbor[1].AsInt32()
-                    val flags = blockCbor[2].AsInt64()
+                    val flags = blockCbor[2].AsInt64Value()
                     val data = blockCbor[4].GetByteString()
                     payload =
                         PayloadBlock(number, flags, data).apply {
