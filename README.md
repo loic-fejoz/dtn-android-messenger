@@ -143,17 +143,38 @@ If the application starts with a clean database, it will automatically populate 
 
 ## 5. SECURITY & AMATEUR RADIO REGULATORY COMPLIANCE
 
-This application is designed to be compatible with **Amateur Radio (Ham Radio) regulations** (such as ITU and FCC Part 97 rules):
+This application is specifically designed to comply with **Amateur Radio (Ham Radio) regulations** (such as ITU Article 25 and FCC Part 97 rules):
 *   **No Payload Encryption:** Obscuring the meaning of messages (encryption) is legally prohibited on amateur bands. Therefore, this implementation **does not and will not support payload encryption** (BPSec BCB - Block Confidentiality Block).
-*   **Integrity & Authentication only:** We utilize BPSec BIB (Block Integrity Block) with HMAC-SHA256 signatures. This ensures message integrity (detecting transmission errors or tampering) and source authentication (preventing spoofing) without obscuring the content.
-*   **TLS Support:** Transport-layer encryption (TLS) on TCPCLv4 connections is currently disabled to comply with cleartext requirements on ham radio links, but could be supported in the future for private/non-amateur links if the target node (e.g., Hardy) supports it.
+*   **Integrity & Authentication Only:** We utilize BPSec BIB (Block Integrity Block) with HMAC-SHA256 signatures. This ensures message integrity (detecting transmission errors or tampering) and source authentication (preventing spoofing) while keeping the payload in plain text, making it 100% compliant with cleartext regulations.
+*   **No TLS on Amateur Links:** Transport-layer encryption (TLS) on TCPCLv4 connections is disabled to comply with cleartext requirements on ham radio links.
 
 ---
 
-## 5. CODE VERIFICATION & TESTING
+## 6. PRIVACY POLICY (GDPR / RGPD COMPLIANCE)
+
+This application is 100% decentralized and respects your privacy:
+*   **Zero Data Collection:** No personal data, telemetry, analytics, location logs, or messaging metadata are collected, stored, or transmitted to any central servers or third parties.
+*   **Strictly Local Storage:** All chat logs, contacts, routes, cryptographic keys, and application configurations are stored locally on your device in a secure database sandbox (Room DB and EncryptedSharedPreferences).
+*   **Decentralized Sync:** When syncing over TCP or Bluetooth, data is exchanged directly peer-to-peer (P2P) between your device and the destination/next-hop node.
+
+---
+
+## 7. ANDROID PERMISSIONS JUSTIFICATION
+
+To perform opportunistic synchronization and core services, the application requires the following Android permissions:
+*   **Bluetooth Permissions (`BLUETOOTH_CONNECT`, `BLUETOOTH`, `BLUETOOTH_ADMIN`):** Required to connect to and communicate with Bluetooth Classic peers for store-and-forward bundle transfers. *No location permission is required as we connect directly to designated MAC addresses without active network discovery scanning.*
+*   **Audio Recording (`RECORD_AUDIO`):** Required to record voice messages for the chat service.
+*   **Foreground Service (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CONNECTED_DEVICE`):** Required to run `DtnEngineService` persistently as a background service to handle connection sockets and bundle queue flushes.
+*   **Notifications (`POST_NOTIFICATIONS`):** Required on Android 13+ to display the status sync notification for the foreground service.
+
+
+---
+
+## 8. CODE VERIFICATION & TESTING
 
 To run the local unit test suite (covering BPv7 parser, block serializers, and BPSec HMAC validation):
 ```bash
 ./gradlew test
 ```
-The test task compiles the modules and runs the tests in `Bpv7Test.kt`.
+The test task compiles the modules and runs the tests in `Bpv7Test.kt` and `PayloadUtilsTest.kt`.
+
