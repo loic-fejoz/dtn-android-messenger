@@ -24,7 +24,7 @@ jobs:
         continue-on-error: true # Do not fail the build if Gitleaks is not configured yet in GitHub secrets
 
       - name: Run MobSF Static Scan
-        uses: MobSF/mobsfscan-action@v1
+        uses: MobSF/mobsfscan@main
         with:
           args: '. --sarif --output mobsf-results.sarif'
         continue-on-error: true # Prevents blocking the build if no GitHub advanced security tab is present
