@@ -698,9 +698,10 @@ fun SendBundleScreen(
                             bundleRecordDao.insert(record)
                             
                             // Start service queue flush
-                            context.startService(Intent(context, DtnEngineService::class.java).apply {
+                            val serviceIntent = Intent(context, DtnEngineService::class.java).apply {
                                 action = "FLUSH_QUEUE"
-                            })
+                            }
+                            androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
                             
                             Toast.makeText(context, "Bundle created in OUTBOX. Transmission pending.", Toast.LENGTH_SHORT).show()
                             navController.popBackStack()

@@ -309,9 +309,10 @@ fun ChatScreen(
                                 replyText = ""
 
                                 // Trigger service flush
-                                context.startService(Intent(context, DtnEngineService::class.java).apply {
+                                val serviceIntent = Intent(context, DtnEngineService::class.java).apply {
                                     action = "FLUSH_QUEUE"
-                                })
+                                }
+                                androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
                             }
                         }
                     },

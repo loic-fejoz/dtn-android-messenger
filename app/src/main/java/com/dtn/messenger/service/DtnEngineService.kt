@@ -68,6 +68,9 @@ class DtnEngineService : Service() {
         val updateTrigger = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(replay = 1)
         val isTcpActive = kotlinx.coroutines.flow.MutableStateFlow(false)
         val isBluetoothActive = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+        @Volatile
+        var isRunning = false
     }
 
     private fun log(level: String, message: String) {
@@ -91,9 +94,23 @@ class DtnEngineService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         log("INFO", "DtnEngineService creating")
         createNotificationChannels()
-        startForeground(NOTIFICATION_ID, buildForegroundNotification())
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildForegroundNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildForegroundNotification())
+            }
+        } catch (e: Exception) {
+            log("ERROR", "Failed to start foreground service: ${e.message}")
+            stopSelf()
+        }
 
         // Initialize adapters
         tcpClAdapter = TcpClAdapter(context = this, port = 5051, logDao = logDao)
@@ -685,6 +702,7 @@ class DtnEngineService : Service() {
 
     override fun onDestroy() {
         log("INFO", "DtnEngineService destroying")
+        isRunning = false
         try {
             androidx.car.app.connection.CarConnection(this).type.removeObserver(carConnectionObserver)
         } catch (e: Exception) {}

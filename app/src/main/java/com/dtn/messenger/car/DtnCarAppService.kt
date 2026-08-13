@@ -182,9 +182,10 @@ class ReplyCarScreen(
             bundleRecordDao.insert(record)
 
             // Trigger engine service to flush the queue
-            context.startService(Intent(context, DtnEngineService::class.java).apply {
+            val serviceIntent = Intent(context, DtnEngineService::class.java).apply {
                 action = "FLUSH_QUEUE"
-            })
+            }
+            androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
             
             // Pop back to the last message screen
             CoroutineScope(Dispatchers.Main).launch {

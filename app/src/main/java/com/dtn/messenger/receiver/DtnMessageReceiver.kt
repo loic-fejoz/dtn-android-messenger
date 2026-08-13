@@ -55,11 +55,12 @@ class DtnMessageReceiver : BroadcastReceiver(), KoinComponent {
                     )
                     bundleRecordDao.insert(record)
 
-                    // Notify service to flush queue
+                    // Notify service to flush queue. Since this is triggered by a user notification action,
+                    // it is exempt from background start restrictions, but we must use startForegroundService.
                     val serviceIntent = Intent(context, DtnEngineService::class.java).apply {
                         action = "FLUSH_QUEUE"
                     }
-                    context.startService(serviceIntent)
+                    androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
                 }
             }
         }
