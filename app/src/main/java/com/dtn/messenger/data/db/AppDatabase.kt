@@ -10,21 +10,25 @@ import com.dtn.messenger.data.model.*
 class Converters {
     @TypeConverter
     fun toViewerType(value: String) = ViewerType.valueOf(value)
+
     @TypeConverter
     fun fromViewerType(value: ViewerType) = value.name
 
     @TypeConverter
     fun toBundleState(value: String) = BundleState.valueOf(value)
+
     @TypeConverter
     fun fromBundleState(value: BundleState) = value.name
 
     @TypeConverter
     fun toBpsecStatus(value: String) = BpsecStatus.valueOf(value)
+
     @TypeConverter
     fun fromBpsecStatus(value: BpsecStatus) = value.name
 
     @TypeConverter
     fun toTriggerType(value: String) = TriggerType.valueOf(value)
+
     @TypeConverter
     fun fromTriggerType(value: TriggerType) = value.name
 }
@@ -36,17 +40,22 @@ class Converters {
         RoutingRule::class,
         ConvergenceProfile::class,
         BpsecKey::class,
-        SystemLog::class
+        SystemLog::class,
     ],
     version = 3,
-    exportSchema = false
+    exportSchema = false,
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun localServiceDao(): LocalServiceDao
+
     abstract fun bundleRecordDao(): BundleRecordDao
+
     abstract fun routingRuleDao(): RoutingRuleDao
+
     abstract fun convergenceProfileDao(): ConvergenceProfileDao
+
     abstract fun bpsecKeyDao(): BpsecKeyDao
+
     abstract fun systemLogDao(): SystemLogDao
 }

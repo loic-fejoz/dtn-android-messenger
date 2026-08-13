@@ -2,7 +2,6 @@ package com.dtn.messenger.protocol
 
 import com.upokecenter.cbor.CBORObject
 import com.upokecenter.cbor.CBORType
-import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
@@ -43,16 +42,18 @@ data class Eid(val uri: String) {
             val schemeCode = cbor[0].AsInt32()
             val sspObj = cbor[1]
             val scheme = if (schemeCode == 1) "dtn" else "ipn"
-            val ssp = if (sspObj.type == CBORType.Array) {
-                "${sspObj[0].AsInt64()}.${sspObj[1].AsInt64()}"
-            } else {
-                sspObj.AsString()
-            }
-            val uri = if (scheme == "dtn") {
-                if (ssp.startsWith("//")) "$scheme:$ssp" else "$scheme://$ssp"
-            } else {
-                "$scheme:$ssp"
-            }
+            val ssp =
+                if (sspObj.type == CBORType.Array) {
+                    "${sspObj[0].AsInt64()}.${sspObj[1].AsInt64()}"
+                } else {
+                    sspObj.AsString()
+                }
+            val uri =
+                if (scheme == "dtn") {
+                    if (ssp.startsWith("//")) "$scheme:$ssp" else "$scheme://$ssp"
+                } else {
+                    "$scheme:$ssp"
+                }
             return Eid(uri)
         }
     }
@@ -66,7 +67,7 @@ data class PrimaryBlock(
     val source: Eid,
     val reportTo: Eid,
     val creationTimestamp: Pair<Long, Long>, // <dtnTimeSeconds, sequenceNumber>
-    val lifetimeMs: Long
+    val lifetimeMs: Long,
 ) {
     var rawBytes: ByteArray? = null
 }
@@ -74,7 +75,7 @@ data class PrimaryBlock(
 data class PayloadBlock(
     val blockNumber: Int = 1,
     val blockControlFlags: Long = 0,
-    val data: ByteArray
+    val data: ByteArray,
 ) {
     var rawBytes: ByteArray? = null
 
@@ -100,19 +101,19 @@ data class HopCountBlock(
     val blockNumber: Int = 10,
     val blockControlFlags: Long = 0,
     val hopLimit: Int,
-    val hopCount: Int
+    val hopCount: Int,
 )
 
 data class BibBlock(
     val blockNumber: Int = 2,
     val blockControlFlags: Long = 0,
     val targets: List<Int> = listOf(1), // usually targets payload block (1)
-    val securityContext: Int = 1,       // BIB_HMAC_SHA2 = 1
+    val securityContext: Int = 1, // BIB_HMAC_SHA2 = 1
     val securityContextFlags: Long = 3, // source + parameters present
     val securitySource: Eid,
-    val variant: Int = 5,               // HMAC-256-256 = 5
-    val scopeFlags: Int = 7,            // all included
-    val signature: ByteArray
+    val variant: Int = 5, // HMAC-256-256 = 5
+    val scopeFlags: Int = 7, // all included
+    val signature: ByteArray,
 ) {
     var rawBytes: ByteArray? = null
 
@@ -150,11 +151,10 @@ data class Bundle(
     val primaryBlock: PrimaryBlock,
     val payloadBlock: PayloadBlock,
     val hopCountBlock: HopCountBlock? = null,
-    val bibBlock: BibBlock? = null
+    val bibBlock: BibBlock? = null,
 )
 
 object Bpv7Parser {
-
     fun serializePrimaryBlock(primary: PrimaryBlock): CBORObject {
         val array = CBORObject.NewArray()
         array.Add(primary.version)
@@ -192,7 +192,13 @@ object Bpv7Parser {
         }
     }
 
-    fun serializeCanonicalBlock(type: Int, number: Int, flags: Long, crcType: Int, blockData: ByteArray): CBORObject {
+    fun serializeCanonicalBlock(
+        type: Int,
+        number: Int,
+        flags: Long,
+        crcType: Int,
+        blockData: ByteArray,
+    ): CBORObject {
         val array = CBORObject.NewArray()
         array.Add(type)
         array.Add(number)
@@ -326,7 +332,9 @@ object Bpv7Parser {
         array.Add(serializePrimaryBlock(bundle.primaryBlock))
         bundle.hopCountBlock?.let { array.Add(serializeHopCountBlock(it)) }
         // Payload block
-        array.Add(serializeCanonicalBlock(1, bundle.payloadBlock.blockNumber, bundle.payloadBlock.blockControlFlags, 0, bundle.payloadBlock.data))
+        array.Add(
+            serializeCanonicalBlock(1, bundle.payloadBlock.blockNumber, bundle.payloadBlock.blockControlFlags, 0, bundle.payloadBlock.data),
+        )
         bundle.bibBlock?.let { array.Add(serializeBibBlock(it)) }
         return array.EncodeToBytes()
     }
@@ -346,17 +354,19 @@ object Bpv7Parser {
                     val number = blockCbor[1].AsInt32()
                     val flags = blockCbor[2].AsInt64()
                     val data = blockCbor[4].GetByteString()
-                    payload = PayloadBlock(number, flags, data).apply {
-                        rawBytes = blockCbor.EncodeToBytes()
-                    }
+                    payload =
+                        PayloadBlock(number, flags, data).apply {
+                            rawBytes = blockCbor.EncodeToBytes()
+                        }
                 }
                 10 -> {
                     hopCount = deserializeHopCountBlock(blockCbor)
                 }
                 11 -> {
-                    bib = deserializeBibBlock(blockCbor).apply {
-                        rawBytes = blockCbor.EncodeToBytes()
-                    }
+                    bib =
+                        deserializeBibBlock(blockCbor).apply {
+                            rawBytes = blockCbor.EncodeToBytes()
+                        }
                 }
             }
         }
@@ -365,7 +375,7 @@ object Bpv7Parser {
             primaryBlock = primary,
             payloadBlock = payload ?: throw IllegalArgumentException("Missing Payload Block in bundle"),
             hopCountBlock = hopCount,
-            bibBlock = bib
+            bibBlock = bib,
         )
     }
 
@@ -379,7 +389,7 @@ object Bpv7Parser {
         securityBlockNumber: Int,
         securityBlockFlags: Long,
         payloadBytes: ByteArray,
-        scopeFlags: Int = 7
+        scopeFlags: Int = 7,
     ): ByteArray {
         val mac = Mac.getInstance("HmacSHA256")
         val keySpec = SecretKeySpec(secretKey, "HmacSHA256")

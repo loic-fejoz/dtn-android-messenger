@@ -4,19 +4,29 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 enum class ViewerType {
-    CHAT, BUNDLE_LIST, MINIAPP, SENML_GRAPH
+    CHAT,
+    BUNDLE_LIST,
+    MINIAPP,
+    SENML_GRAPH,
 }
 
 enum class BundleState {
-    RECEIVED, OUTBOX, TRANSIT, DELIVERED
+    RECEIVED,
+    OUTBOX,
+    TRANSIT,
+    DELIVERED,
 }
 
 enum class BpsecStatus {
-    VALID, INVALID, UNVERIFIED
+    VALID,
+    INVALID,
+    UNVERIFIED,
 }
 
 enum class TriggerType {
-    WIFI_SSID, PERIODIC_INTERNET, BLUETOOTH_ALWAYS
+    WIFI_SSID,
+    PERIODIC_INTERNET,
+    BLUETOOTH_ALWAYS,
 }
 
 @Entity(tableName = "local_services")
@@ -26,7 +36,7 @@ data class LocalService(
     val viewerType: ViewerType,
     val notificationSoundUri: String? = null,
     val vibrationPatternJson: String? = null,
-    val defaultDestinationEid: String? = null
+    val defaultDestinationEid: String? = null,
 )
 
 @Entity(tableName = "bundle_records")
@@ -41,13 +51,13 @@ data class BundleRecord(
     val state: BundleState,
     val isRead: Boolean,
     val bpsecStatus: BpsecStatus,
-    val hopCount: Int
+    val hopCount: Int,
 )
 
 @Entity(tableName = "routing_rules")
 data class RoutingRule(
     @PrimaryKey val destinationEidPattern: String, // ex: "dtn://node-e/*"
-    val nextHopEid: String // ex: "dtn://node-b"
+    val nextHopEid: String, // ex: "dtn://node-b"
 )
 
 @Entity(tableName = "convergence_profiles")
@@ -57,14 +67,14 @@ data class ConvergenceProfile(
     val triggerType: TriggerType,
     val targetAddress: String, // IP/Port or Bluetooth MAC
     val triggerCondition: String? = null, // Wifi SSID or interval in mins
-    val isPaused: Boolean = false
+    val isPaused: Boolean = false,
 )
 
 @Entity(tableName = "bpsec_keys")
 data class BpsecKey(
     @PrimaryKey val nodeEid: String, // Remote node EID
     val secretKey: ByteArray, // Shared HMAC key
-    val algorithm: String = "HmacSHA256"
+    val algorithm: String = "HmacSHA256",
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -89,5 +99,5 @@ data class SystemLog(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val timestamp: Long,
     val level: String, // INFO, WARN, ERROR
-    val message: String
+    val message: String,
 )

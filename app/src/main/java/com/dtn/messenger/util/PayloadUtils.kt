@@ -27,7 +27,8 @@ object PayloadUtils {
                     // Check WEBP (RIFFxxxxWEBP)
                     if (bytesRead >= 12 &&
                         header[0] == 'R'.toByte() && header[1] == 'I'.toByte() && header[2] == 'F'.toByte() && header[3] == 'F'.toByte() &&
-                        header[8] == 'W'.toByte() && header[9] == 'E'.toByte() && header[10] == 'B'.toByte() && header[11] == 'P'.toByte()) {
+                        header[8] == 'W'.toByte() && header[9] == 'E'.toByte() && header[10] == 'B'.toByte() && header[11] == 'P'.toByte()
+                    ) {
                         return "webp"
                     }
                     // Check BMP (BM)
@@ -40,7 +41,8 @@ object PayloadUtils {
                     }
                     // Check MP3 (ID3 or MPEG frame sync FF FB/F3/F2)
                     if ((header[0] == 0x49.toByte() && header[1] == 0x44.toByte() && header[2] == 0x33.toByte()) ||
-                        (header[0] == 0xFF.toByte() && (header[1].toInt() and 0xE0) == 0xE0)) {
+                        (header[0] == 0xFF.toByte() && (header[1].toInt() and 0xE0) == 0xE0)
+                    ) {
                         return "mp3"
                     }
                     // Check M4A/MP4 (ftyp at offset 4)
@@ -52,12 +54,12 @@ object PayloadUtils {
         } catch (e: Exception) {
             // Ignore
         }
-        
+
         val ext = file.extension.lowercase()
         if (ext.isNotEmpty() && ext != "bin") {
             return ext
         }
-        
+
         // Check if valid text / Markdown
         try {
             val text = String(file.readBytes(), StandardCharsets.UTF_8)
@@ -68,7 +70,7 @@ object PayloadUtils {
         } catch (e: Exception) {
             // Ignore
         }
-        
+
         return "bin"
     }
 
@@ -88,7 +90,10 @@ object PayloadUtils {
         return trimmed.startsWith("dtn://") || trimmed.startsWith("ipn:")
     }
 
-    fun isPrefixMatch(parent: String, child: String): Boolean {
+    fun isPrefixMatch(
+        parent: String,
+        child: String,
+    ): Boolean {
         val p = parent.trim().lowercase()
         val c = child.trim().lowercase()
         if (p == c) return true

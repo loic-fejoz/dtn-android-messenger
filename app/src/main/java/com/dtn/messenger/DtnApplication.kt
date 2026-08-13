@@ -1,8 +1,6 @@
 package com.dtn.messenger
 
 import android.app.Application
-import android.content.Intent
-import androidx.core.content.ContextCompat
 import com.dtn.messenger.data.dao.ConvergenceProfileDao
 import com.dtn.messenger.data.dao.LocalServiceDao
 import com.dtn.messenger.data.model.ConvergenceProfile
@@ -10,7 +8,6 @@ import com.dtn.messenger.data.model.LocalService
 import com.dtn.messenger.data.model.TriggerType
 import com.dtn.messenger.data.model.ViewerType
 import com.dtn.messenger.di.appModule
-import com.dtn.messenger.service.DtnEngineService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -20,7 +17,6 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 
 class DtnApplication : Application() {
-
     private val localServiceDao: LocalServiceDao by inject()
     private val convergenceProfileDao: ConvergenceProfileDao by inject()
 
@@ -42,15 +38,15 @@ class DtnApplication : Application() {
                         LocalService(
                             serviceEid = "dtn://my-node/chat",
                             displayName = "Node Chat (EID dtn://my-node/chat)",
-                            viewerType = ViewerType.CHAT
-                        )
+                            viewerType = ViewerType.CHAT,
+                        ),
                     )
                     localServiceDao.insert(
                         LocalService(
                             serviceEid = "dtn://my-node/files",
                             displayName = "Bundle File Exchange (EID dtn://my-node/files)",
-                            viewerType = ViewerType.BUNDLE_LIST
-                        )
+                            viewerType = ViewerType.BUNDLE_LIST,
+                        ),
                     )
                 }
 
@@ -62,22 +58,21 @@ class DtnApplication : Application() {
                             name = "Hardy Instance f4jxq-2 (TCPCL)",
                             triggerType = TriggerType.PERIODIC_INTERNET,
                             targetAddress = "10.0.2.2:4556", // 10.0.2.2 points to the host loopback from the emulator
-                            triggerCondition = "120" // Check every 120 minutes (2 hours)
-                        )
+                            triggerCondition = "120", // Check every 120 minutes (2 hours)
+                        ),
                     )
                     convergenceProfileDao.insert(
                         ConvergenceProfile(
                             profileId = "dtn://node-bt",
                             name = "Bluetooth Node",
                             triggerType = TriggerType.BLUETOOTH_ALWAYS,
-                            targetAddress = "00:11:22:33:44:55"
-                        )
+                            targetAddress = "00:11:22:33:44:55",
+                        ),
                     )
                 }
             } catch (e: Exception) {
                 // Database pre-population failed, log it or handle gracefully
             }
         }
-
     }
 }

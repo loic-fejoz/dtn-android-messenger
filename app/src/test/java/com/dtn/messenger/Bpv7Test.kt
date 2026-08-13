@@ -3,10 +3,8 @@ package com.dtn.messenger
 import com.dtn.messenger.protocol.*
 import org.junit.Assert.*
 import org.junit.Test
-import java.util.UUID
 
 class Bpv7Test {
-
     @Test
     fun testEidSerialization() {
         val dtnEid = Eid("dtn://node-a/chat")
@@ -26,16 +24,17 @@ class Bpv7Test {
 
     @Test
     fun testPrimaryBlockSerialization() {
-        val primary = PrimaryBlock(
-            version = 7,
-            bundleControlFlags = 64L,
-            crcType = 0,
-            destination = Eid("dtn://node-b/chat"),
-            source = Eid("dtn://node-a/chat"),
-            reportTo = Eid("dtn://node-a/chat"),
-            creationTimestamp = Pair(12345678L, 99L),
-            lifetimeMs = 3600000L
-        )
+        val primary =
+            PrimaryBlock(
+                version = 7,
+                bundleControlFlags = 64L,
+                crcType = 0,
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn://node-a/chat"),
+                creationTimestamp = Pair(12345678L, 99L),
+                lifetimeMs = 3600000L,
+            )
 
         val cbor = Bpv7Parser.serializePrimaryBlock(primary)
         val deserialized = Bpv7Parser.deserializePrimaryBlock(cbor)
@@ -52,12 +51,13 @@ class Bpv7Test {
 
     @Test
     fun testHopCountBlockSerialization() {
-        val hopCount = HopCountBlock(
-            blockNumber = 10,
-            blockControlFlags = 0,
-            hopLimit = 64,
-            hopCount = 5
-        )
+        val hopCount =
+            HopCountBlock(
+                blockNumber = 10,
+                blockControlFlags = 0,
+                hopLimit = 64,
+                hopCount = 5,
+            )
 
         val cbor = Bpv7Parser.serializeHopCountBlock(hopCount)
         val deserialized = Bpv7Parser.deserializeHopCountBlock(cbor)
@@ -70,13 +70,14 @@ class Bpv7Test {
 
     @Test
     fun testBibBlockSerialization() {
-        val bib = BibBlock(
-            blockNumber = 2,
-            blockControlFlags = 0,
-            targets = listOf(1),
-            securitySource = Eid("dtn://node-a/chat"),
-            signature = byteArrayOf(1, 2, 3, 4, 5)
-        )
+        val bib =
+            BibBlock(
+                blockNumber = 2,
+                blockControlFlags = 0,
+                targets = listOf(1),
+                securitySource = Eid("dtn://node-a/chat"),
+                signature = byteArrayOf(1, 2, 3, 4, 5),
+            )
 
         val cbor = Bpv7Parser.serializeBibBlock(bib)
         val deserialized = Bpv7Parser.deserializeBibBlock(cbor)
@@ -92,13 +93,14 @@ class Bpv7Test {
 
     @Test
     fun testBundleSerialization() {
-        val primary = PrimaryBlock(
-            destination = Eid("dtn://node-b/chat"),
-            source = Eid("dtn://node-a/chat"),
-            reportTo = Eid("dtn://node-a/chat"),
-            creationTimestamp = Pair(12345678L, 99L),
-            lifetimeMs = 3600000L
-        )
+        val primary =
+            PrimaryBlock(
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn://node-a/chat"),
+                creationTimestamp = Pair(12345678L, 99L),
+                lifetimeMs = 3600000L,
+            )
         val payload = PayloadBlock(data = "Hello DTN!".toByteArray(Charsets.UTF_8))
         val hopCount = HopCountBlock(hopLimit = 64, hopCount = 1)
         val bib = BibBlock(securitySource = Eid("dtn://node-a/chat"), signature = byteArrayOf(9, 9, 9))
@@ -121,63 +123,67 @@ class Bpv7Test {
         val primaryBytes = byteArrayOf(0, 1, 2, 3, 4)
 
         // Compute HMAC signature
-        val sig1 = Bpv7Parser.computeHmac(
-            secretKey = secretKey,
-            primaryBlockBytes = primaryBytes,
-            targetBlockType = 1,
-            targetBlockNumber = 1,
-            targetBlockFlags = 0L,
-            securityBlockType = 11,
-            securityBlockNumber = 2,
-            securityBlockFlags = 3L,
-            payloadBytes = payloadBytes,
-            scopeFlags = 7
-        )
+        val sig1 =
+            Bpv7Parser.computeHmac(
+                secretKey = secretKey,
+                primaryBlockBytes = primaryBytes,
+                targetBlockType = 1,
+                targetBlockNumber = 1,
+                targetBlockFlags = 0L,
+                securityBlockType = 11,
+                securityBlockNumber = 2,
+                securityBlockFlags = 3L,
+                payloadBytes = payloadBytes,
+                scopeFlags = 7,
+            )
 
         // Verify with matching parameters
-        val sig2 = Bpv7Parser.computeHmac(
-            secretKey = secretKey,
-            primaryBlockBytes = primaryBytes,
-            targetBlockType = 1,
-            targetBlockNumber = 1,
-            targetBlockFlags = 0L,
-            securityBlockType = 11,
-            securityBlockNumber = 2,
-            securityBlockFlags = 3L,
-            payloadBytes = payloadBytes,
-            scopeFlags = 7
-        )
+        val sig2 =
+            Bpv7Parser.computeHmac(
+                secretKey = secretKey,
+                primaryBlockBytes = primaryBytes,
+                targetBlockType = 1,
+                targetBlockNumber = 1,
+                targetBlockFlags = 0L,
+                securityBlockType = 11,
+                securityBlockNumber = 2,
+                securityBlockFlags = 3L,
+                payloadBytes = payloadBytes,
+                scopeFlags = 7,
+            )
         assertArrayEquals(sig1, sig2)
 
         // Verify with different key (should fail)
         val wrongKey = "wrong_secret_key".toByteArray(Charsets.UTF_8)
-        val sigWrongKey = Bpv7Parser.computeHmac(
-            secretKey = wrongKey,
-            primaryBlockBytes = primaryBytes,
-            targetBlockType = 1,
-            targetBlockNumber = 1,
-            targetBlockFlags = 0L,
-            securityBlockType = 11,
-            securityBlockNumber = 2,
-            securityBlockFlags = 3L,
-            payloadBytes = payloadBytes,
-            scopeFlags = 7
-        )
+        val sigWrongKey =
+            Bpv7Parser.computeHmac(
+                secretKey = wrongKey,
+                primaryBlockBytes = primaryBytes,
+                targetBlockType = 1,
+                targetBlockNumber = 1,
+                targetBlockFlags = 0L,
+                securityBlockType = 11,
+                securityBlockNumber = 2,
+                securityBlockFlags = 3L,
+                payloadBytes = payloadBytes,
+                scopeFlags = 7,
+            )
         assertFalse(sig1.contentEquals(sigWrongKey))
 
         // Verify with modified payload (should fail)
-        val sigModifiedPayload = Bpv7Parser.computeHmac(
-            secretKey = secretKey,
-            primaryBlockBytes = primaryBytes,
-            targetBlockType = 1,
-            targetBlockNumber = 1,
-            targetBlockFlags = 0L,
-            securityBlockType = 11,
-            securityBlockNumber = 2,
-            securityBlockFlags = 3L,
-            payloadBytes = "DTN Secure Message!".toByteArray(Charsets.UTF_8),
-            scopeFlags = 7
-        )
+        val sigModifiedPayload =
+            Bpv7Parser.computeHmac(
+                secretKey = secretKey,
+                primaryBlockBytes = primaryBytes,
+                targetBlockType = 1,
+                targetBlockNumber = 1,
+                targetBlockFlags = 0L,
+                securityBlockType = 11,
+                securityBlockNumber = 2,
+                securityBlockFlags = 3L,
+                payloadBytes = "DTN Secure Message!".toByteArray(Charsets.UTF_8),
+                scopeFlags = 7,
+            )
         assertFalse(sig1.contentEquals(sigModifiedPayload))
     }
 
@@ -187,28 +193,29 @@ class Bpv7Test {
         val bytes = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
         val bundle = Bpv7Parser.deserialize(bytes)
 
-        val key = byteArrayOf(
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
-            0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20
-        )
+        val key =
+            byteArrayOf(
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+                0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
+            )
 
         val bib = bundle.bibBlock!!
         val rawPrimaryBytes = bundle.primaryBlock.rawBytes ?: Bpv7Parser.serializePrimaryBlock(bundle.primaryBlock).EncodeToBytes()
 
-        val computedSignature = Bpv7Parser.computeHmac(
-            secretKey = key,
-            primaryBlockBytes = rawPrimaryBytes,
-            targetBlockType = 1,
-            targetBlockNumber = bundle.payloadBlock.blockNumber,
-            targetBlockFlags = bundle.payloadBlock.blockControlFlags,
-            securityBlockType = 11,
-            securityBlockNumber = bib.blockNumber,
-            securityBlockFlags = bib.blockControlFlags,
-            payloadBytes = bundle.payloadBlock.data,
-            scopeFlags = bib.scopeFlags
-        )
+        val computedSignature =
+            Bpv7Parser.computeHmac(
+                secretKey = key,
+                primaryBlockBytes = rawPrimaryBytes,
+                targetBlockType = 1,
+                targetBlockNumber = bundle.payloadBlock.blockNumber,
+                targetBlockFlags = bundle.payloadBlock.blockControlFlags,
+                securityBlockType = 11,
+                securityBlockNumber = bib.blockNumber,
+                securityBlockFlags = bib.blockControlFlags,
+                payloadBytes = bundle.payloadBlock.data,
+                scopeFlags = bib.scopeFlags,
+            )
 
         assertArrayEquals(bib.signature, computedSignature)
     }
 }
-

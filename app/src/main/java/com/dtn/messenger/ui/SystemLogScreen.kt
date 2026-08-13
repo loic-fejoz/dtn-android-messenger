@@ -27,7 +27,7 @@ import java.util.Locale
 @Composable
 fun SystemLogScreen(
     navController: NavController,
-    logDao: SystemLogDao
+    logDao: SystemLogDao,
 ) {
     val scope = rememberCoroutineScope()
     val logs by logDao.getAll().collectAsState(initial = emptyList())
@@ -48,23 +48,24 @@ fun SystemLogScreen(
                         Icon(Icons.Default.Delete, contentDescription = "Clear logs", tint = GlowRed)
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = CharcoalBg)
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = CharcoalBg),
             )
         },
-        containerColor = CharcoalBg
+        containerColor = CharcoalBg,
     ) { paddingValues ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (logs.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier.fillMaxWidth().padding(32.dp),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text("No logs registered.", color = TextGray, fontSize = 14.sp)
                     }
@@ -75,28 +76,29 @@ fun SystemLogScreen(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp),
                         colors = CardDefaults.cardColors(containerColor = GlassCardColor),
-                        border = BorderStroke(1.dp, Color(0x05FFFFFF))
+                        border = BorderStroke(1.dp, Color(0x05FFFFFF)),
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
                                     log.level,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp,
-                                    color = when (log.level) {
-                                        "ERROR" -> GlowRed
-                                        "WARN" -> NeonPurple
-                                        else -> NeonCyan
-                                    }
+                                    color =
+                                        when (log.level) {
+                                            "ERROR" -> GlowRed
+                                            "WARN" -> NeonPurple
+                                            else -> NeonCyan
+                                        },
                                 )
                                 Text(
                                     SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date(log.timestamp)),
                                     color = TextGray,
-                                    fontSize = 10.sp
+                                    fontSize = 10.sp,
                                 )
                             }
                             Spacer(modifier = Modifier.height(4.dp))
@@ -104,7 +106,7 @@ fun SystemLogScreen(
                                 log.message,
                                 color = Color.White,
                                 fontSize = 13.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                             )
                         }
                     }

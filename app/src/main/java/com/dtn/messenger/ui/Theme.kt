@@ -1,10 +1,7 @@
 package com.dtn.messenger.ui
 
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
@@ -17,25 +14,24 @@ val GlowRed = Color(0xFFFF0055)
 val TextLight = Color(0xFFE2E2E9)
 val TextGray = Color(0xFF8E8E9E)
 
-private val DarkColorScheme = darkColorScheme(
-    primary = NeonCyan,
-    secondary = NeonPurple,
-    tertiary = GlowGreen,
-    background = CharcoalBg,
-    surface = Color(0xFF1E1E24),
-    onPrimary = Color.Black,
-    onSecondary = Color.White,
-    onBackground = TextLight,
-    onSurface = TextLight,
-    error = GlowRed
-)
+private val DarkColorScheme =
+    darkColorScheme(
+        primary = NeonCyan,
+        secondary = NeonPurple,
+        tertiary = GlowGreen,
+        background = CharcoalBg,
+        surface = Color(0xFF1E1E24),
+        onPrimary = Color.Black,
+        onSecondary = Color.White,
+        onBackground = TextLight,
+        onSurface = TextLight,
+        error = GlowRed,
+    )
 
 @Composable
-fun DtnTheme(
-    content: @Composable () -> Unit
-) {
+fun DtnTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = DarkColorScheme,
-        content = content
+        content = content,
     )
 }

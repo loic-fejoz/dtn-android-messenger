@@ -11,10 +11,11 @@ import javax.crypto.spec.GCMParameterSpec
 object CryptoManager {
     private const val ALGORITHM = "AES/GCM/NoPadding"
     private const val KEY_ALIAS = "bpsec_db_key"
-    
-    private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply {
-        load(null)
-    }
+
+    private val keyStore =
+        KeyStore.getInstance("AndroidKeyStore").apply {
+            load(null)
+        }
 
     private fun getKey(): SecretKey {
         val existingKey = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
@@ -22,18 +23,20 @@ object CryptoManager {
     }
 
     private fun generateKey(): SecretKey {
-        val keyGenerator = KeyGenerator.getInstance(
-            KeyProperties.KEY_ALGORITHM_AES,
-            "AndroidKeyStore"
-        )
-        val keySpec = KeyGenParameterSpec.Builder(
-            KEY_ALIAS,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-        )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .build()
+        val keyGenerator =
+            KeyGenerator.getInstance(
+                KeyProperties.KEY_ALGORITHM_AES,
+                "AndroidKeyStore",
+            )
+        val keySpec =
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build()
         keyGenerator.init(keySpec)
         return keyGenerator.generateKey()
     }
@@ -43,7 +46,7 @@ object CryptoManager {
         cipher.init(Cipher.ENCRYPT_MODE, getKey())
         val iv = cipher.iv
         val encrypted = cipher.doFinal(bytes)
-        
+
         // Pack IV and ciphertext together: [IV length (1 byte)][IV bytes (12 bytes)][Ciphertext...]
         val result = ByteArray(1 + iv.size + encrypted.size)
         result[0] = iv.size.toByte()
@@ -54,11 +57,11 @@ object CryptoManager {
 
     fun decrypt(bytes: ByteArray): ByteArray {
         if (bytes.isEmpty()) return ByteArray(0)
-        
+
         val ivSize = bytes[0].toInt() and 0xFF
         val iv = ByteArray(ivSize)
         System.arraycopy(bytes, 1, iv, 0, ivSize)
-        
+
         val encryptedSize = bytes.size - 1 - ivSize
         val encrypted = ByteArray(encryptedSize)
         System.arraycopy(bytes, 1 + ivSize, encrypted, 0, encryptedSize)

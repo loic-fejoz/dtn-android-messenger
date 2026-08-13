@@ -22,7 +22,7 @@ object PreferencesHelper {
                 masterKeyAlias,
                 context.applicationContext,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
             )
         } catch (e: Exception) {
             // Fallback to standard preferences if keystore initialization fails

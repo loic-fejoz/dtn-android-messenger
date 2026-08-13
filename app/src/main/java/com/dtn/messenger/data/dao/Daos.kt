@@ -43,10 +43,16 @@ interface BundleRecordDao {
     suspend fun getByState(state: BundleState): List<BundleRecord>
 
     @Query("UPDATE bundle_records SET state = :state WHERE bundleId = :id")
-    suspend fun updateState(id: String, state: BundleState)
+    suspend fun updateState(
+        id: String,
+        state: BundleState,
+    )
 
     @Query("UPDATE bundle_records SET isRead = :isRead WHERE bundleId = :id")
-    suspend fun markAsRead(id: String, isRead: Boolean)
+    suspend fun markAsRead(
+        id: String,
+        isRead: Boolean,
+    )
 
     @Query("SELECT COUNT(*) FROM bundle_records WHERE destinationEid = :serviceEid AND isRead = 0")
     fun getUnreadCount(serviceEid: String): Flow<Int>
@@ -54,8 +60,14 @@ interface BundleRecordDao {
     @Query("SELECT * FROM bundle_records WHERE (creationTimestamp + lifetimeMs) < :now")
     suspend fun getExpired(now: Long): List<BundleRecord>
 
-    @Query("SELECT * FROM bundle_records WHERE sourceEid = :sourceEid AND creationTimestamp = :creationTime AND sequenceNumber = :seqNo LIMIT 1")
-    suspend fun findDuplicate(sourceEid: String, creationTime: Long, seqNo: Long): BundleRecord?
+    @Query(
+        "SELECT * FROM bundle_records WHERE sourceEid = :sourceEid AND creationTimestamp = :creationTime AND sequenceNumber = :seqNo LIMIT 1",
+    )
+    suspend fun findDuplicate(
+        sourceEid: String,
+        creationTime: Long,
+        seqNo: Long,
+    ): BundleRecord?
 }
 
 @Dao

@@ -7,12 +7,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -25,21 +23,25 @@ fun GlassCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     border: BorderStroke = BorderStroke(1.dp, Color(0x22FFFFFF)),
-    content: @Composable ColumnScope.() -> Unit
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = GlassCardColor),
         border = border,
-        content = content
+        content = content,
     )
 }
 
 @Composable
-fun HeaderItem(label: String, value: String) {
+fun HeaderItem(
+    label: String,
+    value: String,
+) {
     Column {
         Text(label.uppercase(), fontSize = 10.sp, color = TextGray, fontWeight = FontWeight.Bold)
         Text(value, fontSize = 13.sp, color = Color.White, fontFamily = FontFamily.Monospace)
@@ -96,11 +98,12 @@ fun MarkdownText(text: String) {
     val codeBlockContent = remember { mutableStateListOf<String>() }
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.Black.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(Color.Black.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         var i = 0
         while (i < lines.size) {
@@ -116,10 +119,11 @@ fun MarkdownText(text: String) {
                         color = NeonCyan,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                            .padding(8.dp)
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                                .padding(8.dp),
                     )
                     codeBlockContent.clear()
                     inCodeBlock = false
@@ -138,7 +142,7 @@ fun MarkdownText(text: String) {
                         fontSize = 20.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = NeonCyan,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
                     )
                 } else if (trimmed.startsWith("## ")) {
                     Text(
@@ -146,7 +150,7 @@ fun MarkdownText(text: String) {
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = NeonPurple,
-                        modifier = Modifier.padding(top = 6.dp, bottom = 3.dp)
+                        modifier = Modifier.padding(top = 6.dp, bottom = 3.dp),
                     )
                 } else if (trimmed.startsWith("### ")) {
                     Text(
@@ -154,18 +158,18 @@ fun MarkdownText(text: String) {
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
                     )
                 } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || trimmed.startsWith("+ ")) {
                     Row(
                         modifier = Modifier.padding(start = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text("•", color = NeonCyan, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         Text(
                             text = parseMarkdownInline(line.substring(line.indexOf(' ') + 1)),
                             fontSize = 14.sp,
-                            color = Color.White
+                            color = Color.White,
                         )
                     }
                 } else {
@@ -173,7 +177,7 @@ fun MarkdownText(text: String) {
                         Text(
                             text = parseMarkdownInline(line),
                             fontSize = 14.sp,
-                            color = Color.White
+                            color = Color.White,
                         )
                     } else {
                         Spacer(modifier = Modifier.height(4.dp))
@@ -182,7 +186,7 @@ fun MarkdownText(text: String) {
             }
             i++
         }
-        
+
         // In case code block didn't close
         if (inCodeBlock && codeBlockContent.isNotEmpty()) {
             val blockText = codeBlockContent.joinToString("\n")
@@ -191,10 +195,11 @@ fun MarkdownText(text: String) {
                 color = NeonCyan,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 13.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                    .padding(8.dp)
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                        .padding(8.dp),
             )
             codeBlockContent.clear()
         }

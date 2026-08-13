@@ -18,7 +18,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -36,7 +35,7 @@ import com.dtn.messenger.service.DtnEngineService
 fun RegistryScreen(
     navController: NavController,
     localServiceDao: LocalServiceDao,
-    bundleRecordDao: BundleRecordDao
+    bundleRecordDao: BundleRecordDao,
 ) {
     val services by localServiceDao.getAll().collectAsState(initial = emptyList())
     val isTcpActive by DtnEngineService.isTcpActive.collectAsState()
@@ -48,17 +47,17 @@ fun RegistryScreen(
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
                             "DTN Messenger",
                             fontWeight = FontWeight.ExtraBold,
                             letterSpacing = 2.sp,
-                            color = NeonCyan
+                            color = NeonCyan,
                         )
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             StatusDot(isActive = isTcpActive, label = "TCP")
                             StatusDot(isActive = isBluetoothActive, label = "BT")
@@ -73,7 +72,7 @@ fun RegistryScreen(
                         Icon(Icons.Default.Settings, contentDescription = "Settings", tint = NeonPurple)
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = CharcoalBg)
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = CharcoalBg),
             )
         },
         floatingActionButton = {
@@ -81,26 +80,27 @@ fun RegistryScreen(
                 onClick = { navController.navigate("send_bundle") },
                 containerColor = NeonCyan,
                 contentColor = Color.Black,
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
             ) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send bundle")
             }
         },
-        containerColor = CharcoalBg
+        containerColor = CharcoalBg,
     ) { paddingValues ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
                 Text(
                     "Registered local DTN service endpoints on this node. Tap to open data viewer.",
                     color = TextGray,
                     fontSize = 13.sp,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
             if (services.isEmpty()) {
@@ -109,7 +109,7 @@ fun RegistryScreen(
                         "No local services registered.",
                         color = TextGray,
                         modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
                     )
                 }
             } else {
@@ -120,17 +120,18 @@ fun RegistryScreen(
                         navController.navigate("service_view/${Uri.encode(service.serviceEid)}")
                     }) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     service.displayName,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp,
-                                    color = Color.White
+                                    color = Color.White,
                                 )
                                 Text(
                                     service.serviceEid,
@@ -138,43 +139,45 @@ fun RegistryScreen(
                                     fontSize = 13.sp,
                                     fontFamily = FontFamily.Monospace,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 ) {
                                     Icon(
-                                        imageVector = when (service.viewerType) {
-                                            ViewerType.CHAT -> Icons.AutoMirrored.Filled.Send
-                                            ViewerType.BUNDLE_LIST -> Icons.Default.Email
-                                            ViewerType.MINIAPP -> Icons.Default.Home
-                                            ViewerType.SENML_GRAPH -> Icons.Default.Info
-                                        },
+                                        imageVector =
+                                            when (service.viewerType) {
+                                                ViewerType.CHAT -> Icons.AutoMirrored.Filled.Send
+                                                ViewerType.BUNDLE_LIST -> Icons.Default.Email
+                                                ViewerType.MINIAPP -> Icons.Default.Home
+                                                ViewerType.SENML_GRAPH -> Icons.Default.Info
+                                            },
                                         contentDescription = "Viewer type",
                                         tint = TextGray,
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(14.dp),
                                     )
                                     Text(
                                         service.viewerType.name,
                                         color = TextGray,
-                                        fontSize = 11.sp
+                                        fontSize = 11.sp,
                                     )
                                 }
                             }
                             if (unreadCount > 0) {
                                 Box(
-                                    modifier = Modifier
-                                        .background(NeonPurple, RoundedCornerShape(12.dp))
-                                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                                    contentAlignment = Alignment.Center
+                                    modifier =
+                                        Modifier
+                                            .background(NeonPurple, RoundedCornerShape(12.dp))
+                                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                                    contentAlignment = Alignment.Center,
                                 ) {
                                     Text(
                                         unreadCount.toString(),
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
+                                        fontSize = 12.sp,
                                     )
                                 }
                             }
@@ -187,18 +190,22 @@ fun RegistryScreen(
 }
 
 @Composable
-fun StatusDot(isActive: Boolean, label: String) {
+fun StatusDot(
+    isActive: Boolean,
+    label: String,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Box(
-            modifier = Modifier
-                .size(8.dp)
-                .background(
-                    color = if (isActive) GlowGreen else Color.Gray,
-                    shape = androidx.compose.foundation.shape.CircleShape
-                )
+            modifier =
+                Modifier
+                    .size(8.dp)
+                    .background(
+                        color = if (isActive) GlowGreen else Color.Gray,
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                    ),
         )
         Text(label, color = TextGray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }

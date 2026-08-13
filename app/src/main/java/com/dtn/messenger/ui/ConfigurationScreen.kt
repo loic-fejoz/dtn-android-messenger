@@ -3,29 +3,23 @@ package com.dtn.messenger.ui
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import com.dtn.messenger.service.DtnEngineService
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.BackHand
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,22 +29,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.Observer
 import androidx.navigation.NavController
 import com.dtn.messenger.data.dao.BpsecKeyDao
 import com.dtn.messenger.data.dao.ConvergenceProfileDao
 import com.dtn.messenger.data.dao.LocalServiceDao
 import com.dtn.messenger.data.dao.RoutingRuleDao
 import com.dtn.messenger.data.model.*
+import com.dtn.messenger.service.DtnEngineService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.Observer
 
 private fun getAvailableWifiSsids(context: Context): List<String> {
     val ssids = mutableSetOf<String>()
     try {
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        
+
         // Modern connected SSID resolution for API 31+
         var currentSsid: String? = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -64,14 +59,14 @@ private fun getAvailableWifiSsids(context: Context): List<String> {
             val info = wifiManager.connectionInfo
             currentSsid = info?.ssid
         }
-        
+
         if (currentSsid != null && currentSsid != "<unknown ssid>") {
             val clean = currentSsid.trim('"')
             if (clean.isNotEmpty()) {
                 ssids.add(clean)
             }
         }
-        
+
         val scans = wifiManager.scanResults
         if (scans != null) {
             for (scan in scans) {
@@ -80,7 +75,7 @@ private fun getAvailableWifiSsids(context: Context): List<String> {
                 }
             }
         }
-        
+
         @Suppress("DEPRECATION")
         val configs = wifiManager.configuredNetworks
         if (configs != null) {
@@ -103,7 +98,7 @@ fun ConfigurationScreen(
     localServiceDao: LocalServiceDao,
     routingRuleDao: RoutingRuleDao,
     convergenceProfileDao: ConvergenceProfileDao,
-    bpsecKeyDao: BpsecKeyDao
+    bpsecKeyDao: BpsecKeyDao,
 ) {
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -117,36 +112,38 @@ fun ConfigurationScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NeonCyan)
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = CharcoalBg)
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = CharcoalBg),
             )
         },
-        containerColor = CharcoalBg
+        containerColor = CharcoalBg,
     ) { paddingValues ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
         ) {
             // Tab Rows
             val tabs = listOf("CLA Profiles", "Routing", "BPSec", "Services")
             ScrollableTabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = Color.Black.copy(alpha = 0.2f),
-                contentColor = NeonCyan
+                contentColor = NeonCyan,
             ) {
                 tabs.forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
-                        text = { Text(title, fontWeight = FontWeight.Bold) }
+                        text = { Text(title, fontWeight = FontWeight.Bold) },
                     )
                 }
             }
 
             Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
             ) {
                 when (selectedTab) {
                     0 -> ProfilesConfigTab(convergenceProfileDao, scope)
@@ -165,12 +162,13 @@ fun LocalNodeIdentityCard(context: Context = LocalContext.current) {
     var localNodeName by remember { mutableStateOf(prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node") }
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 16.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = GlassCardColor),
-        border = BorderStroke(1.dp, Color(0x11FFFFFF))
+        border = BorderStroke(1.dp, Color(0x11FFFFFF)),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("LOCAL NODE IDENTITY", fontSize = 10.sp, color = TextGray, fontWeight = FontWeight.Bold)
@@ -182,7 +180,7 @@ fun LocalNodeIdentityCard(context: Context = LocalContext.current) {
                     prefs.edit().putString("local_node_name", it.trim()).apply()
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Local EID (e.g. dtn://my-node)", color = TextGray) }
+                label = { Text("Local EID (e.g. dtn://my-node)", color = TextGray) },
             )
         }
     }
@@ -190,16 +188,20 @@ fun LocalNodeIdentityCard(context: Context = LocalContext.current) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
+fun ProfilesConfigTab(
+    dao: ConvergenceProfileDao,
+    scope: CoroutineScope,
+) {
     val context = LocalContext.current
     val profiles by dao.getAll().collectAsState(initial = emptyList())
-    
+
     val carConnectionState by remember(context) {
         androidx.car.app.connection.CarConnection(context).type
     }.observeAsState(initial = androidx.car.app.connection.CarConnection.CONNECTION_TYPE_NOT_CONNECTED)
-    
-    val isAutoConnected = carConnectionState == androidx.car.app.connection.CarConnection.CONNECTION_TYPE_PROJECTION ||
-                          carConnectionState == androidx.car.app.connection.CarConnection.CONNECTION_TYPE_NATIVE
+
+    val isAutoConnected =
+        carConnectionState == androidx.car.app.connection.CarConnection.CONNECTION_TYPE_PROJECTION ||
+            carConnectionState == androidx.car.app.connection.CarConnection.CONNECTION_TYPE_NATIVE
     var name by remember { mutableStateOf("") }
     var type by remember { mutableStateOf(TriggerType.WIFI_SSID) }
     var address by remember { mutableStateOf("") }
@@ -209,22 +211,23 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
     val scrollState = rememberScrollState()
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .verticalScroll(scrollState),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         LocalNodeIdentityCard(context)
         // Form to add profile
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = GlassCardColor),
-            border = BorderStroke(1.dp, Color(0x11FFFFFF))
+            border = BorderStroke(1.dp, Color(0x11FFFFFF)),
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text("ADD CONVERGENCE PROFILE", fontWeight = FontWeight.Bold, color = NeonPurple, fontSize = 12.sp)
 
@@ -232,14 +235,14 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                     value = profileId,
                     onValueChange = { profileId = it },
                     label = { Text("Profile EID (ex: dtn://node-b)", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Display Name", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 // Trigger Type drop down
@@ -255,7 +258,7 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                             IconButton(onClick = { typeExpanded = true }) {
                                 Icon(Icons.Default.ArrowDropDown, contentDescription = "Select type", tint = NeonCyan)
                             }
-                        }
+                        },
                     )
                     DropdownMenu(expanded = typeExpanded, onDismissRequest = { typeExpanded = false }) {
                         TriggerType.values().forEach { t ->
@@ -264,7 +267,7 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                                 onClick = {
                                     type = t
                                     typeExpanded = false
-                                }
+                                },
                             )
                         }
                     }
@@ -285,13 +288,13 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                                 IconButton(onClick = { wifiExpanded = true }) {
                                     Icon(Icons.Default.ArrowDropDown, contentDescription = "Select WiFi", tint = NeonCyan)
                                 }
-                            }
+                            },
                         )
                         DropdownMenu(expanded = wifiExpanded, onDismissRequest = { wifiExpanded = false }) {
                             if (wifiSsids.isEmpty()) {
                                 DropdownMenuItem(
                                     text = { Text("No visible SSIDs found (Enter manually)", color = TextGray) },
-                                    onClick = { wifiExpanded = false }
+                                    onClick = { wifiExpanded = false },
                                 )
                             } else {
                                 wifiSsids.forEach { ssid ->
@@ -300,7 +303,7 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                                         onClick = {
                                             condition = ssid
                                             wifiExpanded = false
-                                        }
+                                        },
                                     )
                                 }
                             }
@@ -311,7 +314,7 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                         value = condition,
                         onValueChange = { condition = it },
                         label = { Text("Trigger Condition / Interval", color = TextGray) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
 
@@ -319,7 +322,7 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                     value = address,
                     onValueChange = { address = it },
                     label = { Text("Target address (e.g. 192.168.1.10:5051)", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 Button(
@@ -335,8 +338,8 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                                     name = name,
                                     triggerType = type,
                                     targetAddress = address,
-                                    triggerCondition = condition
-                                )
+                                    triggerCondition = condition,
+                                ),
                             )
                             name = ""
                             address = ""
@@ -345,7 +348,7 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black)
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black),
                 ) {
                     Text("SAVE PROFILE", fontWeight = FontWeight.Bold)
                 }
@@ -355,49 +358,70 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
         // List of profiles
         profiles.forEach { profile ->
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        profileId = profile.profileId
-                        name = profile.name
-                        type = profile.triggerType
-                        condition = profile.triggerCondition ?: ""
-                        address = profile.targetAddress
-                        Toast.makeText(context, "Loaded profile for editing", Toast.LENGTH_SHORT).show()
-                    },
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            profileId = profile.profileId
+                            name = profile.name
+                            type = profile.triggerType
+                            condition = profile.triggerCondition ?: ""
+                            address = profile.targetAddress
+                            Toast.makeText(context, "Loaded profile for editing", Toast.LENGTH_SHORT).show()
+                        },
                 shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(containerColor = GlassCardColor),
-                border = BorderStroke(1.dp, Color(0x08FFFFFF))
+                border = BorderStroke(1.dp, Color(0x08FFFFFF)),
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         val isTemporarilyPaused = !profile.isPaused && isAutoConnected && profile.triggerType == TriggerType.BLUETOOTH_ALWAYS
                         val titleColor = if (profile.isPaused || isTemporarilyPaused) Color.Gray else Color.White
-                        val statusText = when {
-                            profile.isPaused -> " (PAUSED)"
-                            isTemporarilyPaused -> " (AUTO-PAUSED)"
-                            else -> ""
-                        }
+                        val statusText =
+                            when {
+                                profile.isPaused -> " (PAUSED)"
+                                isTemporarilyPaused -> " (AUTO-PAUSED)"
+                                else -> ""
+                            }
                         Text(profile.name + statusText, fontWeight = FontWeight.Bold, color = titleColor)
                         if (isTemporarilyPaused) {
-                            Text("Android Auto Connected - Bluetooth CLA temporarily paused to avoid interference", color = NeonPurple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Android Auto Connected - Bluetooth CLA temporarily paused to avoid interference",
+                                color = NeonPurple,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
                         } else {
-                            Text("Target EID: ${profile.profileId}", color = if (profile.isPaused) Color.Gray else NeonCyan, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                            Text(
+                                "Target EID: ${profile.profileId}",
+                                color = if (profile.isPaused) Color.Gray else NeonCyan,
+                                fontSize = 11.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            )
                         }
-                        Text("Type: ${profile.triggerType.name} | Dest: ${profile.targetAddress}", color = if (profile.isPaused || isTemporarilyPaused) Color.Gray else TextGray, fontSize = 12.sp)
+                        Text(
+                            "Type: ${profile.triggerType.name} | Dest: ${profile.targetAddress}",
+                            color = if (profile.isPaused || isTemporarilyPaused) Color.Gray else TextGray,
+                            fontSize = 12.sp,
+                        )
                         if (!profile.triggerCondition.isNullOrBlank()) {
-                            Text("Cond: ${profile.triggerCondition}", color = if (profile.isPaused || isTemporarilyPaused) Color.Gray else NeonPurple, fontSize = 11.sp)
+                            Text(
+                                "Cond: ${profile.triggerCondition}",
+                                color = if (profile.isPaused || isTemporarilyPaused) Color.Gray else NeonPurple,
+                                fontSize = 11.sp,
+                            )
                         }
                     }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         IconButton(onClick = {
                             scope.launch {
@@ -407,15 +431,16 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
                             Icon(
                                 imageVector = if (profile.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                                 contentDescription = if (profile.isPaused) "Resume CLA" else "Pause CLA",
-                                tint = if (profile.isPaused) Color.LightGray else NeonCyan
+                                tint = if (profile.isPaused) Color.LightGray else NeonCyan,
                             )
                         }
                         if (!profile.isPaused && (profile.triggerType == TriggerType.PERIODIC_INTERNET || profile.triggerType == TriggerType.WIFI_SSID)) {
                             IconButton(onClick = {
-                                val intent = Intent(context, DtnEngineService::class.java).apply {
-                                    action = "FORCE_PULL"
-                                    putExtra("address", profile.targetAddress)
-                                }
+                                val intent =
+                                    Intent(context, DtnEngineService::class.java).apply {
+                                        action = "FORCE_PULL"
+                                        putExtra("address", profile.targetAddress)
+                                    }
                                 context.startService(intent)
                                 Toast.makeText(context, "Forcing connection to ${profile.targetAddress}...", Toast.LENGTH_SHORT).show()
                             }) {
@@ -435,7 +460,10 @@ fun ProfilesConfigTab(dao: ConvergenceProfileDao, scope: CoroutineScope) {
 }
 
 @Composable
-fun RoutingConfigTab(dao: RoutingRuleDao, scope: CoroutineScope) {
+fun RoutingConfigTab(
+    dao: RoutingRuleDao,
+    scope: CoroutineScope,
+) {
     val context = LocalContext.current
     val rules by dao.getAll().collectAsState(initial = emptyList())
     var pattern by remember { mutableStateOf("") }
@@ -444,21 +472,22 @@ fun RoutingConfigTab(dao: RoutingRuleDao, scope: CoroutineScope) {
     val scrollState = rememberScrollState()
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .verticalScroll(scrollState),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         LocalNodeIdentityCard(context)
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = GlassCardColor),
-            border = BorderStroke(1.dp, Color(0x11FFFFFF))
+            border = BorderStroke(1.dp, Color(0x11FFFFFF)),
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text("ADD ROUTING RULE", fontWeight = FontWeight.Bold, color = NeonPurple, fontSize = 12.sp)
 
@@ -466,14 +495,14 @@ fun RoutingConfigTab(dao: RoutingRuleDao, scope: CoroutineScope) {
                     value = pattern,
                     onValueChange = { pattern = it },
                     label = { Text("Destination EID Pattern (ex: dtn://node-b/*)", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 OutlinedTextField(
                     value = nextHop,
                     onValueChange = { nextHop = it },
                     label = { Text("Next Hop Node EID (ex: dtn://gateway)", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 Button(
@@ -486,15 +515,15 @@ fun RoutingConfigTab(dao: RoutingRuleDao, scope: CoroutineScope) {
                             dao.insert(
                                 RoutingRule(
                                     destinationEidPattern = pattern.trim(),
-                                    nextHopEid = nextHop.trim()
-                                )
+                                    nextHopEid = nextHop.trim(),
+                                ),
                             )
                             pattern = ""
                             nextHop = ""
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black)
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black),
                 ) {
                     Text("SAVE RULE", fontWeight = FontWeight.Bold)
                 }
@@ -506,14 +535,15 @@ fun RoutingConfigTab(dao: RoutingRuleDao, scope: CoroutineScope) {
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(containerColor = GlassCardColor),
-                border = BorderStroke(1.dp, Color(0x08FFFFFF))
+                border = BorderStroke(1.dp, Color(0x08FFFFFF)),
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column {
                         Text("Pattern: ${rule.destinationEidPattern}", fontWeight = FontWeight.Bold, color = Color.White)
@@ -531,7 +561,10 @@ fun RoutingConfigTab(dao: RoutingRuleDao, scope: CoroutineScope) {
 }
 
 @Composable
-fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
+fun KeystoreConfigTab(
+    dao: BpsecKeyDao,
+    scope: CoroutineScope,
+) {
     val context = LocalContext.current
     val keys by dao.getAll().collectAsState(initial = emptyList())
     var nodeId by remember { mutableStateOf("") }
@@ -548,24 +581,26 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
 
     LaunchedEffect(localNodeName) {
         localKeyRecord = dao.getByKeyId(localNodeName)
-        val decryptedBytes = localKeyRecord?.let {
-            try {
-                com.dtn.messenger.util.CryptoManager.decrypt(it.secretKey)
-            } catch (e: Exception) {
-                null
+        val decryptedBytes =
+            localKeyRecord?.let {
+                try {
+                    com.dtn.messenger.util.CryptoManager.decrypt(it.secretKey)
+                } catch (e: Exception) {
+                    null
+                }
             }
-        }
         localKeyHex = decryptedBytes?.joinToString("") { "%02x".format(it) } ?: ""
     }
 
     val scrollState = rememberScrollState()
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .verticalScroll(scrollState),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         LocalNodeIdentityCard(context)
 
@@ -573,7 +608,7 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = GlassCardColor),
-            border = BorderStroke(1.dp, Color(0x11FFFFFF))
+            border = BorderStroke(1.dp, Color(0x11FFFFFF)),
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("BPSEC INTEGRITY POLICY", fontWeight = FontWeight.Bold, color = NeonPurple, fontSize = 12.sp)
@@ -588,7 +623,7 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
                             IconButton(onClick = { policyExpanded = true }) {
                                 Icon(Icons.Default.ArrowDropDown, contentDescription = "Select policy", tint = NeonCyan)
                             }
-                        }
+                        },
                     )
                     DropdownMenu(expanded = policyExpanded, onDismissRequest = { policyExpanded = false }) {
                         listOf("none", "warn", "strict").forEach { p ->
@@ -598,19 +633,20 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
                                     policy = p
                                     prefs.edit().putString("bpsec_policy", p).apply()
                                     policyExpanded = false
-                                }
+                                },
                             )
                         }
                     }
                 }
                 Text(
-                    text = when (policy) {
-                        "strict" -> "STRICT: Discard bundles if signature is missing or verification fails."
-                        "warn" -> "WARN: Accept all bundles but log a warning if signature check fails."
-                        else -> "NONE: Accept all bundles. Verification results are shown on details screen only."
-                    },
+                    text =
+                        when (policy) {
+                            "strict" -> "STRICT: Discard bundles if signature is missing or verification fails."
+                            "warn" -> "WARN: Accept all bundles but log a warning if signature check fails."
+                            else -> "NONE: Accept all bundles. Verification results are shown on details screen only."
+                        },
                     color = TextGray,
-                    fontSize = 11.sp
+                    fontSize = 11.sp,
                 )
             }
         }
@@ -619,22 +655,26 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = GlassCardColor),
-            border = BorderStroke(1.dp, Color(0x11FFFFFF))
+            border = BorderStroke(1.dp, Color(0x11FFFFFF)),
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("LOCAL NODE SECRET KEY", fontWeight = FontWeight.Bold, color = NeonPurple, fontSize = 12.sp)
-                Text("Used to sign outgoing bundles. Share this key with peers to let them verify your bundles.", color = TextGray, fontSize = 11.sp)
-                
+                Text(
+                    "Used to sign outgoing bundles. Share this key with peers to let them verify your bundles.",
+                    color = TextGray,
+                    fontSize = 11.sp,
+                )
+
                 OutlinedTextField(
                     value = localKeyHex,
                     onValueChange = { localKeyHex = it },
                     label = { Text("Local HMAC Key (Hex)", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Button(
                         onClick = {
@@ -645,7 +685,7 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
                         },
                         modifier = Modifier.weight(1.5f),
                         colors = ButtonDefaults.buttonColors(containerColor = GlassCardColor, contentColor = Color.White),
-                        border = BorderStroke(1.dp, Color(0x22FFFFFF))
+                        border = BorderStroke(1.dp, Color(0x22FFFFFF)),
                     ) {
                         Text("GENERATE", fontSize = 11.sp)
                     }
@@ -659,7 +699,7 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
                         },
                         modifier = Modifier.weight(1.2f),
                         colors = ButtonDefaults.buttonColors(containerColor = GlassCardColor, contentColor = Color.White),
-                        border = BorderStroke(1.dp, Color(0x22FFFFFF))
+                        border = BorderStroke(1.dp, Color(0x22FFFFFF)),
                     ) {
                         Text("COPY", fontSize = 11.sp)
                     }
@@ -670,31 +710,33 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
                                 Toast.makeText(context, "Key hex cannot be blank!", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
-                            val keyBytes = try {
-                                localKeyHex.trim().chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Invalid Hex format!", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            val encryptedKey = try {
-                                com.dtn.messenger.util.CryptoManager.encrypt(keyBytes)
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Encryption failed!", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
+                            val keyBytes =
+                                try {
+                                    localKeyHex.trim().chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Invalid Hex format!", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                            val encryptedKey =
+                                try {
+                                    com.dtn.messenger.util.CryptoManager.encrypt(keyBytes)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Encryption failed!", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
                             scope.launch {
                                 dao.insert(
                                     BpsecKey(
                                         nodeEid = localNodeName,
-                                        secretKey = encryptedKey
-                                    )
+                                        secretKey = encryptedKey,
+                                    ),
                                 )
                                 localKeyRecord = dao.getByKeyId(localNodeName)
                                 Toast.makeText(context, "Local key saved successfully!", Toast.LENGTH_SHORT).show()
                             }
                         },
                         modifier = Modifier.weight(1.5f),
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black)
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black),
                     ) {
                         Text("SAVE", fontSize = 11.sp)
                     }
@@ -706,11 +748,11 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = GlassCardColor),
-            border = BorderStroke(1.dp, Color(0x11FFFFFF))
+            border = BorderStroke(1.dp, Color(0x11FFFFFF)),
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text("ADD PEER SYMMETRIC KEY", fontWeight = FontWeight.Bold, color = NeonPurple, fontSize = 12.sp)
 
@@ -718,14 +760,14 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
                     value = nodeId,
                     onValueChange = { nodeId = it },
                     label = { Text("Peer Node EID / Key ID (ex: dtn://node-b)", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 OutlinedTextField(
                     value = secretHex,
                     onValueChange = { secretHex = it },
                     label = { Text("Shared Secret Hex Key", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 Button(
@@ -734,31 +776,33 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
                             Toast.makeText(context, "All fields are required!", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
-                        val keyBytes = try {
-                            secretHex.trim().chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Invalid Hex format!", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        val encryptedKey = try {
-                            com.dtn.messenger.util.CryptoManager.encrypt(keyBytes)
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Encryption failed!", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
+                        val keyBytes =
+                            try {
+                                secretHex.trim().chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Invalid Hex format!", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                        val encryptedKey =
+                            try {
+                                com.dtn.messenger.util.CryptoManager.encrypt(keyBytes)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Encryption failed!", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
                         scope.launch {
                             dao.insert(
                                 BpsecKey(
                                     nodeEid = nodeId.trim(),
-                                    secretKey = encryptedKey
-                                )
+                                    secretKey = encryptedKey,
+                                ),
                             )
                             nodeId = ""
                             secretHex = ""
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black)
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black),
                 ) {
                     Text("SAVE PEER KEY", fontWeight = FontWeight.Bold)
                 }
@@ -770,14 +814,15 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(containerColor = GlassCardColor),
-                border = BorderStroke(1.dp, Color(0x08FFFFFF))
+                border = BorderStroke(1.dp, Color(0x08FFFFFF)),
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column {
                         Text("Node EID: ${key.nodeEid}", fontWeight = FontWeight.Bold, color = Color.White)
@@ -796,56 +841,60 @@ fun KeystoreConfigTab(dao: BpsecKeyDao, scope: CoroutineScope) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ServicesConfigTab(dao: LocalServiceDao, scope: CoroutineScope) {
+fun ServicesConfigTab(
+    dao: LocalServiceDao,
+    scope: CoroutineScope,
+) {
     val context = LocalContext.current
     val services by dao.getAll().collectAsState(initial = emptyList())
-    
+
     var eid by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var viewerType by remember { mutableStateOf(ViewerType.CHAT) }
     var defaultDest by remember { mutableStateOf("") }
-    
+
     var editingService by remember { mutableStateOf<LocalService?>(null) }
     var isEditMode by remember { mutableStateOf(false) }
 
     val scrollState = rememberScrollState()
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .verticalScroll(scrollState),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         LocalNodeIdentityCard(context)
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = GlassCardColor),
-            border = BorderStroke(1.dp, Color(0x11FFFFFF))
+            border = BorderStroke(1.dp, Color(0x11FFFFFF)),
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
                     if (isEditMode) "EDIT DTN SERVICE" else "REGISTER LOCAL DTN SERVICE",
                     fontWeight = FontWeight.Bold,
                     color = NeonPurple,
-                    fontSize = 12.sp
+                    fontSize = 12.sp,
                 )
 
                 OutlinedTextField(
                     value = eid,
                     onValueChange = { eid = it },
                     label = { Text("Service EID (ex: dtn://my-node/chat)", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Display Name", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 var viewerExpanded by remember { mutableStateOf(false) }
@@ -860,7 +909,7 @@ fun ServicesConfigTab(dao: LocalServiceDao, scope: CoroutineScope) {
                             IconButton(onClick = { viewerExpanded = true }) {
                                 Icon(Icons.Default.ArrowDropDown, contentDescription = "Select viewer", tint = NeonCyan)
                             }
-                        }
+                        },
                     )
                     DropdownMenu(expanded = viewerExpanded, onDismissRequest = { viewerExpanded = false }) {
                         ViewerType.values().forEach { v ->
@@ -869,7 +918,7 @@ fun ServicesConfigTab(dao: LocalServiceDao, scope: CoroutineScope) {
                                 onClick = {
                                     viewerType = v
                                     viewerExpanded = false
-                                }
+                                },
                             )
                         }
                     }
@@ -879,28 +928,28 @@ fun ServicesConfigTab(dao: LocalServiceDao, scope: CoroutineScope) {
                     value = defaultDest,
                     onValueChange = { defaultDest = it },
                     label = { Text("Default Destination EID (Optional)", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (isEditMode) {
-                         Button(
-                             onClick = {
-                                 isEditMode = false
-                                 eid = ""
-                                 name = ""
-                                 defaultDest = ""
-                                 viewerType = ViewerType.CHAT
-                                 editingService = null
-                             },
-                             modifier = Modifier.weight(1f),
-                             colors = ButtonDefaults.buttonColors(containerColor = Color.Gray, contentColor = Color.White)
-                         ) {
-                             Text("CANCEL", fontWeight = FontWeight.Bold)
-                         }
+                        Button(
+                            onClick = {
+                                isEditMode = false
+                                eid = ""
+                                name = ""
+                                defaultDest = ""
+                                viewerType = ViewerType.CHAT
+                                editingService = null
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray, contentColor = Color.White),
+                        ) {
+                            Text("CANCEL", fontWeight = FontWeight.Bold)
+                        }
                     }
 
                     Button(
@@ -919,8 +968,8 @@ fun ServicesConfigTab(dao: LocalServiceDao, scope: CoroutineScope) {
                                         serviceEid = newEid,
                                         displayName = name,
                                         viewerType = viewerType,
-                                        defaultDestinationEid = defaultDest.trim()
-                                    )
+                                        defaultDestinationEid = defaultDest.trim(),
+                                    ),
                                 )
                                 // Clear form
                                 isEditMode = false
@@ -933,7 +982,7 @@ fun ServicesConfigTab(dao: LocalServiceDao, scope: CoroutineScope) {
                             }
                         },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black)
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black),
                     ) {
                         Text(if (isEditMode) "UPDATE" else "REGISTER", fontWeight = FontWeight.Bold)
                     }
@@ -944,30 +993,37 @@ fun ServicesConfigTab(dao: LocalServiceDao, scope: CoroutineScope) {
         // Services list
         services.forEach { service ->
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        editingService = service
-                        isEditMode = true
-                        eid = service.serviceEid
-                        name = service.displayName
-                        viewerType = service.viewerType
-                        defaultDest = service.defaultDestinationEid ?: ""
-                    },
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            editingService = service
+                            isEditMode = true
+                            eid = service.serviceEid
+                            name = service.displayName
+                            viewerType = service.viewerType
+                            defaultDest = service.defaultDestinationEid ?: ""
+                        },
                 shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(containerColor = GlassCardColor),
-                border = BorderStroke(1.dp, Color(0x08FFFFFF))
+                border = BorderStroke(1.dp, Color(0x08FFFFFF)),
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(service.displayName, fontWeight = FontWeight.Bold, color = Color.White)
-                        Text(service.serviceEid, color = NeonCyan, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                        Text(
+                            service.serviceEid,
+                            color = NeonCyan,
+                            fontSize = 11.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        )
                         Text("Viewer: ${service.viewerType.name}", color = TextGray, fontSize = 12.sp)
                         if (!service.defaultDestinationEid.isNullOrBlank()) {
                             Text("Default Dest: ${service.defaultDestinationEid}", color = NeonPurple, fontSize = 11.sp)

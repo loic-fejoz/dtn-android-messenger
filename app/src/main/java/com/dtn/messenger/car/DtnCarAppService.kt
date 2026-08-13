@@ -1,6 +1,5 @@
 package com.dtn.messenger.car
 
-import android.content.Context
 import android.content.Intent
 import androidx.car.app.CarAppService
 import androidx.car.app.CarContext
@@ -48,22 +47,25 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
     private var dbJob: Job? = null
 
     init {
-        lifecycle.addObserver(object : DefaultLifecycleObserver {
-            override fun onStart(owner: LifecycleOwner) {
-                dbJob = CoroutineScope(Dispatchers.Main).launch {
-                    bundleRecordDao.getAll().collectLatest { list ->
-                        // Get only the single most recently received bundle
-                        lastBundle = list.firstOrNull { it.state.name == "RECEIVED" }
-                        isLoading = false
-                        invalidate()
-                    }
+        lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStart(owner: LifecycleOwner) {
+                    dbJob =
+                        CoroutineScope(Dispatchers.Main).launch {
+                            bundleRecordDao.getAll().collectLatest { list ->
+                                // Get only the single most recently received bundle
+                                lastBundle = list.firstOrNull { it.state.name == "RECEIVED" }
+                                isLoading = false
+                                invalidate()
+                            }
+                        }
                 }
-            }
 
-            override fun onStop(owner: LifecycleOwner) {
-                dbJob?.cancel()
-            }
-        })
+                override fun onStop(owner: LifecycleOwner) {
+                    dbJob?.cancel()
+                }
+            },
+        )
     }
 
     override fun onGetTemplate(): Template {
@@ -71,11 +73,11 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
             return PaneTemplate.Builder(
                 Pane.Builder()
                     .setLoading(true)
-                    .build()
+                    .build(),
             )
-            .setTitle("Dernier Message DTN")
-            .setHeaderAction(Action.APP_ICON)
-            .build()
+                .setTitle("Dernier Message DTN")
+                .setHeaderAction(Action.APP_ICON)
+                .build()
         }
 
         val bundle = lastBundle
@@ -86,34 +88,36 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
                 Row.Builder()
                     .setTitle("Aucun message reçu")
                     .addText("Les messages entrants s'afficheront ici en temps réel.")
-                    .build()
+                    .build(),
             )
         } else {
-            val payloadText = try {
-                val file = File(bundle.payloadFilePath)
-                if (file.exists()) {
-                    String(file.readBytes(), StandardCharsets.UTF_8).take(120)
-                } else {
+            val payloadText =
+                try {
+                    val file = File(bundle.payloadFilePath)
+                    if (file.exists()) {
+                        String(file.readBytes(), StandardCharsets.UTF_8).take(120)
+                    } else {
+                        "Contenu Binaire"
+                    }
+                } catch (e: Exception) {
                     "Contenu Binaire"
                 }
-            } catch (e: Exception) {
-                "Contenu Binaire"
-            }
 
             paneBuilder.addRow(
                 Row.Builder()
                     .setTitle("De : ${bundle.sourceEid}")
                     .addText(payloadText)
-                    .build()
+                    .build(),
             )
 
             // Option 1 : Reply action opening the canned responses
-            val replyAction = Action.Builder()
-                .setTitle("Répondre")
-                .setOnClickListener {
-                    screenManager.push(ReplyCarScreen(carContext, bundle))
-                }
-                .build()
+            val replyAction =
+                Action.Builder()
+                    .setTitle("Répondre")
+                    .setOnClickListener {
+                        screenManager.push(ReplyCarScreen(carContext, bundle))
+                    }
+                    .build()
 
             paneBuilder.addAction(replyAction)
         }
@@ -127,9 +131,8 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
 
 class ReplyCarScreen(
     carContext: CarContext,
-    private val replyToBundle: BundleRecord
+    private val replyToBundle: BundleRecord,
 ) : Screen(carContext), KoinComponent {
-
     private val bundleRecordDao: BundleRecordDao by inject()
 
     override fun onGetTemplate(): Template {
@@ -143,7 +146,7 @@ class ReplyCarScreen(
                     .setOnClickListener {
                         sendReply(text)
                     }
-                    .build()
+                    .build(),
             )
         }
 
@@ -166,27 +169,29 @@ class ReplyCarScreen(
                 fos.write(text.toByteArray(StandardCharsets.UTF_8))
             }
 
-            val record = BundleRecord(
-                bundleId = bundleId,
-                destinationEid = replyToBundle.sourceEid,
-                sourceEid = replyToBundle.destinationEid,
-                creationTimestamp = System.currentTimeMillis(),
-                sequenceNumber = System.currentTimeMillis() % 100000,
-                lifetimeMs = 3600000L,
-                payloadFilePath = payloadFile.absolutePath,
-                state = com.dtn.messenger.data.model.BundleState.OUTBOX,
-                isRead = true,
-                bpsecStatus = com.dtn.messenger.data.model.BpsecStatus.UNVERIFIED,
-                hopCount = 0
-            )
+            val record =
+                BundleRecord(
+                    bundleId = bundleId,
+                    destinationEid = replyToBundle.sourceEid,
+                    sourceEid = replyToBundle.destinationEid,
+                    creationTimestamp = System.currentTimeMillis(),
+                    sequenceNumber = System.currentTimeMillis() % 100000,
+                    lifetimeMs = 3600000L,
+                    payloadFilePath = payloadFile.absolutePath,
+                    state = com.dtn.messenger.data.model.BundleState.OUTBOX,
+                    isRead = true,
+                    bpsecStatus = com.dtn.messenger.data.model.BpsecStatus.UNVERIFIED,
+                    hopCount = 0,
+                )
             bundleRecordDao.insert(record)
 
             // Trigger engine service to flush the queue
-            val serviceIntent = Intent(context, DtnEngineService::class.java).apply {
-                action = "FLUSH_QUEUE"
-            }
+            val serviceIntent =
+                Intent(context, DtnEngineService::class.java).apply {
+                    action = "FLUSH_QUEUE"
+                }
             androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
-            
+
             // Pop back to the last message screen
             CoroutineScope(Dispatchers.Main).launch {
                 screenManager.pop()

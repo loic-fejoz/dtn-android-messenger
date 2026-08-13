@@ -24,7 +24,6 @@ import com.dtn.messenger.data.model.ViewerType
 import org.koin.android.ext.android.inject
 
 class MainActivity : ComponentActivity() {
-
     private val localServiceDao: LocalServiceDao by inject()
     private val bundleRecordDao: BundleRecordDao by inject()
     private val routingRuleDao: RoutingRuleDao by inject()
@@ -32,13 +31,14 @@ class MainActivity : ComponentActivity() {
     private val bpsecKeyDao: BpsecKeyDao by inject()
     private val systemLogDao: SystemLogDao by inject()
 
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        if (permissions.values.all { it }) {
-            startEngineService()
+    private val requestPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions(),
+        ) { permissions ->
+            if (permissions.values.all { it }) {
+                startEngineService()
+            }
         }
-    }
 
     private val currentIntentState = mutableStateOf<android.content.Intent?>(null)
 
@@ -59,13 +59,13 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(activeIntent) {
                     val intent = activeIntent
-                    if (intent?.action == android.content.Intent.ACTION_SEND || 
-                        intent?.action == android.content.Intent.ACTION_SEND_MULTIPLE) {
-                        
+                    if (intent?.action == android.content.Intent.ACTION_SEND ||
+                        intent?.action == android.content.Intent.ACTION_SEND_MULTIPLE
+                    ) {
                         val text = intent.getStringExtra(android.content.Intent.EXTRA_TEXT) ?: ""
                         val dest = intent.getStringExtra("dest") ?: ""
                         var streamUri = ""
-                        
+
                         if (intent.action == android.content.Intent.ACTION_SEND) {
                             val uri = intent.getParcelableExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM) ?: intent.data
                             streamUri = uri?.toString() ?: ""
@@ -73,8 +73,12 @@ class MainActivity : ComponentActivity() {
                             val uris = intent.getParcelableArrayListExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM)
                             streamUri = uris?.firstOrNull()?.toString() ?: ""
                         }
-                        
-                        navController.navigate("send_bundle?dest=${android.net.Uri.encode(dest)}&sharedText=${android.net.Uri.encode(text)}&sharedFileUri=${android.net.Uri.encode(streamUri)}")
+
+                        navController.navigate(
+                            "send_bundle?dest=${android.net.Uri.encode(
+                                dest,
+                            )}&sharedText=${android.net.Uri.encode(text)}&sharedFileUri=${android.net.Uri.encode(streamUri)}",
+                        )
                         // Clear intent so it doesn't trigger again on configuration changes
                         currentIntentState.value = null
                     }
@@ -82,19 +86,19 @@ class MainActivity : ComponentActivity() {
 
                 NavHost(
                     navController = navController,
-                    startDestination = "registry"
+                    startDestination = "registry",
                 ) {
                     composable("registry") {
                         RegistryScreen(
                             navController = navController,
                             localServiceDao = localServiceDao,
-                            bundleRecordDao = bundleRecordDao
+                            bundleRecordDao = bundleRecordDao,
                         )
                     }
 
                     composable(
                         route = "service_view/{serviceEid}",
-                        arguments = listOf(navArgument("serviceEid") { type = NavType.StringType })
+                        arguments = listOf(navArgument("serviceEid") { type = NavType.StringType }),
                     ) { backStackEntry ->
                         val serviceEid = backStackEntry.arguments?.getString("serviceEid") ?: ""
                         var viewerType by remember { mutableStateOf<ViewerType?>(null) }
@@ -109,7 +113,7 @@ class MainActivity : ComponentActivity() {
                                     navController = navController,
                                     serviceEid = serviceEid,
                                     localServiceDao = localServiceDao,
-                                    bundleRecordDao = bundleRecordDao
+                                    bundleRecordDao = bundleRecordDao,
                                 )
                             }
                             ViewerType.BUNDLE_LIST -> {
@@ -117,13 +121,13 @@ class MainActivity : ComponentActivity() {
                                     navController = navController,
                                     serviceEid = serviceEid,
                                     localServiceDao = localServiceDao,
-                                    bundleRecordDao = bundleRecordDao
+                                    bundleRecordDao = bundleRecordDao,
                                 )
                             }
                             else -> {
                                 Box(
                                     modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
+                                    contentAlignment = Alignment.Center,
                                 ) {
                                     CircularProgressIndicator(color = NeonCyan)
                                 }
@@ -133,24 +137,25 @@ class MainActivity : ComponentActivity() {
 
                     composable(
                         route = "send_bundle?dest={dest}&sourceService={sourceService}&sharedText={sharedText}&sharedFileUri={sharedFileUri}",
-                        arguments = listOf(
-                            navArgument("dest") {
-                                type = NavType.StringType
-                                defaultValue = ""
-                            },
-                            navArgument("sourceService") {
-                                type = NavType.StringType
-                                defaultValue = ""
-                            },
-                            navArgument("sharedText") {
-                                type = NavType.StringType
-                                defaultValue = ""
-                            },
-                            navArgument("sharedFileUri") {
-                                type = NavType.StringType
-                                defaultValue = ""
-                            }
-                        )
+                        arguments =
+                            listOf(
+                                navArgument("dest") {
+                                    type = NavType.StringType
+                                    defaultValue = ""
+                                },
+                                navArgument("sourceService") {
+                                    type = NavType.StringType
+                                    defaultValue = ""
+                                },
+                                navArgument("sharedText") {
+                                    type = NavType.StringType
+                                    defaultValue = ""
+                                },
+                                navArgument("sharedFileUri") {
+                                    type = NavType.StringType
+                                    defaultValue = ""
+                                },
+                            ),
                     ) { backStackEntry ->
                         val dest = backStackEntry.arguments?.getString("dest") ?: ""
                         val sourceService = backStackEntry.arguments?.getString("sourceService") ?: ""
@@ -163,7 +168,7 @@ class MainActivity : ComponentActivity() {
                             preFilledDest = dest,
                             preFilledSourceService = sourceService,
                             preFilledPayloadText = sharedText,
-                            preFilledFileUri = sharedFileUri
+                            preFilledFileUri = sharedFileUri,
                         )
                     }
 
@@ -173,14 +178,14 @@ class MainActivity : ComponentActivity() {
                             convergenceProfileDao = convergenceProfileDao,
                             routingRuleDao = routingRuleDao,
                             bpsecKeyDao = bpsecKeyDao,
-                            localServiceDao = localServiceDao
+                            localServiceDao = localServiceDao,
                         )
                     }
 
                     composable("logs") {
                         SystemLogScreen(
                             navController = navController,
-                            logDao = systemLogDao
+                            logDao = systemLogDao,
                         )
                     }
                 }
@@ -199,9 +204,10 @@ class MainActivity : ComponentActivity() {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
 
-        val neededPermissions = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
+        val neededPermissions =
+            permissions.filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
 
         if (neededPermissions.isNotEmpty()) {
             requestPermissionLauncher.launch(neededPermissions.toTypedArray())
@@ -213,6 +219,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         currentIntentState.value = intent
     }
+
     private fun hasRequiredPermissions(): Boolean {
         val permissions = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
