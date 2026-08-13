@@ -32,3 +32,9 @@ Thumbs.db
 # Output APKs/AARs
 *.apk
 *.aar
+
+# Fuzzing corpus
+.cifuzz-corpus/
+.jazzer-corpus/
+.cifuzz-workdir/
+

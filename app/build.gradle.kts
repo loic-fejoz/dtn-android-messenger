@@ -107,12 +107,17 @@ dependencies {
     // Image Loading (Coil)
     implementation("io.coil-kt:coil-compose:2.6.0")
 
-    // Testing
-    testImplementation("junit:junit:4.13.2")
+    // JUnit 5 & Jazzer Fuzzing integration
+    testImplementation("com.code-intelligence:jazzer-junit:0.30.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.3")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.02.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
 }
