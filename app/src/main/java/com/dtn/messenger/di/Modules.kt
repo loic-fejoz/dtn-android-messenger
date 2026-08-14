@@ -13,7 +13,7 @@ val appModule =
                 AppDatabase::class.java,
                 "dtn_messenger_database",
             )
-                .addMigrations(AppDatabase.MIGRATION_3_4)
+                .addMigrations(AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
                 .build()
         }
 
@@ -23,4 +23,5 @@ val appModule =
         single { get<AppDatabase>().convergenceProfileDao() }
         single { get<AppDatabase>().bpsecKeyDao() }
         single { get<AppDatabase>().systemLogDao() }
+        single { get<AppDatabase>().senmlEntryDao() }
     }

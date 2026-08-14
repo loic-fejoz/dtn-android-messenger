@@ -8,7 +8,23 @@ enum class ViewerType {
     BUNDLE_LIST,
     MINIAPP,
     SENML_GRAPH,
+    SENML_LAST,
 }
+
+@Entity(
+    tableName = "senml_entries",
+    primaryKeys = ["serviceEid", "name"]
+)
+data class SenmlEntry(
+    val serviceEid: String,
+    val name: String, // Reconstructed full name (bn + n)
+    val customLabel: String? = null,
+    val value: String,
+    val unit: String,
+    val timestamp: Long,
+    val displayOrder: Int = 0,
+    val isDeleted: Boolean = false,
+)
 
 enum class BundleState {
     RECEIVED,
@@ -38,6 +54,7 @@ data class LocalService(
     val vibrationPatternJson: String? = null,
     val defaultDestinationEid: String? = null,
     val isBroadcast: Boolean = false,
+    val isNotificationEnabled: Boolean = true,
 )
 
 @Entity(tableName = "bundle_records")

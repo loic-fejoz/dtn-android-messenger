@@ -153,6 +153,7 @@ fun RegistryScreen(
                                                 ViewerType.BUNDLE_LIST -> Icons.Default.Email
                                                 ViewerType.MINIAPP -> Icons.Default.Home
                                                 ViewerType.SENML_GRAPH -> Icons.Default.Info
+                                                ViewerType.SENML_LAST -> Icons.AutoMirrored.Filled.List
                                             },
                                         contentDescription = "Viewer type",
                                         tint = TextGray,

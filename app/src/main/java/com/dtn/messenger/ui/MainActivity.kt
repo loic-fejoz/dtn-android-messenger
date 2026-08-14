@@ -124,6 +124,12 @@ class MainActivity : ComponentActivity() {
                                     bundleRecordDao = bundleRecordDao,
                                 )
                             }
+                            ViewerType.SENML_LAST -> {
+                                SenmlLastScreen(
+                                    serviceEid = serviceEid,
+                                    onBack = { navController.popBackStack() },
+                                )
+                            }
                             else -> {
                                 Box(
                                     modifier = Modifier.fillMaxSize(),

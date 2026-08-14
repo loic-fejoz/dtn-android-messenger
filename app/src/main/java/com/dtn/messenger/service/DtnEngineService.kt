@@ -34,6 +34,7 @@ class DtnEngineService : Service() {
     private val convergenceProfileDao: ConvergenceProfileDao by inject()
     private val bpsecKeyDao: BpsecKeyDao by inject()
     private val logDao: SystemLogDao by inject()
+    private val senmlEntryDao: SenmlEntryDao by inject()
 
     private lateinit var tcpClAdapter: TcpClAdapter
     private lateinit var bluetoothAdapter: BluetoothClassicAdapter
@@ -465,9 +466,14 @@ class DtnEngineService : Service() {
             updateTrigger.emit(Unit)
 
             if (isLocal && !isBibeDecapsulated) {
-                // Post notification for all matched local services
+                // Post notification and process payload for matched local services
                 matchedLocalServices.forEach { service ->
-                    triggerMessageNotification(service, record, payload.data)
+                    if (service.viewerType == ViewerType.SENML_LAST) {
+                        processSenmlPayload(service.serviceEid, payload.data, creationTime)
+                    }
+                    if (service.isNotificationEnabled) {
+                        triggerMessageNotification(service, record, payload.data)
+                    }
                 }
             }
 
@@ -480,6 +486,53 @@ class DtnEngineService : Service() {
             }
         } catch (e: Exception) {
             log("ERROR", "Error handling received bundle: " + android.util.Log.getStackTraceString(e))
+        }
+    }
+
+    private suspend fun processSenmlPayload(
+        serviceEid: String,
+        data: ByteArray,
+        fallbackTimestamp: Long,
+    ) {
+        try {
+            val records = SenmlParser.parse(data, fallbackTimestamp)
+            val latestRecordsByName = records.groupBy { it.name }
+                .mapValues { (_, list) -> list.maxByOrNull { it.timestamp }!! }
+                .values
+
+            for (rec in latestRecordsByName) {
+                val existing = senmlEntryDao.getEntry(serviceEid, rec.name)
+                if (existing != null) {
+                    if (rec.timestamp >= existing.timestamp) {
+                        senmlEntryDao.insertOrUpdate(
+                            existing.copy(
+                                value = rec.value,
+                                unit = rec.unit,
+                                timestamp = rec.timestamp,
+                                isDeleted = false,
+                            )
+                        )
+                    }
+                } else {
+                    val maxOrder = senmlEntryDao.getMaxOrder(serviceEid) ?: 0
+                    senmlEntryDao.insertOrUpdate(
+                        SenmlEntry(
+                            serviceEid = serviceEid,
+                            name = rec.name,
+                            value = rec.value,
+                            unit = rec.unit,
+                            timestamp = rec.timestamp,
+                            displayOrder = maxOrder + 1,
+                            isDeleted = false,
+                        )
+                    )
+                }
+            }
+            if (records.isNotEmpty()) {
+                log("INFO", "Processed ${records.size} SenML records for service $serviceEid")
+            }
+        } catch (e: Exception) {
+            log("ERROR", "Error parsing SenML payload: ${e.message}")
         }
     }
 

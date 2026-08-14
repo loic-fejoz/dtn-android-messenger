@@ -54,6 +54,9 @@ interface BundleRecordDao {
         isRead: Boolean,
     )
 
+    @Query("UPDATE bundle_records SET isRead = 1 WHERE destinationEid = :destEid AND isRead = 0")
+    suspend fun markAllAsReadForDestination(destEid: String)
+
     @Query("SELECT COUNT(*) FROM bundle_records WHERE destinationEid = :serviceEid AND isRead = 0")
     fun getUnreadCount(serviceEid: String): Flow<Int>
 
@@ -134,4 +137,31 @@ interface SystemLogDao {
 
     @Query("SELECT * FROM system_logs ORDER BY timestamp ASC LIMIT :limit")
     suspend fun getOldestLogs(limit: Int): List<SystemLog>
+}
+
+@Dao
+interface SenmlEntryDao {
+    @Query("SELECT * FROM senml_entries WHERE serviceEid = :serviceEid AND isDeleted = 0 ORDER BY displayOrder ASC, name ASC")
+    fun getActiveEntries(serviceEid: String): Flow<List<SenmlEntry>>
+
+    @Query("SELECT * FROM senml_entries WHERE serviceEid = :serviceEid AND isDeleted = 0 ORDER BY displayOrder ASC, name ASC")
+    suspend fun getActiveEntriesList(serviceEid: String): List<SenmlEntry>
+
+    @Query("SELECT * FROM senml_entries WHERE serviceEid = :serviceEid AND name = :name")
+    suspend fun getEntry(serviceEid: String, name: String): SenmlEntry?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdate(entry: SenmlEntry)
+
+    @Query("UPDATE senml_entries SET isDeleted = 1 WHERE serviceEid = :serviceEid AND name = :name")
+    suspend fun markDeleted(serviceEid: String, name: String)
+
+    @Query("UPDATE senml_entries SET customLabel = :customLabel WHERE serviceEid = :serviceEid AND name = :name")
+    suspend fun updateCustomLabel(serviceEid: String, name: String, customLabel: String?)
+
+    @Query("UPDATE senml_entries SET displayOrder = :order WHERE serviceEid = :serviceEid AND name = :name")
+    suspend fun updateOrder(serviceEid: String, name: String, order: Int)
+
+    @Query("SELECT MAX(displayOrder) FROM senml_entries WHERE serviceEid = :serviceEid")
+    suspend fun getMaxOrder(serviceEid: String): Int?
 }
