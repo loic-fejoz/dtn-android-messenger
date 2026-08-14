@@ -25,6 +25,12 @@ class DtnMessageReceiver : BroadcastReceiver(), KoinComponent {
         context: Context,
         intent: Intent,
     ) {
+        val notificationId = intent.getIntExtra("notification_id", -1)
+        if (notificationId != -1) {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.cancel(notificationId)
+        }
+
         val results = RemoteInput.getResultsFromIntent(intent)
         if (results != null) {
             val replyText = results.getCharSequence("extra_voice_reply")?.toString()

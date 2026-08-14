@@ -13,7 +13,7 @@ val appModule =
                 AppDatabase::class.java,
                 "dtn_messenger_database",
             )
-                // .fallbackToDestructiveMigration() // Disabled for production safety. Provide explicit Migration paths instead.
+                .addMigrations(AppDatabase.MIGRATION_3_4)
                 .build()
         }
 

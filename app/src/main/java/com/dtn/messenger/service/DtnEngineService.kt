@@ -387,13 +387,18 @@ class DtnEngineService : Service() {
             tempFile.renameTo(payloadFile)
 
             // Verify if it is for local services on our node (supporting prefix/multicast match for multiple services)
+            val localNodeBase = (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim()
+
+            val isLocalNode = com.dtn.messenger.util.PayloadUtils.isPrefixMatch(localNodeBase, primary.destination.uri) ||
+                com.dtn.messenger.util.PayloadUtils.isPrefixMatch(primary.destination.uri, localNodeBase)
+
             val localServices = localServiceDao.getAllList()
             val matchedLocalServices =
                 localServices.filter { service ->
                     com.dtn.messenger.util.PayloadUtils.isPrefixMatch(service.serviceEid, primary.destination.uri) ||
                         com.dtn.messenger.util.PayloadUtils.isPrefixMatch(primary.destination.uri, service.serviceEid)
                 }
-            val isLocal = matchedLocalServices.isNotEmpty()
+            val isLocal = isLocalNode || matchedLocalServices.isNotEmpty()
 
             var isBibeDecapsulated = false
             if (isLocal) {
@@ -437,7 +442,8 @@ class DtnEngineService : Service() {
 
             // Check if we also need to forward it (multicast/anycast or transit routing)
             val nextHop = resolveNextHop(primary.destination.uri)
-            val shouldForward = findProfileForNextHop(nextHop) != null
+            val isMatchedBroadcast = matchedLocalServices.any { it.isBroadcast }
+            val shouldForward = findProfileForNextHop(nextHop) != null && (!isLocal || isMatchedBroadcast)
 
             val record =
                 BundleRecord(
@@ -525,6 +531,7 @@ class DtnEngineService : Service() {
                 Intent(this, com.dtn.messenger.receiver.DtnMessageReceiver::class.java).apply {
                     putExtra("dest_eid", service.serviceEid)
                     putExtra("src_eid", record.sourceEid)
+                    putExtra("notification_id", record.bundleId.hashCode())
                 }
             val replyPendingIntent =
                 PendingIntent.getBroadcast(
@@ -695,7 +702,7 @@ class DtnEngineService : Service() {
                 // 2. Build the outer bundle targeting the gateway's bibe service
                 val gatewayBibeEid = if (bibeGateway.endsWith("/bibe")) bibeGateway else "$bibeGateway/bibe"
                 val prefs = com.dtn.messenger.util.PreferencesHelper.getEncryptedSharedPreferences(this@DtnEngineService)
-                val localNodeBase = prefs.getString("local_node_eid", "dtn://my-node") ?: "dtn://my-node"
+                val localNodeBase = prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node"
                 val localBibeEid = "$localNodeBase/bibe"
 
                 val outerPrimary = PrimaryBlock(

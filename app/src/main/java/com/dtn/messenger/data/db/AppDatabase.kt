@@ -4,6 +4,8 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.dtn.messenger.data.dao.*
 import com.dtn.messenger.data.model.*
 
@@ -42,7 +44,7 @@ class Converters {
         BpsecKey::class,
         SystemLog::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -58,4 +60,12 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bpsecKeyDao(): BpsecKeyDao
 
     abstract fun systemLogDao(): SystemLogDao
+
+    companion object {
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_services ADD COLUMN isBroadcast INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+    }
 }

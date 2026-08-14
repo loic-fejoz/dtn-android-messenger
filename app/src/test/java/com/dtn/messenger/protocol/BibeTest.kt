@@ -1,5 +1,7 @@
 package com.dtn.messenger.protocol
 
+import com.dtn.messenger.data.model.LocalService
+import com.dtn.messenger.data.model.ViewerType
 import com.upokecenter.cbor.CBORObject
 import com.upokecenter.cbor.CBORType
 import org.junit.jupiter.api.Assertions.*
@@ -156,5 +158,35 @@ class BibeTest {
         } catch (e: Exception) {
             throw AssertionError("Should not have thrown any exception: ${e.message}")
         }
+    }
+
+    @Test
+    fun testBroadcastForwardingLogic() {
+        val nextHopProfileExists = true
+
+        // Scenario 1: Not local (transit routing) -> should forward
+        val isLocal1 = false
+        val matchedLocalServices1 = emptyList<LocalService>()
+        val isMatchedBroadcast1 = matchedLocalServices1.any { it.isBroadcast }
+        val shouldForward1 = nextHopProfileExists && (!isLocal1 || isMatchedBroadcast1)
+        assertTrue(shouldForward1)
+
+        // Scenario 2: Local unicast service only -> should NOT forward
+        val isLocal2 = true
+        val matchedLocalServices2 = listOf(
+            LocalService(serviceEid = "dtn://my-node/chat", displayName = "Chat", viewerType = ViewerType.CHAT, isBroadcast = false)
+        )
+        val isMatchedBroadcast2 = matchedLocalServices2.any { it.isBroadcast }
+        val shouldForward2 = nextHopProfileExists && (!isLocal2 || isMatchedBroadcast2)
+        assertFalse(shouldForward2)
+
+        // Scenario 3: Local broadcast service -> should forward
+        val isLocal3 = true
+        val matchedLocalServices3 = listOf(
+            LocalService(serviceEid = "dtn://group/chat", displayName = "Group Chat", viewerType = ViewerType.CHAT, isBroadcast = true)
+        )
+        val isMatchedBroadcast3 = matchedLocalServices3.any { it.isBroadcast }
+        val shouldForward3 = nextHopProfileExists && (!isLocal3 || isMatchedBroadcast3)
+        assertTrue(shouldForward3)
     }
 }

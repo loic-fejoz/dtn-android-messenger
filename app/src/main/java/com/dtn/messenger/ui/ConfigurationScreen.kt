@@ -852,6 +852,7 @@ fun ServicesConfigTab(
     var name by remember { mutableStateOf("") }
     var viewerType by remember { mutableStateOf(ViewerType.CHAT) }
     var defaultDest by remember { mutableStateOf("") }
+    var isBroadcast by remember { mutableStateOf(false) }
 
     var editingService by remember { mutableStateOf<LocalService?>(null) }
     var isEditMode by remember { mutableStateOf(false) }
@@ -933,6 +934,23 @@ fun ServicesConfigTab(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Checkbox(
+                        checked = isBroadcast,
+                        onCheckedChange = { isBroadcast = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = NeonCyan,
+                            uncheckedColor = TextGray,
+                            checkmarkColor = Color.Black,
+                        ),
+                    )
+                    Text("Broadcast / Multicast EID (relays messages back to network)", color = Color.White, fontSize = 14.sp)
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (isEditMode) {
@@ -942,6 +960,7 @@ fun ServicesConfigTab(
                                 eid = ""
                                 name = ""
                                 defaultDest = ""
+                                isBroadcast = false
                                 viewerType = ViewerType.CHAT
                                 editingService = null
                             },
@@ -969,6 +988,7 @@ fun ServicesConfigTab(
                                         displayName = name,
                                         viewerType = viewerType,
                                         defaultDestinationEid = defaultDest.trim(),
+                                        isBroadcast = isBroadcast,
                                     ),
                                 )
                                 // Clear form
@@ -976,6 +996,7 @@ fun ServicesConfigTab(
                                 eid = ""
                                 name = ""
                                 defaultDest = ""
+                                isBroadcast = false
                                 viewerType = ViewerType.CHAT
                                 editingService = null
                                 Toast.makeText(context, "Service Saved", Toast.LENGTH_SHORT).show()
@@ -1003,6 +1024,7 @@ fun ServicesConfigTab(
                             name = service.displayName
                             viewerType = service.viewerType
                             defaultDest = service.defaultDestinationEid ?: ""
+                            isBroadcast = service.isBroadcast
                         },
                 shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(containerColor = GlassCardColor),
@@ -1025,6 +1047,11 @@ fun ServicesConfigTab(
                             fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                         )
                         Text("Viewer: ${service.viewerType.name}", color = TextGray, fontSize = 12.sp)
+                        Text(
+                            "Type: ${if (service.isBroadcast) "Broadcast / Multicast" else "Unicast"}",
+                            color = if (service.isBroadcast) NeonCyan else TextGray,
+                            fontSize = 11.sp,
+                        )
                         if (!service.defaultDestinationEid.isNullOrBlank()) {
                             Text("Default Dest: ${service.defaultDestinationEid}", color = NeonPurple, fontSize = 11.sp)
                         }

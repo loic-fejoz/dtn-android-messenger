@@ -37,6 +37,7 @@ data class LocalService(
     val notificationSoundUri: String? = null,
     val vibrationPatternJson: String? = null,
     val defaultDestinationEid: String? = null,
+    val isBroadcast: Boolean = false,
 )
 
 @Entity(tableName = "bundle_records")
