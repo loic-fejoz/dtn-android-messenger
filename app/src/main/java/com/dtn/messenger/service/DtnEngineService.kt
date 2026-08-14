@@ -602,6 +602,12 @@ class DtnEngineService : Service() {
                 log("WARN", "Payload file not found for bundle ${record.bundleId}, skipping")
                 continue
             }
+            val maxSizeBytes = com.dtn.messenger.util.PreferencesHelper.getMaxBundleSizeBytes(this)
+            if (file.length() > maxSizeBytes) {
+                val maxMb = maxSizeBytes / (1024 * 1024)
+                log("WARN", "Bundle ${record.bundleId} payload size (${file.length()} bytes) exceeds maximum configured limit of ${maxMb} MB. Skipping.")
+                continue
+            }
             val payloadBytes = file.readBytes()
 
             if (record.hopCount + 1 >= 64) {

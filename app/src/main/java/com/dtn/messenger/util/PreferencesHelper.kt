@@ -6,12 +6,22 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 
 object PreferencesHelper {
+    const val PREF_MAX_BUNDLE_SIZE_MB = "max_bundle_size_mb"
+    const val DEFAULT_MAX_BUNDLE_SIZE_MB = 10
+    const val MAX_BUNDLE_SIZE_MB_LIMIT = 100
+
     private var securePrefs: SharedPreferences? = null
 
     fun getEncryptedSharedPreferences(context: Context): SharedPreferences {
         return securePrefs ?: synchronized(this) {
             securePrefs ?: createSecurePrefs(context).also { securePrefs = it }
         }
+    }
+
+    fun getMaxBundleSizeBytes(context: Context): Long {
+        val prefs = getEncryptedSharedPreferences(context)
+        val mb = prefs.getInt(PREF_MAX_BUNDLE_SIZE_MB, DEFAULT_MAX_BUNDLE_SIZE_MB).coerceIn(1, MAX_BUNDLE_SIZE_MB_LIMIT)
+        return mb.toLong() * 1024L * 1024L
     }
 
     private fun createSecurePrefs(context: Context): SharedPreferences {

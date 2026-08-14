@@ -85,7 +85,7 @@ class TcpClAdapter(
         buf[0] = 7 // SESS_INIT
         buf[1] = 0 // Keepalive MSB
         buf[2] = 30 // Keepalive LSB
-        val mruVal = 10 * 1024 * 1024L
+        val mruVal = com.dtn.messenger.util.PreferencesHelper.getMaxBundleSizeBytes(context)
         java.nio.ByteBuffer.wrap(buf, 3, 8).putLong(mruVal)
         java.nio.ByteBuffer.wrap(buf, 11, 8).putLong(mruVal)
         java.nio.ByteBuffer.wrap(buf, 19, 2).putShort(nodeIdLen.toShort())
@@ -192,10 +192,15 @@ class TcpClAdapter(
                             }
 
                             val length = input.readLong().toInt()
-                            if (length <= 0 || length > 10 * 1024 * 1024) {
-                                throw Exception("Invalid segment length: $length")
+                            val maxSizeBytes = com.dtn.messenger.util.PreferencesHelper.getMaxBundleSizeBytes(context)
+                            if (length <= 0 || length > maxSizeBytes) {
+                                throw Exception("Invalid segment length: $length (exceeds max $maxSizeBytes bytes)")
                             }
-                            val bundleBytes = ByteArray(length)
+                            val bundleBytes = try {
+                                ByteArray(length)
+                            } catch (e: OutOfMemoryError) {
+                                throw Exception("Memory allocation failed for segment of size $length bytes")
+                            }
                             input.readFully(bundleBytes, 0, length)
                             log("INFO", "Received bundle ($length bytes)")
                             listener?.invoke(bundleBytes)
@@ -365,7 +370,15 @@ class TcpClAdapter(
                                     }
                                 }
                                 val length = input.readLong().toInt()
-                                val rxBundle = ByteArray(length)
+                                val maxSizeBytes = com.dtn.messenger.util.PreferencesHelper.getMaxBundleSizeBytes(context)
+                                if (length <= 0 || length > maxSizeBytes) {
+                                    throw Exception("Invalid segment length from server: $length (exceeds max $maxSizeBytes bytes)")
+                                }
+                                val rxBundle = try {
+                                    ByteArray(length)
+                                } catch (e: OutOfMemoryError) {
+                                    throw Exception("Memory allocation failed for segment of size $length bytes")
+                                }
                                 input.readFully(rxBundle, 0, length)
                                 log("INFO", "Received bundle from server ($length bytes)")
                                 listener?.invoke(rxBundle)
@@ -518,12 +531,18 @@ class BluetoothClassicAdapter(
                     bytesRead += read
                 }
                 val length = ByteBuffer.wrap(sizeBuf).int
-                if (length <= 0 || length > 10 * 1024 * 1024) {
-                    log("WARN", "Invalid RFCOMM packet length: $length")
+                val maxSizeBytes = com.dtn.messenger.util.PreferencesHelper.getMaxBundleSizeBytes(context)
+                if (length <= 0 || length > maxSizeBytes) {
+                    log("WARN", "Invalid RFCOMM packet length: $length (exceeds max $maxSizeBytes bytes)")
                     break
                 }
 
-                val bundleBytes = ByteArray(length)
+                val bundleBytes = try {
+                    ByteArray(length)
+                } catch (e: OutOfMemoryError) {
+                    log("WARN", "Memory allocation failed for RFCOMM packet length: $length")
+                    break
+                }
                 var bodyRead = 0
                 while (bodyRead < length) {
                     val read = inputStream.read(bundleBytes, bodyRead, length - bodyRead)

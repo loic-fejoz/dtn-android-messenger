@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -27,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.LiveData
@@ -160,6 +162,7 @@ fun ConfigurationScreen(
 fun LocalNodeIdentityCard(context: Context = LocalContext.current) {
     val prefs = remember { com.dtn.messenger.util.PreferencesHelper.getEncryptedSharedPreferences(context) }
     var localNodeName by remember { mutableStateOf(prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node") }
+    var maxBundleSizeMb by remember { mutableStateOf(prefs.getInt(com.dtn.messenger.util.PreferencesHelper.PREF_MAX_BUNDLE_SIZE_MB, com.dtn.messenger.util.PreferencesHelper.DEFAULT_MAX_BUNDLE_SIZE_MB).toString()) }
 
     Card(
         modifier =
@@ -171,7 +174,7 @@ fun LocalNodeIdentityCard(context: Context = LocalContext.current) {
         border = BorderStroke(1.dp, Color(0x11FFFFFF)),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("LOCAL NODE IDENTITY", fontSize = 10.sp, color = TextGray, fontWeight = FontWeight.Bold)
+            Text("LOCAL NODE IDENTITY & LIMITS", fontSize = 10.sp, color = TextGray, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
                 value = localNodeName,
@@ -181,6 +184,23 @@ fun LocalNodeIdentityCard(context: Context = LocalContext.current) {
                 },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Local EID (e.g. dtn://my-node)", color = TextGray) },
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            val isSizeError = maxBundleSizeMb.toIntOrNull()?.let { it !in 1..com.dtn.messenger.util.PreferencesHelper.MAX_BUNDLE_SIZE_MB_LIMIT } ?: true
+            OutlinedTextField(
+                value = maxBundleSizeMb,
+                onValueChange = { input ->
+                    maxBundleSizeMb = input
+                    val parsed = input.toIntOrNull()
+                    if (parsed != null && parsed in 1..com.dtn.messenger.util.PreferencesHelper.MAX_BUNDLE_SIZE_MB_LIMIT) {
+                        prefs.edit().putInt(com.dtn.messenger.util.PreferencesHelper.PREF_MAX_BUNDLE_SIZE_MB, parsed).apply()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Maximum Payload / Bundle Size (MB, 1-${com.dtn.messenger.util.PreferencesHelper.MAX_BUNDLE_SIZE_MB_LIMIT})", color = TextGray) },
+                isError = isSizeError,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
             )
         }
     }

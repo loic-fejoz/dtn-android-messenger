@@ -690,16 +690,43 @@ fun SendBundleScreen(
                             val fileExt = if (isFileMode) selectedFileName.substringAfterLast('.', "bin") else "bin"
                             val payloadFile = File(payloadsDir, "$bundleId.$fileExt")
 
+                            val maxSizeBytes = com.dtn.messenger.util.PreferencesHelper.getMaxBundleSizeBytes(context)
+                            val maxMb = maxSizeBytes / (1024 * 1024)
+
                             if (isFileMode) {
+                                var fileSize = -1L
+                                try {
+                                    context.contentResolver.openFileDescriptor(selectedFileUri!!, "r")?.use { pfd ->
+                                        fileSize = pfd.statSize
+                                    }
+                                } catch (e: Exception) {
+                                }
+
+                                if (fileSize > maxSizeBytes) {
+                                    Toast.makeText(context, "Payload size (${fileSize / (1024 * 1024)} MB) exceeds maximum limit of ${maxMb} MB", Toast.LENGTH_LONG).show()
+                                    return@launch
+                                }
+
                                 context.contentResolver.openInputStream(selectedFileUri!!).use { input ->
                                     payloadFile.outputStream().use { output ->
                                         input!!.copyTo(output)
                                     }
                                 }
                             } else {
-                                FileOutputStream(payloadFile).use { fos ->
-                                    fos.write(payloadText.toByteArray(Charsets.UTF_8))
+                                val textBytes = payloadText.toByteArray(Charsets.UTF_8)
+                                if (textBytes.size > maxSizeBytes) {
+                                    Toast.makeText(context, "Payload size exceeds maximum limit of ${maxMb} MB", Toast.LENGTH_LONG).show()
+                                    return@launch
                                 }
+                                FileOutputStream(payloadFile).use { fos ->
+                                    fos.write(textBytes)
+                                }
+                            }
+
+                            if (payloadFile.length() > maxSizeBytes) {
+                                if (payloadFile.exists()) payloadFile.delete()
+                                Toast.makeText(context, "Payload size (${payloadFile.length()} bytes) exceeds maximum limit of ${maxMb} MB", Toast.LENGTH_LONG).show()
+                                return@launch
                             }
 
                             // Save last destination EID in preferences
