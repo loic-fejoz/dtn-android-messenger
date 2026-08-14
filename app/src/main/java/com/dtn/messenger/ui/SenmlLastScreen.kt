@@ -112,7 +112,7 @@ fun SenmlLastScreen(
     }
 
     val dateFormat = remember {
-        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).apply {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US).apply {
             timeZone = TimeZone.getDefault()
         }
     }
@@ -312,10 +312,16 @@ fun SenmlEntryCard(
                             )
                         }
 
-                        // Timestamp below in smaller font
+                        // Timestamp below in smaller font formatted as ISO 8601
                         val formattedTime = remember(entry.timestamp, dateFormat) {
                             try {
-                                dateFormat.format(Date(entry.timestamp))
+                                val raw = dateFormat.format(Date(entry.timestamp))
+                                // Convert "+0200" to "+02:00" for strict ISO 8601 compliance on API 23
+                                if (raw.length >= 5 && (raw[raw.length - 5] == '+' || raw[raw.length - 5] == '-')) {
+                                    raw.substring(0, raw.length - 2) + ":" + raw.substring(raw.length - 2)
+                                } else {
+                                    raw
+                                }
                             } catch (e: Exception) {
                                 entry.timestamp.toString()
                             }
