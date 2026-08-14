@@ -111,7 +111,11 @@ fun SenmlLastScreen(
         }
     }
 
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss dd/MM/yyyy", Locale.getDefault()) }
+    val dateFormat = remember {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).apply {
+            timeZone = TimeZone.getDefault()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -309,7 +313,7 @@ fun SenmlEntryCard(
                         }
 
                         // Timestamp below in smaller font
-                        val formattedTime = remember(entry.timestamp) {
+                        val formattedTime = remember(entry.timestamp, dateFormat) {
                             try {
                                 dateFormat.format(Date(entry.timestamp))
                             } catch (e: Exception) {

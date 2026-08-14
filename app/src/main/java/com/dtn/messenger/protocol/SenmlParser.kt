@@ -179,7 +179,6 @@ object SenmlParser {
         timeSec: Double,
         fallbackTimestampMs: Long,
     ): Long {
-        if (timeSec <= 0) return fallbackTimestampMs
         return if (timeSec > 268435456.0) {
             (timeSec * 1000.0).toLong()
         } else {
