@@ -38,40 +38,45 @@ class DtnMessageReceiver : BroadcastReceiver(), KoinComponent {
             val srcEid = intent.getStringExtra("src_eid")
 
             if (replyText != null && destEid != null && srcEid != null) {
+                val pendingResult = goAsync()
                 CoroutineScope(Dispatchers.IO).launch {
-                    val payloadsDir = File(context.filesDir, "payloads")
-                    if (!payloadsDir.exists()) payloadsDir.mkdirs()
+                    try {
+                        val payloadsDir = File(context.filesDir, "payloads")
+                        if (!payloadsDir.exists()) payloadsDir.mkdirs()
 
-                    val bundleId = UUID.randomUUID().toString()
-                    val payloadFile = File(payloadsDir, "$bundleId.bin")
-                    FileOutputStream(payloadFile).use { fos ->
-                        fos.write(replyText.toByteArray(Charsets.UTF_8))
-                    }
-
-                    // Create outbound bundle record in database
-                    val record =
-                        BundleRecord(
-                            bundleId = bundleId,
-                            destinationEid = srcEid, // reply target is the sender
-                            sourceEid = destEid, // reply origin is local service EID
-                            creationTimestamp = System.currentTimeMillis(),
-                            sequenceNumber = System.currentTimeMillis() % 100000,
-                            lifetimeMs = 3600000L, // 1 hour lifetime
-                            payloadFilePath = payloadFile.absolutePath,
-                            state = BundleState.OUTBOX,
-                            isRead = true,
-                            bpsecStatus = BpsecStatus.UNVERIFIED,
-                            hopCount = 0,
-                        )
-                    bundleRecordDao.insert(record)
-
-                    // Notify service to flush queue. Since this is triggered by a user notification action,
-                    // it is exempt from background start restrictions, but we must use startForegroundService.
-                    val serviceIntent =
-                        Intent(context, DtnEngineService::class.java).apply {
-                            action = "FLUSH_QUEUE"
+                        val bundleId = UUID.randomUUID().toString()
+                        val payloadFile = File(payloadsDir, "$bundleId.bin")
+                        FileOutputStream(payloadFile).use { fos ->
+                            fos.write(replyText.toByteArray(Charsets.UTF_8))
                         }
-                    androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
+
+                        // Create outbound bundle record in database
+                        val record =
+                            BundleRecord(
+                                bundleId = bundleId,
+                                destinationEid = srcEid, // reply target is the sender
+                                sourceEid = destEid, // reply origin is local service EID
+                                creationTimestamp = System.currentTimeMillis(),
+                                sequenceNumber = System.currentTimeMillis() % 100000,
+                                lifetimeMs = 3600000L, // 1 hour lifetime
+                                payloadFilePath = payloadFile.absolutePath,
+                                state = BundleState.OUTBOX,
+                                isRead = true,
+                                bpsecStatus = BpsecStatus.UNVERIFIED,
+                                hopCount = 0,
+                            )
+                        bundleRecordDao.insert(record)
+
+                        // Notify service to flush queue. Since this is triggered by a user notification action,
+                        // it is exempt from background start restrictions, but we must use startForegroundService.
+                        val serviceIntent =
+                            Intent(context, DtnEngineService::class.java).apply {
+                                action = "FLUSH_QUEUE"
+                            }
+                        androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
+                    } finally {
+                        pendingResult.finish()
+                    }
                 }
             }
         }
