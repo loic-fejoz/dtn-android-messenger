@@ -395,6 +395,46 @@ class DtnEngineService : Service() {
                 }
             val isLocal = matchedLocalServices.isNotEmpty()
 
+            var isBibeDecapsulated = false
+            if (isLocal) {
+                // 1. Check if payload is a BIBE PDU (Administrative Record 64443)
+                try {
+                    val cbor = com.upokecenter.cbor.CBORObject.DecodeFromBytes(payload.data)
+                    if (cbor.type == com.upokecenter.cbor.CBORType.Array && cbor.size() >= 2) {
+                        val recordType = cbor[0].AsInt32()
+                        if (recordType == 64443) {
+                            val content = cbor[1]
+                            if (content.type == com.upokecenter.cbor.CBORType.Array && content.size() >= 3) {
+                                val innerBundleBytes = content[2].GetByteString()
+                                log("INFO", "Decapsulated BIBE PDU (type 64443). Re-processing inner bundle.")
+                                isBibeDecapsulated = true
+                                serviceScope.launch {
+                                    onBundleReceived(innerBundleBytes)
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Not a CBOR administrative record
+                }
+
+                // 2. Fallback: Check if payload is a raw encapsulated bundle
+                if (!isBibeDecapsulated) {
+                    try {
+                        val innerBundle = Bpv7Parser.deserialize(payload.data)
+                        if (innerBundle.primaryBlock.version == 7) {
+                            log("INFO", "Decapsulated raw Bundle-in-Bundle. Re-processing inner bundle.")
+                            isBibeDecapsulated = true
+                            serviceScope.launch {
+                                onBundleReceived(payload.data)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Not a raw bundle
+                    }
+                }
+            }
+
             // Check if we also need to forward it (multicast/anycast or transit routing)
             val nextHop = resolveNextHop(primary.destination.uri)
             val shouldForward = findProfileForNextHop(nextHop) != null
@@ -408,8 +448,8 @@ class DtnEngineService : Service() {
                     sequenceNumber = seqNo,
                     lifetimeMs = primary.lifetimeMs,
                     payloadFilePath = payloadFile.absolutePath,
-                    state = if (shouldForward) BundleState.OUTBOX else BundleState.RECEIVED,
-                    isRead = false,
+                    state = if (isBibeDecapsulated) BundleState.DELIVERED else if (shouldForward) BundleState.OUTBOX else BundleState.RECEIVED,
+                    isRead = isBibeDecapsulated,
                     bpsecStatus = bpsecStatus,
                     hopCount = hopCount,
                 )
@@ -418,7 +458,7 @@ class DtnEngineService : Service() {
             log("INFO", "Bundle $bundleId inserted. State: ${record.state}")
             updateTrigger.emit(Unit)
 
-            if (isLocal) {
+            if (isLocal && !isBibeDecapsulated) {
                 // Post notification for all matched local services
                 matchedLocalServices.forEach { service ->
                     triggerMessageNotification(service, record, payload.data)
@@ -569,7 +609,15 @@ class DtnEngineService : Service() {
             }
 
             // Resolve next hop
-            val nextHop = resolveNextHop(record.destinationEid)
+            var nextHop = resolveNextHop(record.destinationEid)
+            var useBibe = false
+            var bibeGateway: String? = null
+            if (nextHop.startsWith("bibe:")) {
+                useBibe = true
+                bibeGateway = nextHop.substring(5)
+                nextHop = bibeGateway
+            }
+
             val profile = findProfileForNextHop(nextHop)
             if (profile == null) {
                 log("WARN", "No convergence profile found to reach next-hop $nextHop (dest: ${record.destinationEid})")
@@ -628,7 +676,41 @@ class DtnEngineService : Service() {
             }
 
             val bundle = Bundle(primary, payload, hopCount, bib)
-            val bundleBytes = Bpv7Parser.serialize(bundle)
+            var bundleBytes = Bpv7Parser.serialize(bundle)
+
+            if (useBibe && bibeGateway != null) {
+                log("INFO", "Encapsulating bundle ${record.bundleId} in a BIBE tunnel via gateway $bibeGateway")
+
+                // 1. Build the BIBE PDU (CBOR Administrative Record 64443)
+                val pduContent = com.upokecenter.cbor.CBORObject.NewArray()
+                pduContent.Add(record.bundleId.hashCode() and 0x7FFFFFFF) // transmission-id
+                pduContent.Add(0) // retransmission-time
+                pduContent.Add(bundleBytes) // encapsulated-bundle
+
+                val pdu = com.upokecenter.cbor.CBORObject.NewArray()
+                pdu.Add(64443)
+                pdu.Add(pduContent)
+                val outerPayloadBytes = pdu.EncodeToBytes()
+
+                // 2. Build the outer bundle targeting the gateway's bibe service
+                val gatewayBibeEid = if (bibeGateway.endsWith("/bibe")) bibeGateway else "$bibeGateway/bibe"
+                val prefs = com.dtn.messenger.util.PreferencesHelper.getEncryptedSharedPreferences(this@DtnEngineService)
+                val localNodeBase = prefs.getString("local_node_eid", "dtn://my-node") ?: "dtn://my-node"
+                val localBibeEid = "$localNodeBase/bibe"
+
+                val outerPrimary = PrimaryBlock(
+                    destination = Eid(gatewayBibeEid),
+                    source = Eid(localBibeEid),
+                    reportTo = Eid(localBibeEid),
+                    creationTimestamp = Pair(dtnTimeFromSystem(System.currentTimeMillis()), 0L),
+                    lifetimeMs = record.lifetimeMs,
+                )
+                val outerPayload = PayloadBlock(data = outerPayloadBytes)
+                val outerHopCount = HopCountBlock(hopLimit = 64, hopCount = record.hopCount + 1)
+
+                val outerBundle = Bundle(outerPrimary, outerPayload, outerHopCount, null)
+                bundleBytes = Bpv7Parser.serialize(outerBundle)
+            }
 
             // Select adapter and transmit
             val adapter =

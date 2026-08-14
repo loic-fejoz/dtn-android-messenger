@@ -22,6 +22,10 @@ with stimulations from the [RADIANT project](https://radiant.amsat-uk.org/).
 * BPSec:
   * BIB HMAC-SHA256 (RFC 9103) only so as to not have encryption as I want to connect over hamradio as per regulation requirements.
   * Configurable policy: no check, warn, strict
+* Tunneling & Encapsulation:
+  * Bundle-in-Bundle Encapsulation (BIBE) support (draft-ietf-dtn-bibect).
+  * Automatic decapsulation of incoming administrative records (type 64443) and raw encapsulated bundles.
+  * Outgoing tunnel encapsulation by prefixing next-hop EIDs with `bibe:` in routing rules.
 
 ---
 
