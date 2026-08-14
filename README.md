@@ -35,6 +35,7 @@ Here are screenshots of the application showcasing its main features:
 
 ![Main Registry View](screencap.png)
 ![Chat Service View](screencap_chat.png)
+![SenML Last Service View](screencap_senml_last.png)
 ![File Exchange Service View](screencap_files.png)
 ![Bundle Detail View](screencap_bundle_detail.png)
 ![Opportunistic Text Sender View](screencap_opportunistic_send.png)
