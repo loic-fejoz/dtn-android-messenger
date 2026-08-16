@@ -22,7 +22,7 @@ interface ConvergenceLayerAdapter {
 
     fun start(
         scope: CoroutineScope,
-        listener: (ByteArray) -> Unit,
+        listener: suspend (ByteArray) -> Boolean,
     )
 
     fun stop()
@@ -42,7 +42,7 @@ class TcpClAdapter(
     private var serverJob: Job? = null
     private var selectorManager: ActorSelectorManager? = null
     private var serverSocket: ServerSocket? = null
-    private var listener: ((ByteArray) -> Unit)? = null
+    private var listener: (suspend (ByteArray) -> Boolean)? = null
 
     private var adapterScope: CoroutineScope? = null
 
@@ -100,7 +100,7 @@ class TcpClAdapter(
 
     override fun start(
         scope: CoroutineScope,
-        listener: (ByteArray) -> Unit,
+        listener: suspend (ByteArray) -> Boolean,
     ) {
         this.adapterScope = scope
         this.listener = listener
@@ -203,15 +203,26 @@ class TcpClAdapter(
                             }
                             input.readFully(bundleBytes, 0, length)
                             log("INFO", "Received bundle ($length bytes)")
-                            listener?.invoke(bundleBytes)
 
-                            // Send XFER_ACK (type 2)
-                            val ackMsg = ByteArray(18)
-                            ackMsg[0] = 2 // XFER_ACK
-                            ackMsg[1] = flags.toByte()
-                            java.nio.ByteBuffer.wrap(ackMsg, 2, 8).putLong(transferId)
-                            java.nio.ByteBuffer.wrap(ackMsg, 10, 8).putLong(length.toLong())
-                            output.writeFully(ackMsg, 0, 18)
+                            // Responsibility transfer: only acknowledge if bundle was successfully ingested and stored
+                            val accepted = try {
+                                listener?.invoke(bundleBytes) ?: false
+                            } catch (e: Exception) {
+                                log("ERROR", "Error ingesting received bundle: ${e.message}")
+                                false
+                            }
+
+                            if (accepted) {
+                                // Send XFER_ACK (type 2)
+                                val ackMsg = ByteArray(18)
+                                ackMsg[0] = 2 // XFER_ACK
+                                ackMsg[1] = flags.toByte()
+                                java.nio.ByteBuffer.wrap(ackMsg, 2, 8).putLong(transferId)
+                                java.nio.ByteBuffer.wrap(ackMsg, 10, 8).putLong(length.toLong())
+                                output.writeFully(ackMsg, 0, 18)
+                            } else {
+                                log("WARN", "Bundle ingestion failed or rejected; withholding XFER_ACK for transfer $transferId")
+                            }
                         }
                     }
                     4 -> { // KEEPALIVE
@@ -351,7 +362,8 @@ class TcpClAdapter(
                 while (socket.isActive) {
                     val msgType =
                         try {
-                            withTimeout(45000) { input.readByte().toInt() }
+                            // 3s quiescence timeout: if server has no further bundles, close gracefully and return promptly
+                            withTimeout(3000) { input.readByte().toInt() }
                         } catch (e: java.io.EOFException) {
                             break
                         } catch (e: Exception) {
@@ -381,15 +393,26 @@ class TcpClAdapter(
                                 }
                                 input.readFully(rxBundle, 0, length)
                                 log("INFO", "Received bundle from server ($length bytes)")
-                                listener?.invoke(rxBundle)
 
-                                // Send XFER_ACK back
-                                val ackMsg = ByteArray(18)
-                                ackMsg[0] = 2 // XFER_ACK
-                                ackMsg[1] = flags.toByte()
-                                java.nio.ByteBuffer.wrap(ackMsg, 2, 8).putLong(transferId)
-                                java.nio.ByteBuffer.wrap(ackMsg, 10, 8).putLong(length.toLong())
-                                output.writeFully(ackMsg, 0, 18)
+                                // Responsibility transfer: only acknowledge if bundle was successfully ingested and stored
+                                val accepted = try {
+                                    listener?.invoke(rxBundle) ?: false
+                                } catch (e: Exception) {
+                                    log("ERROR", "Error ingesting received bundle from server: ${e.message}")
+                                    false
+                                }
+
+                                if (accepted) {
+                                    // Send XFER_ACK back
+                                    val ackMsg = ByteArray(18)
+                                    ackMsg[0] = 2 // XFER_ACK
+                                    ackMsg[1] = flags.toByte()
+                                    java.nio.ByteBuffer.wrap(ackMsg, 2, 8).putLong(transferId)
+                                    java.nio.ByteBuffer.wrap(ackMsg, 10, 8).putLong(length.toLong())
+                                    output.writeFully(ackMsg, 0, 18)
+                                } else {
+                                    log("WARN", "Bundle ingestion failed or rejected; withholding XFER_ACK for transfer $transferId")
+                                }
                             }
                         }
                         4 -> { // KEEPALIVE
@@ -443,7 +466,7 @@ class BluetoothClassicAdapter(
     private var serverJob: Job? = null
     private var serverSocket: BluetoothServerSocket? = null
     private val bluetoothAdapter: BluetoothAdapter? = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)?.adapter
-    private var listener: ((ByteArray) -> Unit)? = null
+    private var listener: (suspend (ByteArray) -> Boolean)? = null
 
     private val activeSockets = java.util.Collections.synchronizedList(mutableListOf<BluetoothSocket>())
     private var adapterScope: CoroutineScope? = null
@@ -459,7 +482,7 @@ class BluetoothClassicAdapter(
 
     override fun start(
         scope: CoroutineScope,
-        listener: (ByteArray) -> Unit,
+        listener: suspend (ByteArray) -> Boolean,
     ) {
         this.adapterScope = scope
         this.listener = listener
@@ -515,7 +538,7 @@ class BluetoothClassicAdapter(
             }
     }
 
-    private fun handleIncomingRfcomm(socket: BluetoothSocket) {
+    private suspend fun handleIncomingRfcomm(socket: BluetoothSocket) {
         activeSockets.add(socket)
         log("INFO", "Bluetooth device connected")
         var inputStream: InputStream? = null
@@ -550,14 +573,25 @@ class BluetoothClassicAdapter(
                     bodyRead += read
                 }
                 log("INFO", "Received bundle via RFCOMM ($length bytes)")
-                listener?.invoke(bundleBytes)
 
-                // Send 1-byte ACK back to client to confirm full receipt before they close
-                try {
-                    socket.outputStream.write(1)
-                    socket.outputStream.flush()
+                // Responsibility transfer: only acknowledge if bundle was successfully ingested and stored
+                val accepted = try {
+                    listener?.invoke(bundleBytes) ?: false
                 } catch (e: Exception) {
-                    // Ignore write failures on acknowledgment
+                    log("ERROR", "Error ingesting received RFCOMM bundle: ${e.message}")
+                    false
+                }
+
+                if (accepted) {
+                    // Send 1-byte ACK back to client to confirm full receipt and storage before they close
+                    try {
+                        socket.outputStream.write(1)
+                        socket.outputStream.flush()
+                    } catch (e: Exception) {
+                        // Ignore write failures on acknowledgment
+                    }
+                } else {
+                    log("WARN", "RFCOMM bundle ingestion failed or rejected; withholding ACK")
                 }
             }
         } catch (e: Exception) {

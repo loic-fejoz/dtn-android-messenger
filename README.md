@@ -46,6 +46,27 @@ Here are screenshots of the application showcasing its main features:
 
 ---
 
+## Current Limitations & Design Trade-offs
+
+To remain lightweight, memory-efficient, and easy to maintain on mobile and embedded Android devices (API 23+), the convergence layer implementation deliberately opts for simplicity rather than full-blown complex streaming architectures:
+
+1. **Single-Segment Transfers (No Multi-Segment Streaming)**:
+   * Bundles are transmitted and received in single whole segments with `START | END` flags (`0x03`).
+   * Bundles exceeding the remote node's segment MTU are not split into multi-segment streams, keeping memory buffers small and avoiding multi-fragment reassembly buffers.
+2. **Sequential Half-Duplex Sessions (No Full-Duplex Multiplexing)**:
+   * Sessions transmit and pull bundles sequentially rather than running independent full-duplex pipelined read/write workers. This avoids concurrency deadlocks, mutex contention, and high background CPU usage.
+3. **Passive Keepalive Handling (No Active Heartbeat Timers)**:
+   * Keepalive frames from remote peers are parsed and accepted, but the application does not maintain an active timer emitting outbound `KEEPALIVE` frames during idle periods, relying instead on opportunistic transfers and read timeouts.
+4. **On-Demand Ephemeral Connections (No Persistent Connection Pooling)**:
+   * Outbound syncs establish on-demand TCP and Bluetooth sockets that close after draining the queues, preserving battery life and radio sleep cycles on mobile devices instead of maintaining persistent pooled connections.
+5. **Cleartext Only (No TLS)**:
+   * Designed for direct amateur radio / peer-to-peer operations where encryption is either prohibited by regulations (e.g. ITU Article 25) or adds unnecessary handshake overhead.
+
+> [!NOTE]
+> **Strict Responsibility Transfer**: While keeping the network state machine simple, the convergence layers strictly adhere to DTN responsibility transfer principles: an acknowledgement (`XFER_ACK` in TCPCLv4 or RFCOMM ACK in Bluetooth) is **never sent prematurely**. Acknowledgements are only emitted over the wire once the incoming bundle has passed all checks, its payload is written to persistent disk storage, and its record is securely committed to the local database.
+
+---
+
 ## 1. HOW TO IMPORT & TEST IN ANDROID STUDIO
 
 Your Android Studio installation is located at `/home/loic/download/android-studio`.

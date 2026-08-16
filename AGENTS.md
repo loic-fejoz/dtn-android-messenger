@@ -21,6 +21,10 @@ Provide a reliable, delay-tolerant messaging client on Android using BPv7, with 
   - `ui/`: Compose UI Screens and Navigation.
 - `app/src/test/`: Unit test suite.
 
+### Core DTN Rules & Principles
+- **Source EID vs. CLA Node ID**: The **Bundle Source EID** (`primaryBlock.source`) is a BPv7 application-layer endpoint identifier (e.g. `LocalService.serviceEid`, aliases, or inner encapsulated EIDs). It **MUST NEVER** be assumed to be identical to, or forcibly rewritten with, the **CLA Node ID** announced during transport handshakes (e.g. TCPCLv4 `SESS_INIT`). With services like `dtnbib` (BIBE), routing aliases, and multi-service nodes, bundles can validly originate from service EIDs distinct from the CLA transport node identifier.
+- **Responsibility Transfer**: `XFER_ACK` (TCPCLv4) and RFCOMM ACKs **MUST ONLY** be transmitted after an incoming bundle is verified, its payload is written to persistent disk storage, and its record is securely committed to Room DB.
+
 ### Documentation Index
 Refer to these detailed guides in `agent_docs/` for specific tasks:
 - [Architecture Guide](agent_docs/architecture.md): Read this before making changes to data flows, service cycles, or network adapters.

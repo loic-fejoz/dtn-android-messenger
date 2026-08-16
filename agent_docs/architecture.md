@@ -36,7 +36,22 @@ graph TD
 4. **State Transition**: Upon successful transmission, the database state of the record is updated to `BundleState.DELIVERED`.
 
 ### 2.2 Inbound Flow (Receiving)
-1. **Socket Listeners**: [`BluetoothClassicAdapter`](../app/src/main/java/com/dtn/messenger/cla/ConvergenceLayer.kt#L391) and [`TcpClAdapter`](../app/src/main/java/com/dtn/messenger/cla/ConvergenceLayer.kt#L15) listen continuously.
+1. **Socket Listeners**: [`BluetoothClassicAdapter`](../app/src/main/java/com/dtn/messenger/cla/ConvergenceLayer.kt#L459) and [`TcpClAdapter`](../app/src/main/java/com/dtn/messenger/cla/ConvergenceLayer.kt#L36) listen continuously.
 2. **Parsing**: Received raw bytes are parsed into a [`Bundle`](../app/src/main/java/com/dtn/messenger/protocol/Bpv7.kt#L9) structure using [`Bpv7Parser`](../app/src/main/java/com/dtn/messenger/protocol/Bpv7.kt#L110).
 3. **Insertion**: The parsed bundle is inserted into the local database as `BundleState.RECEIVED`.
-4. **UI Notification**: The UI automatically updates by observing the database flow (e.g. in [`RegistryScreen.kt`](../app/src/main/java/com/dtn/messenger/ui/RegistryScreen.kt)).
+4. **Responsibility Transfer**: Only after successful verification, payload disk write, and database insertion is `XFER_ACK` returned to the CLA peer.
+5. **UI Notification**: The UI automatically updates by observing the database flow (e.g. in [`RegistryScreen.kt`](../app/src/main/java/com/dtn/messenger/ui/RegistryScreen.kt)).
+
+---
+
+## 3. DTN EID Addressing: BPv7 Source EID vs. CLA Node ID
+
+A critical architectural distinction must be maintained between the Bundle Protocol layer and the Convergence Layer Adapters:
+
+* **BPv7 Bundle Source EID (`primaryBlock.source`)**:
+  - Identifies the specific application endpoint originating the bundle at the BP layer.
+  - Sourced directly from [`LocalService.serviceEid`](../app/src/main/java/com/dtn/messenger/data/model/Entities.kt#L50) (e.g. `dtn://station-1/chat`, sub-service aliases, or encapsulated transit EIDs).
+  - **Never forcibly rewrite or conflate this with the CLA node ID**. In delay-tolerant topologies, nodes can host multiple distinct service endpoints, bridge different networks, or route/encapsulate bundles on behalf of other endpoints (`dtnbib` / BIBE tunneling).
+* **CLA Node ID (`SESS_INIT` Node ID)**:
+  - Identifies the physical transport peer establishing the convergence layer connection (e.g. `dtn://f4jxq-9`).
+  - Used for transport session establishment, keepalive management, and neighbor route registration in adjacent BPAs.

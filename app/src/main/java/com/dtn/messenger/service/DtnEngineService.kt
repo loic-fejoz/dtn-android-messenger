@@ -152,9 +152,7 @@ class DtnEngineService : Service() {
                     if (!isBluetoothActive.value) {
                         log("INFO", "Starting Bluetooth Adapter")
                         bluetoothAdapter.start(serviceScope) { bundleBytes ->
-                            serviceScope.launch {
-                                onBundleReceived(bundleBytes)
-                            }
+                            onBundleReceived(bundleBytes)
                         }
                         isBluetoothActive.value = true
                     }
@@ -171,9 +169,7 @@ class DtnEngineService : Service() {
                     if (!isTcpActive.value) {
                         log("INFO", "Starting TCPCLv4 Adapter")
                         tcpClAdapter.start(serviceScope) { bundleBytes ->
-                            serviceScope.launch {
-                                onBundleReceived(bundleBytes)
-                            }
+                            onBundleReceived(bundleBytes)
                         }
                         isTcpActive.value = true
                     }
@@ -279,7 +275,7 @@ class DtnEngineService : Service() {
             }
     }
 
-    private suspend fun onBundleReceived(bundleBytes: ByteArray) {
+    private suspend fun onBundleReceived(bundleBytes: ByteArray): Boolean {
         try {
             val bundle = Bpv7Parser.deserialize(bundleBytes)
             val primary = bundle.primaryBlock
@@ -290,7 +286,7 @@ class DtnEngineService : Service() {
             val hopCount = bundle.hopCountBlock?.hopCount ?: 0
             if (hopCount >= hopLimit) {
                 log("WARN", "Received bundle from ${primary.source.uri} exceeded hop limit ($hopCount/$hopLimit). Discarding.")
-                return
+                return true // Handled terminal discard
             }
 
             // Duplicate check
@@ -299,7 +295,7 @@ class DtnEngineService : Service() {
             val duplicate = bundleRecordDao.findDuplicate(primary.source.uri, creationTime, seqNo)
             if (duplicate != null) {
                 log("INFO", "Duplicate bundle from ${primary.source.uri} (timestamp=$creationTime, seq=$seqNo) already exists. Discarding.")
-                return
+                return true // Already safely in local storage
             }
 
             log("INFO", "Processing received bundle from ${primary.source.uri}")
@@ -318,7 +314,7 @@ class DtnEngineService : Service() {
                             com.dtn.messenger.util.CryptoManager.decrypt(keyRecord.secretKey)
                         } catch (e: Exception) {
                             log("ERROR", "Failed to decrypt BPSec key for ${primary.source.uri}")
-                            return
+                            return false
                         }
                     // Compute expected signature
                     // For calculation, we need raw primary block bytes.
@@ -349,7 +345,7 @@ class DtnEngineService : Service() {
                     if (bpsecStatus == BpsecStatus.INVALID) {
                         if (policy == "strict") {
                             log("ERROR", "BPSec signature invalid under STRICT policy. Discarding bundle from ${primary.source.uri}.")
-                            return
+                            return false
                         } else if (policy == "warn") {
                             log("WARN", "BPSec signature invalid under WARN policy for bundle from ${primary.source.uri}.")
                         }
@@ -358,7 +354,7 @@ class DtnEngineService : Service() {
                     log("WARN", "No BPSec key found for source ${primary.source.uri}, verification skipped")
                     if (policy == "strict") {
                         log("ERROR", "BPSec key missing under STRICT policy. Discarding bundle from ${primary.source.uri}.")
-                        return
+                        return false
                     }
                 }
             } else {
@@ -367,7 +363,7 @@ class DtnEngineService : Service() {
                 if (keyRecord != null) {
                     if (policy == "strict") {
                         log("ERROR", "BPSec signature missing under STRICT policy. Discarding bundle from ${primary.source.uri}.")
-                        return
+                        return false
                     } else if (policy == "warn") {
                         log("WARN", "BPSec signature missing under WARN policy for bundle from ${primary.source.uri}.")
                     }
@@ -484,8 +480,11 @@ class DtnEngineService : Service() {
                     flushQueue()
                 }
             }
+
+            return true
         } catch (e: Exception) {
             log("ERROR", "Error handling received bundle: " + android.util.Log.getStackTraceString(e))
+            return false
         }
     }
 
