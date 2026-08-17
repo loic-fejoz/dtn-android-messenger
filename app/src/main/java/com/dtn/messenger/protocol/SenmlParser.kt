@@ -62,32 +62,36 @@ object SenmlParser {
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.optJSONObject(i) ?: continue
 
-                if (obj.has("bn")) baseName = obj.getString("bn")
-                if (obj.has("bt")) baseTime = obj.getDouble("bt")
-                if (obj.has("bu")) baseUnit = obj.getString("bu")
+                if (obj.has("bn") && !obj.isNull("bn")) baseName = obj.optString("bn", "")
+                if (obj.has("bt") && !obj.isNull("bt")) baseTime = obj.optDouble("bt", 0.0)
+                if (obj.has("bu") && !obj.isNull("bu")) baseUnit = obj.optString("bu", "")
 
-                val n = if (obj.has("n")) obj.getString("n") else null
+                val n = if (obj.has("n") && !obj.isNull("n")) obj.optString("n", "") else null
                 val fullName = baseName + (n ?: "")
 
                 if (fullName.isEmpty()) continue
 
-                val hasValue = obj.has("v") || obj.has("vs") || obj.has("vb") || obj.has("vd")
+                val hasValue = (obj.has("v") && !obj.isNull("v")) ||
+                    (obj.has("vs") && !obj.isNull("vs")) ||
+                    (obj.has("vb") && !obj.isNull("vb")) ||
+                    (obj.has("vd") && !obj.isNull("vd"))
+
                 if (!hasValue && n == null) {
                     continue
                 }
 
-                val u = if (obj.has("u")) obj.getString("u") else baseUnit
+                val u = if (obj.has("u") && !obj.isNull("u")) obj.optString("u", baseUnit) else baseUnit
 
                 val valueStr =
                     when {
-                        obj.has("v") -> formatDouble(obj.getDouble("v"))
-                        obj.has("vs") -> obj.getString("vs")
-                        obj.has("vb") -> obj.getBoolean("vb").toString()
-                        obj.has("vd") -> obj.getString("vd")
+                        obj.has("v") && !obj.isNull("v") -> formatDouble(obj.optDouble("v", 0.0))
+                        obj.has("vs") && !obj.isNull("vs") -> obj.optString("vs", "")
+                        obj.has("vb") && !obj.isNull("vb") -> obj.optBoolean("vb", false).toString()
+                        obj.has("vd") && !obj.isNull("vd") -> obj.optString("vd", "")
                         else -> "0"
                     }
 
-                val t = if (obj.has("t")) obj.getDouble("t") else 0.0
+                val t = if (obj.has("t") && !obj.isNull("t")) obj.optDouble("t", 0.0) else 0.0
                 val timeVal = calculateTimeMs(baseTime + t, fallbackTimestampMs)
 
                 result.add(SenmlRecord(name = fullName, value = valueStr, unit = u, timestamp = timeVal))
@@ -96,6 +100,48 @@ object SenmlParser {
             // Parsing failed
         }
         return result
+    }
+
+    private fun getCborString(item: CBORObject, strKey: String, intKey: Int): String? {
+        val obj = item.get(strKey) ?: item.get(intKey) ?: return null
+        if (obj.isNull) return null
+        return try {
+            when (obj.type) {
+                CBORType.TextString -> obj.AsString()
+                CBORType.ByteString -> obj.GetByteString().toString(Charsets.UTF_8)
+                else -> null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun getCborDouble(item: CBORObject, strKey: String, intKey: Int): Double? {
+        val obj = item.get(strKey) ?: item.get(intKey) ?: return null
+        if (obj.isNull) return null
+        return try {
+            when (obj.type) {
+                CBORType.FloatingPoint -> obj.AsDouble()
+                CBORType.Integer -> obj.AsInt64Value().toDouble()
+                else -> if (obj.isNumber) obj.AsString().toDoubleOrNull() else null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun getCborBoolean(item: CBORObject, strKey: String, intKey: Int): Boolean? {
+        val obj = item.get(strKey) ?: item.get(intKey) ?: return null
+        if (obj.isNull) return null
+        return try {
+            if (obj.type == CBORType.Boolean) {
+                obj.AsBoolean()
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private fun parseCbor(
@@ -119,44 +165,63 @@ object SenmlParser {
             for (item in list) {
                 if (item.type != CBORType.Map) continue
 
-                val bnObj = item.get("bn") ?: item.get(-2)
-                if (bnObj != null) baseName = bnObj.AsString()
+                val bn = getCborString(item, "bn", -2)
+                if (bn != null) {
+                    baseName = bn
+                }
 
-                val btObj = item.get("bt") ?: item.get(-3)
-                if (btObj != null) baseTime = btObj.AsDouble()
+                val bt = getCborDouble(item, "bt", -3)
+                if (bt != null) {
+                    baseTime = bt
+                }
 
-                val buObj = item.get("bu") ?: item.get(-4)
-                if (buObj != null) baseUnit = buObj.AsString()
+                val bu = getCborString(item, "bu", -4)
+                if (bu != null) {
+                    baseUnit = bu
+                }
 
-                val nObj = item.get("n") ?: item.get(0)
-                val n = nObj?.AsString()
+                val n = getCborString(item, "n", 0)
                 val fullName = baseName + (n ?: "")
 
                 if (fullName.isEmpty()) continue
 
-                val uObj = item.get("u") ?: item.get(1)
-                val u = uObj?.AsString() ?: baseUnit
+                val u = getCborString(item, "u", 1) ?: baseUnit
 
-                val vObj = item.get("v") ?: item.get(2)
-                val vsObj = item.get("vs") ?: item.get(3)
-                val vbObj = item.get("vb") ?: item.get(4)
+                val v = getCborDouble(item, "v", 2)
+                val vs = getCborString(item, "vs", 3)
+                val vb = getCborBoolean(item, "vb", 4)
+
                 val vdObj = item.get("vd") ?: item.get(8)
+                val vd = if (vdObj != null && !vdObj.isNull) {
+                    if (vdObj.type == CBORType.ByteString) {
+                        try {
+                            java.util.Base64.getEncoder().encodeToString(vdObj.GetByteString())
+                        } catch (e: Throwable) {
+                            try {
+                                android.util.Base64.encodeToString(vdObj.GetByteString(), android.util.Base64.NO_WRAP)
+                            } catch (e2: Throwable) {
+                                vdObj.GetByteString().joinToString("") { "%02x".format(it) }
+                            }
+                        }
+                    } else if (vdObj.type == CBORType.TextString) {
+                        vdObj.AsString()
+                    } else null
+                } else null
 
-                if (vObj == null && vsObj == null && vbObj == null && vdObj == null && n == null) {
+                if (v == null && vs == null && vb == null && vd == null && n == null) {
                     continue
                 }
 
                 val valueStr =
                     when {
-                        vObj != null -> formatDouble(vObj.AsDouble())
-                        vsObj != null -> vsObj.AsString()
-                        vbObj != null -> vbObj.AsBoolean().toString()
-                        vdObj != null -> vdObj.AsString()
+                        v != null -> formatDouble(v)
+                        vs != null -> vs
+                        vb != null -> vb.toString()
+                        vd != null -> vd
                         else -> "0"
                     }
 
-                val tObj = item.get("t") ?: item.get(6)
-                val t = tObj?.AsDouble() ?: 0.0
+                val t = getCborDouble(item, "t", 6) ?: 0.0
                 val timeVal = calculateTimeMs(baseTime + t, fallbackTimestampMs)
 
                 result.add(SenmlRecord(name = fullName, value = valueStr, unit = u, timestamp = timeVal))

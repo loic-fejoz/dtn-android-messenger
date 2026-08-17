@@ -61,9 +61,9 @@ fun SenmlLastScreen(
             serviceName = s.displayName
         }
 
-        // If no entries exist yet, attempt to populate from historical bundles for this service
-        val currentEntries = senmlEntryDao.getActiveEntriesList(serviceEid)
-        if (currentEntries.isEmpty()) {
+        // If no entries exist yet in DB for this service, attempt initial backfill from historical bundles
+        val allEntries = senmlEntryDao.getAllEntriesForService(serviceEid)
+        if (allEntries.isEmpty()) {
             val bundles = bundleRecordDao.getByDestination(serviceEid).first()
             for (bundle in bundles.reversed()) {
                 try {
@@ -124,6 +124,19 @@ fun SenmlLastScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
+                    }
+                },
+                actions = {
+                    if (entries.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    senmlEntryDao.deleteAllForService(serviceEid)
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Tout supprimer", tint = MaterialTheme.colorScheme.error)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -197,7 +210,7 @@ fun SenmlLastScreen(
                             },
                             onDelete = {
                                 coroutineScope.launch {
-                                    senmlEntryDao.markDeleted(serviceEid, item.name)
+                                    senmlEntryDao.deleteEntry(serviceEid, item.name)
                                 }
                             }
                         )

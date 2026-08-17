@@ -147,11 +147,20 @@ interface SenmlEntryDao {
     @Query("SELECT * FROM senml_entries WHERE serviceEid = :serviceEid AND isDeleted = 0 ORDER BY displayOrder ASC, name ASC")
     suspend fun getActiveEntriesList(serviceEid: String): List<SenmlEntry>
 
+    @Query("SELECT * FROM senml_entries WHERE serviceEid = :serviceEid")
+    suspend fun getAllEntriesForService(serviceEid: String): List<SenmlEntry>
+
     @Query("SELECT * FROM senml_entries WHERE serviceEid = :serviceEid AND name = :name")
     suspend fun getEntry(serviceEid: String, name: String): SenmlEntry?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(entry: SenmlEntry)
+
+    @Query("DELETE FROM senml_entries WHERE serviceEid = :serviceEid AND name = :name")
+    suspend fun deleteEntry(serviceEid: String, name: String)
+
+    @Query("DELETE FROM senml_entries WHERE serviceEid = :serviceEid")
+    suspend fun deleteAllForService(serviceEid: String)
 
     @Query("UPDATE senml_entries SET isDeleted = 1 WHERE serviceEid = :serviceEid AND name = :name")
     suspend fun markDeleted(serviceEid: String, name: String)

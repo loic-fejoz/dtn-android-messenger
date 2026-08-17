@@ -864,6 +864,7 @@ fun KeystoreConfigTab(
 fun ServicesConfigTab(
     dao: LocalServiceDao,
     scope: CoroutineScope,
+    senmlEntryDao: com.dtn.messenger.data.dao.SenmlEntryDao = org.koin.compose.koinInject(),
 ) {
     val context = LocalContext.current
     val services by dao.getAll().collectAsState(initial = emptyList())
@@ -1098,7 +1099,10 @@ fun ServicesConfigTab(
                         }
                     }
                     IconButton(onClick = {
-                        scope.launch { dao.delete(service) }
+                        scope.launch {
+                            dao.delete(service)
+                            senmlEntryDao.deleteAllForService(service.serviceEid)
+                        }
                     }) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = GlowRed)
                     }
