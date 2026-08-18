@@ -19,6 +19,8 @@ import com.dtn.messenger.protocol.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.koin.android.ext.android.inject
 import java.io.File
@@ -27,6 +29,7 @@ import java.util.UUID
 
 class DtnEngineService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val flushMutex = Mutex()
 
     private val localServiceDao: LocalServiceDao by inject()
     private val bundleRecordDao: BundleRecordDao by inject()
@@ -637,185 +640,212 @@ class DtnEngineService : Service() {
         notificationManager.notify(record.bundleId.hashCode(), builder.build())
     }
 
-    private suspend fun flushQueue(): Boolean {
-        val outbox = bundleRecordDao.getByState(BundleState.OUTBOX)
-        val transit = bundleRecordDao.getByState(BundleState.TRANSIT)
-        val allOutgoing = outbox + transit
+    private suspend fun flushQueue(): Boolean =
+        flushMutex.withLock {
+            val outbox = bundleRecordDao.getByState(BundleState.OUTBOX)
+            val transit = bundleRecordDao.getByState(BundleState.TRANSIT)
+            val allOutgoing = outbox + transit
 
-        if (allOutgoing.isEmpty()) {
-            val profiles = convergenceProfileDao.getAllList()
-            for (profile in profiles) {
-                if (profile.isPaused) continue
-                if (profile.triggerType == TriggerType.PERIODIC_INTERNET) {
-                    val adapter = adapters.find { it.name.lowercase() == "tcpclv4" }
-                    if (adapter != null) {
-                        log("INFO", "Performing periodic pull connection to ${profile.targetAddress}")
-                        adapter.sendBundle(ByteArray(0), profile.targetAddress)
+            if (allOutgoing.isEmpty()) {
+                val profiles = convergenceProfileDao.getAllList()
+                for (profile in profiles) {
+                    if (profile.isPaused) continue
+                    if (profile.triggerType == TriggerType.PERIODIC_INTERNET) {
+                        val adapter = adapters.find { it.name.lowercase() == "tcpclv4" }
+                        if (adapter != null) {
+                            log("INFO", "Performing periodic pull connection to ${profile.targetAddress}")
+                            adapter.sendBundle(ByteArray(0), profile.targetAddress)
+                        }
                     }
                 }
+                return@withLock false
             }
-            return false
-        }
 
-        log("INFO", "Flushing queue, ${allOutgoing.size} outgoing bundle(s)")
-        var anySuccess = false
+            log("INFO", "Flushing queue, ${allOutgoing.size} outgoing bundle(s)")
+            var anySuccess = false
 
-        for (record in allOutgoing) {
-            val file = File(record.payloadFilePath)
-            if (!file.exists()) {
-                log("WARN", "Payload file not found for bundle ${record.bundleId}, removing orphaned record from queue")
-                bundleRecordDao.delete(record)
-                continue
-            }
-            val maxSizeBytes = com.dtn.messenger.util.PreferencesHelper.getMaxBundleSizeBytes(this)
-            if (file.length() > maxSizeBytes) {
-                val maxMb = maxSizeBytes / (1024 * 1024)
-                log("WARN", "Bundle ${record.bundleId} payload size (${file.length()} bytes) exceeds maximum configured limit of $maxMb MB. Skipping.")
-                continue
-            }
-            val payloadBytes = file.readBytes()
+            data class OutgoingBatchItem(
+                val record: BundleRecord,
+                val bundleBytes: ByteArray,
+                val profile: ConvergenceProfile,
+            )
 
-            if (record.hopCount + 1 >= 64) {
-                log("WARN", "Bundle ${record.bundleId} exceeded hop limit (64) during forwarding. Discarding.")
-                try {
-                    val fileObj = File(record.payloadFilePath)
-                    if (fileObj.exists()) fileObj.delete()
-                } catch (e: Exception) {
+            val batchItems = mutableListOf<OutgoingBatchItem>()
+
+            for (record in allOutgoing) {
+                // Re-verify that record is still pending in case it was updated by a previous step
+                val current = bundleRecordDao.getById(record.bundleId)
+                if (current == null || (current.state != BundleState.OUTBOX && current.state != BundleState.TRANSIT)) {
+                    continue
                 }
-                bundleRecordDao.delete(record)
-                continue
-            }
 
-            // Resolve next hop
-            var nextHop = resolveNextHop(record.destinationEid)
-            var useBibe = false
-            var bibeGateway: String? = null
-            if (nextHop.startsWith("bibe:")) {
-                useBibe = true
-                bibeGateway = nextHop.substring(5)
-                nextHop = bibeGateway
-            }
+                val file = File(record.payloadFilePath)
+                if (!file.exists()) {
+                    log("WARN", "Payload file not found for bundle ${record.bundleId}, removing orphaned record from queue")
+                    bundleRecordDao.delete(record)
+                    continue
+                }
+                val maxSizeBytes = com.dtn.messenger.util.PreferencesHelper.getMaxBundleSizeBytes(this@DtnEngineService)
+                if (file.length() > maxSizeBytes) {
+                    val maxMb = maxSizeBytes / (1024 * 1024)
+                    log("WARN", "Bundle ${record.bundleId} payload size (${file.length()} bytes) exceeds maximum configured limit of $maxMb MB. Skipping.")
+                    continue
+                }
+                val payloadBytes = file.readBytes()
 
-            val profile = findProfileForNextHop(nextHop)
-            if (profile == null) {
-                log("WARN", "No convergence profile found to reach next-hop $nextHop (dest: ${record.destinationEid})")
-                continue
-            }
-
-            // Load BPSec Key if present to sign bundle
-            val keyRecord = bpsecKeyDao.getByKeyId(record.destinationEid) ?: bpsecKeyDao.getByKeyId(nextHop)
-
-            // Build blocks
-            val primary =
-                PrimaryBlock(
-                    destination = Eid(record.destinationEid),
-                    source = Eid(record.sourceEid),
-                    reportTo = Eid(record.sourceEid),
-                    creationTimestamp = Pair(dtnTimeFromSystem(record.creationTimestamp), record.sequenceNumber),
-                    lifetimeMs = record.lifetimeMs,
-                )
-
-            val payload = PayloadBlock(data = payloadBytes)
-            val hopCount = HopCountBlock(hopLimit = 64, hopCount = record.hopCount + 1)
-
-            var bib: BibBlock? = null
-            if (keyRecord != null) {
-                val decryptedKey =
+                if (record.hopCount + 1 >= 64) {
+                    log("WARN", "Bundle ${record.bundleId} exceeded hop limit (64) during forwarding. Discarding.")
                     try {
-                        com.dtn.messenger.util.CryptoManager.decrypt(keyRecord.secretKey)
+                        val fileObj = File(record.payloadFilePath)
+                        if (fileObj.exists()) fileObj.delete()
                     } catch (e: Exception) {
-                        log("ERROR", "Failed to decrypt local BPSec key for signature")
-                        null
                     }
-                if (decryptedKey != null) {
-                    // Compute signature
-                    val rawPrimary = Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
-                    val signature =
-                        Bpv7Parser.computeHmac(
-                            secretKey = decryptedKey,
-                            primaryBlockBytes = rawPrimary,
-                            targetBlockType = 1,
-                            targetBlockNumber = payload.blockNumber,
-                            targetBlockFlags = payload.blockControlFlags,
-                            securityBlockType = 11,
-                            // BIB block number
-                            securityBlockNumber = 2,
-                            securityBlockFlags = 3,
-                            payloadBytes = payloadBytes,
-                            scopeFlags = 7,
-                        )
-                    bib =
-                        BibBlock(
-                            blockNumber = 2,
-                            securitySource = Eid(record.sourceEid),
-                            signature = signature,
-                        )
-                    log("INFO", "Signed bundle ${record.bundleId} using key for EID: ${keyRecord.nodeEid}")
+                    bundleRecordDao.delete(record)
+                    continue
                 }
-            }
 
-            val bundle = Bundle(primary, payload, hopCount, bib)
-            var bundleBytes = Bpv7Parser.serialize(bundle)
+                // Resolve next hop
+                var nextHop = resolveNextHop(record.destinationEid)
+                var useBibe = false
+                var bibeGateway: String? = null
+                if (nextHop.startsWith("bibe:")) {
+                    useBibe = true
+                    bibeGateway = nextHop.substring(5)
+                    nextHop = bibeGateway
+                }
 
-            if (useBibe && bibeGateway != null) {
-                log("INFO", "Encapsulating bundle ${record.bundleId} in a BIBE tunnel via gateway $bibeGateway")
+                val profile = findProfileForNextHop(nextHop)
+                if (profile == null) {
+                    log("WARN", "No convergence profile found to reach next-hop $nextHop (dest: ${record.destinationEid})")
+                    continue
+                }
 
-                // 1. Build the BIBE PDU (CBOR Administrative Record 64443)
-                val pduContent = com.upokecenter.cbor.CBORObject.NewArray()
-                pduContent.Add(record.bundleId.hashCode() and 0x7FFFFFFF) // transmission-id
-                pduContent.Add(0) // retransmission-time
-                pduContent.Add(bundleBytes) // encapsulated-bundle
+                // Load BPSec Key if present to sign bundle
+                val keyRecord = bpsecKeyDao.getByKeyId(record.destinationEid) ?: bpsecKeyDao.getByKeyId(nextHop)
 
-                val pdu = com.upokecenter.cbor.CBORObject.NewArray()
-                pdu.Add(64443)
-                pdu.Add(pduContent)
-                val outerPayloadBytes = pdu.EncodeToBytes()
-
-                // 2. Build the outer bundle targeting the gateway's bibe service
-                val gatewayBibeEid = if (bibeGateway.endsWith("/bibe")) bibeGateway else "$bibeGateway/bibe"
-                val prefs = com.dtn.messenger.util.PreferencesHelper.getEncryptedSharedPreferences(this@DtnEngineService)
-                val localNodeBase = prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node"
-                val localBibeEid = "$localNodeBase/bibe"
-
-                val outerPrimary =
+                // Build blocks
+                val primary =
                     PrimaryBlock(
-                        destination = Eid(gatewayBibeEid),
-                        source = Eid(localBibeEid),
-                        reportTo = Eid(localBibeEid),
-                        creationTimestamp = Pair(dtnTimeFromSystem(System.currentTimeMillis()), bibeSeqCounter.getAndIncrement()),
+                        destination = Eid(record.destinationEid),
+                        source = Eid(record.sourceEid),
+                        reportTo = Eid(record.sourceEid),
+                        creationTimestamp = Pair(dtnTimeFromSystem(record.creationTimestamp), record.sequenceNumber),
                         lifetimeMs = record.lifetimeMs,
                     )
-                val outerPayload = PayloadBlock(data = outerPayloadBytes)
-                val outerHopCount = HopCountBlock(hopLimit = 64, hopCount = record.hopCount + 1)
 
-                val outerBundle = Bundle(outerPrimary, outerPayload, outerHopCount, null)
-                bundleBytes = Bpv7Parser.serialize(outerBundle)
-            }
+                val payload = PayloadBlock(data = payloadBytes)
+                val hopCount = HopCountBlock(hopLimit = 64, hopCount = record.hopCount + 1)
 
-            // Select adapter and transmit
-            val adapter =
-                adapters.find {
-                    it.name.lowercase() == (if (profile.triggerType == TriggerType.BLUETOOTH_ALWAYS) "bluetooth" else "tcpclv4").lowercase()
+                var bib: BibBlock? = null
+                if (keyRecord != null) {
+                    val decryptedKey =
+                        try {
+                            com.dtn.messenger.util.CryptoManager.decrypt(keyRecord.secretKey)
+                        } catch (e: Exception) {
+                            log("ERROR", "Failed to decrypt local BPSec key for signature")
+                            null
+                        }
+                    if (decryptedKey != null) {
+                        // Compute signature
+                        val rawPrimary = Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
+                        val signature =
+                            Bpv7Parser.computeHmac(
+                                secretKey = decryptedKey,
+                                primaryBlockBytes = rawPrimary,
+                                targetBlockType = 1,
+                                targetBlockNumber = payload.blockNumber,
+                                targetBlockFlags = payload.blockControlFlags,
+                                securityBlockType = 11,
+                                // BIB block number
+                                securityBlockNumber = 2,
+                                securityBlockFlags = 3,
+                                payloadBytes = payloadBytes,
+                                scopeFlags = 7,
+                            )
+                        bib =
+                            BibBlock(
+                                blockNumber = 2,
+                                securitySource = Eid(record.sourceEid),
+                                signature = signature,
+                            )
+                        log("INFO", "Signed bundle ${record.bundleId} using key for EID: ${keyRecord.nodeEid}")
+                    }
                 }
-            if (adapter == null) {
-                log("ERROR", "No adapter found for profile type ${profile.triggerType}")
-                continue
+
+                val bundle = Bundle(primary, payload, hopCount, bib)
+                var bundleBytes = Bpv7Parser.serialize(bundle)
+
+                if (useBibe && bibeGateway != null) {
+                    log("INFO", "Encapsulating bundle ${record.bundleId} in a BIBE tunnel via gateway $bibeGateway")
+
+                    // 1. Build the BIBE PDU (CBOR Administrative Record 64443)
+                    val pduContent = com.upokecenter.cbor.CBORObject.NewArray()
+                    pduContent.Add(record.bundleId.hashCode() and 0x7FFFFFFF) // transmission-id
+                    pduContent.Add(0) // retransmission-time
+                    pduContent.Add(bundleBytes) // encapsulated-bundle
+
+                    val pdu = com.upokecenter.cbor.CBORObject.NewArray()
+                    pdu.Add(64443)
+                    pdu.Add(pduContent)
+                    val outerPayloadBytes = pdu.EncodeToBytes()
+
+                    // 2. Build the outer bundle targeting the gateway's bibe service
+                    val gatewayBibeEid = if (bibeGateway.endsWith("/bibe")) bibeGateway else "$bibeGateway/bibe"
+                    val prefs = com.dtn.messenger.util.PreferencesHelper.getEncryptedSharedPreferences(this@DtnEngineService)
+                    val localNodeBase = prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node"
+                    val localBibeEid = "$localNodeBase/bibe"
+
+                    val outerPrimary =
+                        PrimaryBlock(
+                            destination = Eid(gatewayBibeEid),
+                            source = Eid(localBibeEid),
+                            reportTo = Eid(localBibeEid),
+                            creationTimestamp = Pair(dtnTimeFromSystem(System.currentTimeMillis()), bibeSeqCounter.getAndIncrement()),
+                            lifetimeMs = record.lifetimeMs,
+                        )
+                    val outerPayload = PayloadBlock(data = outerPayloadBytes)
+                    val outerHopCount = HopCountBlock(hopLimit = 64, hopCount = record.hopCount + 1)
+
+                    val outerBundle = Bundle(outerPrimary, outerPayload, outerHopCount, null)
+                    bundleBytes = Bpv7Parser.serialize(outerBundle)
+                }
+
+                batchItems.add(OutgoingBatchItem(record, bundleBytes, profile))
             }
 
-            log("INFO", "Transmitting bundle ${record.bundleId} via ${adapter.name} to ${profile.targetAddress}")
-            val success = adapter.sendBundle(bundleBytes, profile.targetAddress)
-            if (success) {
-                val nextState = BundleState.DELIVERED
-                bundleRecordDao.updateState(record.bundleId, nextState)
-                log("INFO", "Bundle ${record.bundleId} successfully sent! New state: $nextState")
-                anySuccess = true
-                updateTrigger.emit(Unit)
-            } else {
-                log("WARN", "Transmission failed for bundle ${record.bundleId}")
+            // Group by trigger type and target address to stream all pending bundles over a single connection
+            val grouped = batchItems.groupBy { Pair(it.profile.triggerType, it.profile.targetAddress) }
+
+            for ((key, items) in grouped) {
+                val (triggerType, targetAddress) = key
+                val adapter =
+                    adapters.find {
+                        it.name.lowercase() == (if (triggerType == TriggerType.BLUETOOTH_ALWAYS) "bluetooth" else "tcpclv4").lowercase()
+                    }
+                if (adapter == null) {
+                    log("ERROR", "No adapter found for profile type $triggerType")
+                    continue
+                }
+
+                log("INFO", "Transmitting ${items.size} bundle(s) via ${adapter.name} to $targetAddress in single session")
+                val bundlesPayload =
+                    items.map { item ->
+                        Pair<ByteArray, (suspend () -> Unit)?>(item.bundleBytes) {
+                            val nextState = BundleState.DELIVERED
+                            bundleRecordDao.updateState(item.record.bundleId, nextState)
+                            log("INFO", "Bundle ${item.record.bundleId} acknowledged by peer! State updated immediately to $nextState")
+                            anySuccess = true
+                            updateTrigger.emit(Unit)
+                        }
+                    }
+
+                val success = adapter.sendBundles(bundlesPayload, targetAddress)
+                if (success) {
+                    anySuccess = true
+                }
             }
+            return@withLock anySuccess
         }
-        return anySuccess
-    }
 
     private suspend fun resolveNextHop(destination: String): String {
         val rules = routingRuleDao.getAllList()
@@ -893,15 +923,19 @@ class DtnEngineService : Service() {
                 val address = intent.getStringExtra("address")
                 if (address != null) {
                     serviceScope.launch {
-                        log("INFO", "Forced connection triggered to $address. Flushing queue first.")
-                        try {
-                            flushQueue()
-                        } catch (e: Exception) {
-                            log("WARN", "Forced queue flush error: ${e.message}")
-                        }
-                        val adapter = adapters.find { it.name.lowercase().contains("tcp") }
-                        if (adapter != null) {
-                            adapter.sendBundle(ByteArray(0), address)
+                        log("INFO", "Forced connection triggered to $address.")
+                        val flushed =
+                            try {
+                                flushQueue()
+                            } catch (e: Exception) {
+                                log("WARN", "Forced queue flush error: ${e.message}")
+                                false
+                            }
+                        if (!flushed) {
+                            val adapter = adapters.find { it.name.lowercase().contains("tcp") }
+                            if (adapter != null) {
+                                adapter.sendBundle(ByteArray(0), address)
+                            }
                         }
                     }
                 }
