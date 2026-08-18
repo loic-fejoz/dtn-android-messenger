@@ -3,7 +3,6 @@ package com.dtn.messenger.protocol
 import com.code_intelligence.jazzer.junit.FuzzTest
 
 class Bpv7FuzzTest {
-
     @FuzzTest(maxDuration = "1m")
     fun fuzzDeserializer(data: ByteArray) {
         try {

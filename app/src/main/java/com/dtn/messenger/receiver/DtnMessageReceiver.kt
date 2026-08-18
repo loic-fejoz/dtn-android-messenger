@@ -54,11 +54,14 @@ class DtnMessageReceiver : BroadcastReceiver(), KoinComponent {
                         val record =
                             BundleRecord(
                                 bundleId = bundleId,
-                                destinationEid = srcEid, // reply target is the sender
-                                sourceEid = destEid, // reply origin is local service EID
+                                // reply target is the sender
+                                destinationEid = srcEid,
+                                // reply origin is local service EID
+                                sourceEid = destEid,
                                 creationTimestamp = System.currentTimeMillis(),
                                 sequenceNumber = System.currentTimeMillis() % 100000,
-                                lifetimeMs = 3600000L, // 1 hour lifetime
+                                // 1 hour lifetime
+                                lifetimeMs = 3600000L,
                                 payloadFilePath = payloadFile.absolutePath,
                                 state = BundleState.OUTBOX,
                                 isRead = true,
@@ -73,7 +76,11 @@ class DtnMessageReceiver : BroadcastReceiver(), KoinComponent {
                             Intent(context, DtnEngineService::class.java).apply {
                                 action = "FLUSH_QUEUE"
                             }
-                        androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
+                        try {
+                            androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
+                        } catch (e: Exception) {
+                            android.util.Log.e("DtnMessageReceiver", "Failed to start foreground service on reply: ${e.message}")
+                        }
                     } finally {
                         pendingResult.finish()
                     }

@@ -51,7 +51,9 @@ import com.dtn.messenger.data.model.BpsecStatus
 import com.dtn.messenger.data.model.BundleRecord
 import com.dtn.messenger.data.model.BundleState
 import com.dtn.messenger.service.DtnEngineService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
@@ -683,49 +685,38 @@ fun SendBundleScreen(
 
                     scope.launch {
                         try {
-                            val payloadsDir = File(context.filesDir, "payloads")
-                            if (!payloadsDir.exists()) payloadsDir.mkdirs()
-
-                            val bundleId = UUID.randomUUID().toString()
-                            val fileExt = if (isFileMode) selectedFileName.substringAfterLast('.', "bin") else "bin"
-                            val payloadFile = File(payloadsDir, "$bundleId.$fileExt")
-
                             val maxSizeBytes = com.dtn.messenger.util.PreferencesHelper.getMaxBundleSizeBytes(context)
                             val maxMb = maxSizeBytes / (1024 * 1024)
 
-                            if (isFileMode) {
-                                var fileSize = -1L
-                                try {
-                                    context.contentResolver.openFileDescriptor(selectedFileUri!!, "r")?.use { pfd ->
-                                        fileSize = pfd.statSize
-                                    }
-                                } catch (e: Exception) {
-                                }
+                            val payloadFile =
+                                withContext(Dispatchers.IO) {
+                                    val payloadsDir = File(context.filesDir, "payloads")
+                                    if (!payloadsDir.exists()) payloadsDir.mkdirs()
 
-                                if (fileSize > maxSizeBytes) {
-                                    Toast.makeText(context, "Payload size (${fileSize / (1024 * 1024)} MB) exceeds maximum limit of ${maxMb} MB", Toast.LENGTH_LONG).show()
-                                    return@launch
-                                }
+                                    val bundleId = UUID.randomUUID().toString()
+                                    val fileExt = if (isFileMode) selectedFileName.substringAfterLast('.', "bin") else "bin"
+                                    val file = File(payloadsDir, "$bundleId.$fileExt")
 
-                                context.contentResolver.openInputStream(selectedFileUri!!).use { input ->
-                                    payloadFile.outputStream().use { output ->
-                                        input!!.copyTo(output)
+                                    if (isFileMode) {
+                                        context.contentResolver.openInputStream(selectedFileUri!!).use { input ->
+                                            file.outputStream().use { output ->
+                                                input!!.copyTo(output)
+                                            }
+                                        }
+                                    } else {
+                                        val textBytes = payloadText.toByteArray(Charsets.UTF_8)
+                                        FileOutputStream(file).use { fos ->
+                                            fos.write(textBytes)
+                                        }
                                     }
+                                    file
                                 }
-                            } else {
-                                val textBytes = payloadText.toByteArray(Charsets.UTF_8)
-                                if (textBytes.size > maxSizeBytes) {
-                                    Toast.makeText(context, "Payload size exceeds maximum limit of ${maxMb} MB", Toast.LENGTH_LONG).show()
-                                    return@launch
-                                }
-                                FileOutputStream(payloadFile).use { fos ->
-                                    fos.write(textBytes)
-                                }
-                            }
 
                             if (payloadFile.length() > maxSizeBytes) {
-                                if (payloadFile.exists()) payloadFile.delete()
-                                Toast.makeText(context, "Payload size (${payloadFile.length()} bytes) exceeds maximum limit of ${maxMb} MB", Toast.LENGTH_LONG).show()
+                                withContext(Dispatchers.IO) {
+                                    if (payloadFile.exists()) payloadFile.delete()
+                                }
+                                Toast.makeText(context, "Payload size (${payloadFile.length()} bytes) exceeds maximum limit of $maxMb MB", Toast.LENGTH_LONG).show()
                                 return@launch
                             }
 
@@ -743,21 +734,23 @@ fun SendBundleScreen(
                                 }
                             val calculatedLifetimeMs = parsedTtlValue * multiplier
 
-                            val record =
-                                BundleRecord(
-                                    bundleId = bundleId,
-                                    destinationEid = destination.trim(),
-                                    sourceEid = resolvedSourceEid,
-                                    creationTimestamp = System.currentTimeMillis(),
-                                    sequenceNumber = System.currentTimeMillis() % 100000,
-                                    lifetimeMs = calculatedLifetimeMs,
-                                    payloadFilePath = payloadFile.absolutePath,
-                                    state = BundleState.OUTBOX,
-                                    isRead = true,
-                                    bpsecStatus = BpsecStatus.UNVERIFIED,
-                                    hopCount = 0,
-                                )
-                            bundleRecordDao.insert(record)
+                            withContext(Dispatchers.IO) {
+                                val record =
+                                    BundleRecord(
+                                        bundleId = payloadFile.nameWithoutExtension,
+                                        destinationEid = destination.trim(),
+                                        sourceEid = resolvedSourceEid,
+                                        creationTimestamp = System.currentTimeMillis(),
+                                        sequenceNumber = System.currentTimeMillis() % 100000,
+                                        lifetimeMs = calculatedLifetimeMs,
+                                        payloadFilePath = payloadFile.absolutePath,
+                                        state = BundleState.OUTBOX,
+                                        isRead = true,
+                                        bpsecStatus = BpsecStatus.UNVERIFIED,
+                                        hopCount = 0,
+                                    )
+                                bundleRecordDao.insert(record)
+                            }
 
                             // Start service queue flush
                             val serviceIntent =

@@ -13,11 +13,12 @@ enum class ViewerType {
 
 @Entity(
     tableName = "senml_entries",
-    primaryKeys = ["serviceEid", "name"]
+    primaryKeys = ["serviceEid", "name"],
 )
 data class SenmlEntry(
     val serviceEid: String,
-    val name: String, // Reconstructed full name (bn + n)
+    // Reconstructed full name (bn + n)
+    val name: String,
     val customLabel: String? = null,
     val value: String,
     val unit: String,
@@ -47,7 +48,8 @@ enum class TriggerType {
 
 @Entity(tableName = "local_services")
 data class LocalService(
-    @PrimaryKey val serviceEid: String, // ex: "dtn://my-node/chat"
+    // ex: "dtn://my-node/chat"
+    @PrimaryKey val serviceEid: String,
     val displayName: String,
     val viewerType: ViewerType,
     val notificationSoundUri: String? = null,
@@ -59,13 +61,15 @@ data class LocalService(
 
 @Entity(tableName = "bundle_records")
 data class BundleRecord(
-    @PrimaryKey val bundleId: String, // Hash or UUID of Primary Block
+    // Hash or UUID of Primary Block
+    @PrimaryKey val bundleId: String,
     val destinationEid: String,
     val sourceEid: String,
     val creationTimestamp: Long,
     val sequenceNumber: Long,
     val lifetimeMs: Long,
-    val payloadFilePath: String, // Path to raw payload file
+    // Path to raw payload file
+    val payloadFilePath: String,
     val state: BundleState,
     val isRead: Boolean,
     val bpsecStatus: BpsecStatus,
@@ -74,8 +78,10 @@ data class BundleRecord(
 
 @Entity(tableName = "routing_rules")
 data class RoutingRule(
-    @PrimaryKey val destinationEidPattern: String, // ex: "dtn://node-e/*"
-    val nextHopEid: String, // ex: "dtn://node-b"
+    // ex: "dtn://node-e/*"
+    @PrimaryKey val destinationEidPattern: String,
+    // ex: "dtn://node-b"
+    val nextHopEid: String,
 )
 
 @Entity(tableName = "convergence_profiles")
@@ -83,15 +89,19 @@ data class ConvergenceProfile(
     @PrimaryKey val profileId: String,
     val name: String,
     val triggerType: TriggerType,
-    val targetAddress: String, // IP/Port or Bluetooth MAC
-    val triggerCondition: String? = null, // Wifi SSID or interval in mins
+    // IP/Port or Bluetooth MAC
+    val targetAddress: String,
+    // Wifi SSID or interval in mins
+    val triggerCondition: String? = null,
     val isPaused: Boolean = false,
 )
 
 @Entity(tableName = "bpsec_keys")
 data class BpsecKey(
-    @PrimaryKey val nodeEid: String, // Remote node EID
-    val secretKey: ByteArray, // Shared HMAC key
+    // Remote node EID
+    @PrimaryKey val nodeEid: String,
+    // Shared HMAC key
+    val secretKey: ByteArray,
     val algorithm: String = "HmacSHA256",
 ) {
     override fun equals(other: Any?): Boolean {
@@ -116,6 +126,7 @@ data class BpsecKey(
 data class SystemLog(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val timestamp: Long,
-    val level: String, // INFO, WARN, ERROR
+    // INFO, WARN, ERROR
+    val level: String,
     val message: String,
 )

@@ -33,6 +33,8 @@ interface ConvergenceLayerAdapter {
     ): Boolean
 }
 
+private const val MAX_EXTENSION_LENGTH = 65536
+
 class TcpClAdapter(
     private val context: Context,
     private val port: Int = 5051,
@@ -163,6 +165,9 @@ class TcpClAdapter(
                 val extLenBytes = ByteArray(4)
                 input.readFully(extLenBytes, 0, 4)
                 val extLen = java.nio.ByteBuffer.wrap(extLenBytes).int
+                if (extLen < 0 || extLen > MAX_EXTENSION_LENGTH) {
+                    throw Exception("Invalid SESS_INIT extension length: $extLen (exceeds max $MAX_EXTENSION_LENGTH)")
+                }
                 if (extLen > 0) {
                     val extBytes = ByteArray(extLen)
                     input.readFully(extBytes, 0, extLen)
@@ -185,6 +190,9 @@ class TcpClAdapter(
                             // Parse extension length if START is set (bit 0)
                             if ((flags and 1) != 0) {
                                 val extByteLen = input.readInt()
+                                if (extByteLen < 0 || extByteLen > MAX_EXTENSION_LENGTH) {
+                                    throw Exception("Invalid XFER_SEGMENT extension length: $extByteLen (exceeds max $MAX_EXTENSION_LENGTH)")
+                                }
                                 if (extByteLen > 0) {
                                     val extBytes = ByteArray(extByteLen)
                                     input.readFully(extBytes, 0, extByteLen)
@@ -196,21 +204,23 @@ class TcpClAdapter(
                             if (length <= 0 || length > maxSizeBytes) {
                                 throw Exception("Invalid segment length: $length (exceeds max $maxSizeBytes bytes)")
                             }
-                            val bundleBytes = try {
-                                ByteArray(length)
-                            } catch (e: OutOfMemoryError) {
-                                throw Exception("Memory allocation failed for segment of size $length bytes")
-                            }
+                            val bundleBytes =
+                                try {
+                                    ByteArray(length)
+                                } catch (e: OutOfMemoryError) {
+                                    throw Exception("Memory allocation failed for segment of size $length bytes")
+                                }
                             input.readFully(bundleBytes, 0, length)
                             log("INFO", "Received bundle ($length bytes)")
 
                             // Responsibility transfer: only acknowledge if bundle was successfully ingested and stored
-                            val accepted = try {
-                                listener?.invoke(bundleBytes) ?: false
-                            } catch (e: Exception) {
-                                log("ERROR", "Error ingesting received bundle: ${e.message}")
-                                false
-                            }
+                            val accepted =
+                                try {
+                                    listener?.invoke(bundleBytes) ?: false
+                                } catch (e: Exception) {
+                                    log("ERROR", "Error ingesting received bundle: ${e.message}")
+                                    false
+                                }
 
                             if (accepted) {
                                 // Send XFER_ACK (type 2)
@@ -322,6 +332,9 @@ class TcpClAdapter(
                     val extLenBytes = ByteArray(4)
                     input.readFully(extLenBytes, 0, 4)
                     val extLen = java.nio.ByteBuffer.wrap(extLenBytes).int
+                    if (extLen < 0 || extLen > MAX_EXTENSION_LENGTH) {
+                        throw Exception("Invalid SESS_INIT extension length from server: $extLen (exceeds max $MAX_EXTENSION_LENGTH)")
+                    }
                     if (extLen > 0) {
                         val extBytes = ByteArray(extLen)
                         input.readFully(extBytes, 0, extLen)
@@ -386,21 +399,23 @@ class TcpClAdapter(
                                 if (length <= 0 || length > maxSizeBytes) {
                                     throw Exception("Invalid segment length from server: $length (exceeds max $maxSizeBytes bytes)")
                                 }
-                                val rxBundle = try {
-                                    ByteArray(length)
-                                } catch (e: OutOfMemoryError) {
-                                    throw Exception("Memory allocation failed for segment of size $length bytes")
-                                }
+                                val rxBundle =
+                                    try {
+                                        ByteArray(length)
+                                    } catch (e: OutOfMemoryError) {
+                                        throw Exception("Memory allocation failed for segment of size $length bytes")
+                                    }
                                 input.readFully(rxBundle, 0, length)
                                 log("INFO", "Received bundle from server ($length bytes)")
 
                                 // Responsibility transfer: only acknowledge if bundle was successfully ingested and stored
-                                val accepted = try {
-                                    listener?.invoke(rxBundle) ?: false
-                                } catch (e: Exception) {
-                                    log("ERROR", "Error ingesting received bundle from server: ${e.message}")
-                                    false
-                                }
+                                val accepted =
+                                    try {
+                                        listener?.invoke(rxBundle) ?: false
+                                    } catch (e: Exception) {
+                                        log("ERROR", "Error ingesting received bundle from server: ${e.message}")
+                                        false
+                                    }
 
                                 if (accepted) {
                                     // Send XFER_ACK back
@@ -560,12 +575,13 @@ class BluetoothClassicAdapter(
                     break
                 }
 
-                val bundleBytes = try {
-                    ByteArray(length)
-                } catch (e: OutOfMemoryError) {
-                    log("WARN", "Memory allocation failed for RFCOMM packet length: $length")
-                    break
-                }
+                val bundleBytes =
+                    try {
+                        ByteArray(length)
+                    } catch (e: OutOfMemoryError) {
+                        log("WARN", "Memory allocation failed for RFCOMM packet length: $length")
+                        break
+                    }
                 var bodyRead = 0
                 while (bodyRead < length) {
                     val read = inputStream.read(bundleBytes, bodyRead, length - bodyRead)
@@ -575,12 +591,13 @@ class BluetoothClassicAdapter(
                 log("INFO", "Received bundle via RFCOMM ($length bytes)")
 
                 // Responsibility transfer: only acknowledge if bundle was successfully ingested and stored
-                val accepted = try {
-                    listener?.invoke(bundleBytes) ?: false
-                } catch (e: Exception) {
-                    log("ERROR", "Error ingesting received RFCOMM bundle: ${e.message}")
-                    false
-                }
+                val accepted =
+                    try {
+                        listener?.invoke(bundleBytes) ?: false
+                    } catch (e: Exception) {
+                        log("ERROR", "Error ingesting received RFCOMM bundle: ${e.message}")
+                        false
+                    }
 
                 if (accepted) {
                     // Send 1-byte ACK back to client to confirm full receipt and storage before they close
@@ -635,8 +652,13 @@ class BluetoothClassicAdapter(
                 // Wait for 1-byte ACK from receiver to verify full reception before closing the connection.
                 // A 5-second timeout ensures backward-compatibility with older nodes that don't send an ACK.
                 try {
-                    kotlinx.coroutines.withTimeoutOrNull(5000) {
-                        socket.inputStream.read()
+                    val startWait = System.currentTimeMillis()
+                    val inputStream = socket.inputStream
+                    while (inputStream.available() == 0 && (System.currentTimeMillis() - startWait) < 5000) {
+                        delay(100)
+                    }
+                    if (inputStream.available() > 0) {
+                        inputStream.read()
                     }
                 } catch (e: Exception) {
                     // Proceed to close even if ACK read fails/times out

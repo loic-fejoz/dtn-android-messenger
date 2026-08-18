@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 class PreferencesHelperTest {
-
     @Test
     fun testPreferencesHelperConstants() {
         assertEquals("max_bundle_size_mb", PreferencesHelper.PREF_MAX_BUNDLE_SIZE_MB)

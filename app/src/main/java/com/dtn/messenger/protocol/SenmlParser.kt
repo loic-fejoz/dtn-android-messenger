@@ -71,10 +71,11 @@ object SenmlParser {
 
                 if (fullName.isEmpty()) continue
 
-                val hasValue = (obj.has("v") && !obj.isNull("v")) ||
-                    (obj.has("vs") && !obj.isNull("vs")) ||
-                    (obj.has("vb") && !obj.isNull("vb")) ||
-                    (obj.has("vd") && !obj.isNull("vd"))
+                val hasValue =
+                    (obj.has("v") && !obj.isNull("v")) ||
+                        (obj.has("vs") && !obj.isNull("vs")) ||
+                        (obj.has("vb") && !obj.isNull("vb")) ||
+                        (obj.has("vd") && !obj.isNull("vd"))
 
                 if (!hasValue && n == null) {
                     continue
@@ -102,7 +103,11 @@ object SenmlParser {
         return result
     }
 
-    private fun getCborString(item: CBORObject, strKey: String, intKey: Int): String? {
+    private fun getCborString(
+        item: CBORObject,
+        strKey: String,
+        intKey: Int,
+    ): String? {
         val obj = item.get(strKey) ?: item.get(intKey) ?: return null
         if (obj.isNull) return null
         return try {
@@ -116,7 +121,11 @@ object SenmlParser {
         }
     }
 
-    private fun getCborDouble(item: CBORObject, strKey: String, intKey: Int): Double? {
+    private fun getCborDouble(
+        item: CBORObject,
+        strKey: String,
+        intKey: Int,
+    ): Double? {
         val obj = item.get(strKey) ?: item.get(intKey) ?: return null
         if (obj.isNull) return null
         return try {
@@ -130,7 +139,11 @@ object SenmlParser {
         }
     }
 
-    private fun getCborBoolean(item: CBORObject, strKey: String, intKey: Int): Boolean? {
+    private fun getCborBoolean(
+        item: CBORObject,
+        strKey: String,
+        intKey: Int,
+    ): Boolean? {
         val obj = item.get(strKey) ?: item.get(intKey) ?: return null
         if (obj.isNull) return null
         return try {
@@ -192,21 +205,18 @@ object SenmlParser {
                 val vb = getCborBoolean(item, "vb", 4)
 
                 val vdObj = item.get("vd") ?: item.get(8)
-                val vd = if (vdObj != null && !vdObj.isNull) {
-                    if (vdObj.type == CBORType.ByteString) {
-                        try {
-                            java.util.Base64.getEncoder().encodeToString(vdObj.GetByteString())
-                        } catch (e: Throwable) {
-                            try {
-                                android.util.Base64.encodeToString(vdObj.GetByteString(), android.util.Base64.NO_WRAP)
-                            } catch (e2: Throwable) {
-                                vdObj.GetByteString().joinToString("") { "%02x".format(it) }
-                            }
+                val vd =
+                    if (vdObj != null && !vdObj.isNull) {
+                        if (vdObj.type == CBORType.ByteString) {
+                            com.dtn.messenger.util.PayloadUtils.base64Encode(vdObj.GetByteString())
+                        } else if (vdObj.type == CBORType.TextString) {
+                            vdObj.AsString()
+                        } else {
+                            null
                         }
-                    } else if (vdObj.type == CBORType.TextString) {
-                        vdObj.AsString()
-                    } else null
-                } else null
+                    } else {
+                        null
+                    }
 
                 if (v == null && vs == null && vb == null && vd == null && n == null) {
                     continue

@@ -1,6 +1,5 @@
 package com.dtn.messenger.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -30,8 +29,10 @@ import com.dtn.messenger.data.dao.LocalServiceDao
 import com.dtn.messenger.data.dao.SenmlEntryDao
 import com.dtn.messenger.data.model.SenmlEntry
 import com.dtn.messenger.protocol.SenmlParser
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -62,60 +63,64 @@ fun SenmlLastScreen(
         }
 
         // If no entries exist yet in DB for this service, attempt initial backfill from historical bundles
-        val allEntries = senmlEntryDao.getAllEntriesForService(serviceEid)
-        if (allEntries.isEmpty()) {
-            val bundles = bundleRecordDao.getByDestination(serviceEid).first()
-            for (bundle in bundles.reversed()) {
-                try {
-                    val file = File(bundle.payloadFilePath)
-                    if (file.exists()) {
-                        val bytes = file.readBytes()
-                        val parsed = SenmlParser.parse(bytes, bundle.creationTimestamp)
-                        val latestInBundle = parsed.groupBy { it.name }
-                            .mapValues { (_, list) -> list.maxByOrNull { it.timestamp }!! }
-                            .values
+        withContext(Dispatchers.IO) {
+            val allEntries = senmlEntryDao.getAllEntriesForService(serviceEid)
+            if (allEntries.isEmpty()) {
+                val bundles = bundleRecordDao.getByDestination(serviceEid).first()
+                for (bundle in bundles.reversed()) {
+                    try {
+                        val file = File(bundle.payloadFilePath)
+                        if (file.exists()) {
+                            val bytes = file.readBytes()
+                            val parsed = SenmlParser.parse(bytes, bundle.creationTimestamp)
+                            val latestInBundle =
+                                parsed.groupBy { it.name }
+                                    .mapValues { (_, list) -> list.maxByOrNull { it.timestamp }!! }
+                                    .values
 
-                        for (rec in latestInBundle) {
-                            val existing = senmlEntryDao.getEntry(serviceEid, rec.name)
-                            if (existing != null) {
-                                if (rec.timestamp >= existing.timestamp) {
+                            for (rec in latestInBundle) {
+                                val existing = senmlEntryDao.getEntry(serviceEid, rec.name)
+                                if (existing != null) {
+                                    if (rec.timestamp >= existing.timestamp) {
+                                        senmlEntryDao.insertOrUpdate(
+                                            existing.copy(
+                                                value = rec.value,
+                                                unit = rec.unit,
+                                                timestamp = rec.timestamp,
+                                                isDeleted = false,
+                                            ),
+                                        )
+                                    }
+                                } else {
+                                    val maxOrder = senmlEntryDao.getMaxOrder(serviceEid) ?: 0
                                     senmlEntryDao.insertOrUpdate(
-                                        existing.copy(
+                                        SenmlEntry(
+                                            serviceEid = serviceEid,
+                                            name = rec.name,
                                             value = rec.value,
                                             unit = rec.unit,
                                             timestamp = rec.timestamp,
+                                            displayOrder = maxOrder + 1,
                                             isDeleted = false,
-                                        )
+                                        ),
                                     )
                                 }
-                            } else {
-                                val maxOrder = senmlEntryDao.getMaxOrder(serviceEid) ?: 0
-                                senmlEntryDao.insertOrUpdate(
-                                    SenmlEntry(
-                                        serviceEid = serviceEid,
-                                        name = rec.name,
-                                        value = rec.value,
-                                        unit = rec.unit,
-                                        timestamp = rec.timestamp,
-                                        displayOrder = maxOrder + 1,
-                                        isDeleted = false,
-                                    )
-                                )
                             }
                         }
+                    } catch (e: Exception) {
+                        // Ignore corrupted bundles
                     }
-                } catch (e: Exception) {
-                    // Ignore corrupted bundles
                 }
             }
         }
     }
 
-    val dateFormat = remember {
-        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US).apply {
-            timeZone = TimeZone.getDefault()
+    val dateFormat =
+        remember {
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US).apply {
+                timeZone = TimeZone.getDefault()
+            }
         }
-    }
 
     Scaffold(
         topBar = {
@@ -133,39 +138,41 @@ fun SenmlLastScreen(
                                 coroutineScope.launch {
                                     senmlEntryDao.deleteAllForService(serviceEid)
                                 }
-                            }
+                            },
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = "Tout supprimer", tint = MaterialTheme.colorScheme.error)
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
             )
-        }
+        },
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp)
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(16.dp),
         ) {
             if (entries.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = "Aucune mesure SenML reçue pour le moment.",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
                 ) {
                     itemsIndexed(entries, key = { _, item -> item.name }) { index, item ->
                         SenmlEntryCard(
@@ -212,7 +219,7 @@ fun SenmlLastScreen(
                                 coroutineScope.launch {
                                     senmlEntryDao.deleteEntry(serviceEid, item.name)
                                 }
-                            }
+                            },
                         )
                     }
                 }
@@ -246,46 +253,48 @@ fun SenmlEntryCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp)
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 // Reordering controls
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    verticalArrangement = Arrangement.Center,
                 ) {
                     IconButton(
                         onClick = onMoveUp,
                         enabled = canMoveUp && !isEditing,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(28.dp),
                     ) {
                         Icon(
                             Icons.Default.ArrowUpward,
                             contentDescription = "Monter",
-                            tint = if (canMoveUp && !isEditing) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f)
+                            tint = if (canMoveUp && !isEditing) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
                         )
                     }
                     IconButton(
                         onClick = onMoveDown,
                         enabled = canMoveDown && !isEditing,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(28.dp),
                     ) {
                         Icon(
                             Icons.Default.ArrowDownward,
                             contentDescription = "Descendre",
-                            tint = if (canMoveDown && !isEditing) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f)
+                            tint = if (canMoveDown && !isEditing) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
                         )
                     }
                 }
@@ -294,7 +303,7 @@ fun SenmlEntryCard(
 
                 // Main Info Column
                 Column(
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
                 ) {
                     if (!isEditing) {
                         val hasCustomLabel = !entry.customLabel.isNullOrBlank()
@@ -304,7 +313,7 @@ fun SenmlEntryCard(
                             text = if (hasCustomLabel) entry.customLabel!! else entry.name,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
 
                         // Value and Unit
@@ -313,7 +322,7 @@ fun SenmlEntryCard(
                             fontSize = 17.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(vertical = 2.dp)
+                            modifier = Modifier.padding(vertical = 2.dp),
                         )
 
                         // If customized: display original 'n' smaller underneath
@@ -321,29 +330,30 @@ fun SenmlEntryCard(
                             Text(
                                 text = "n: ${entry.name}",
                                 fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             )
                         }
 
                         // Timestamp below in smaller font formatted as ISO 8601
-                        val formattedTime = remember(entry.timestamp, dateFormat) {
-                            try {
-                                val raw = dateFormat.format(Date(entry.timestamp))
-                                // Convert "+0200" to "+02:00" for strict ISO 8601 compliance on API 23
-                                if (raw.length >= 5 && (raw[raw.length - 5] == '+' || raw[raw.length - 5] == '-')) {
-                                    raw.substring(0, raw.length - 2) + ":" + raw.substring(raw.length - 2)
-                                } else {
-                                    raw
+                        val formattedTime =
+                            remember(entry.timestamp, dateFormat) {
+                                try {
+                                    val raw = dateFormat.format(Date(entry.timestamp))
+                                    // Convert "+0200" to "+02:00" for strict ISO 8601 compliance on API 23
+                                    if (raw.length >= 5 && (raw[raw.length - 5] == '+' || raw[raw.length - 5] == '-')) {
+                                        raw.substring(0, raw.length - 2) + ":" + raw.substring(raw.length - 2)
+                                    } else {
+                                        raw
+                                    }
+                                } catch (e: Exception) {
+                                    entry.timestamp.toString()
                                 }
-                            } catch (e: Exception) {
-                                entry.timestamp.toString()
                             }
-                        }
 
                         Text(
                             text = formattedTime,
                             fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
                         // Inline Editing Mode
@@ -351,7 +361,7 @@ fun SenmlEntryCard(
                             text = "n: ${entry.name}",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 4.dp)
+                            modifier = Modifier.padding(bottom = 4.dp),
                         )
 
                         OutlinedTextField(
@@ -360,36 +370,38 @@ fun SenmlEntryCard(
                             label = { Text("Label personnalisé") },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(
-                                onDone = {
-                                    val cleaned = labelInput.trim().ifEmpty { null }
-                                    onSaveCustomLabel(cleaned)
-                                }
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(focusRequester)
+                            keyboardActions =
+                                KeyboardActions(
+                                    onDone = {
+                                        val cleaned = labelInput.trim().ifEmpty { null }
+                                        onSaveCustomLabel(cleaned)
+                                    },
+                                ),
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(focusRequester),
                         )
                     }
                 }
 
                 // Action Buttons
                 Row(
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (!isEditing) {
                         IconButton(onClick = onStartEdit) {
                             Icon(
                                 Icons.Default.Edit,
                                 contentDescription = "Éditer le label",
-                                tint = MaterialTheme.colorScheme.outline
+                                tint = MaterialTheme.colorScheme.outline,
                             )
                         }
                         IconButton(onClick = onDelete) {
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = "Supprimer",
-                                tint = MaterialTheme.colorScheme.error
+                                tint = MaterialTheme.colorScheme.error,
                             )
                         }
                     } else {
@@ -397,19 +409,19 @@ fun SenmlEntryCard(
                             onClick = {
                                 val cleaned = labelInput.trim().ifEmpty { null }
                                 onSaveCustomLabel(cleaned)
-                            }
+                            },
                         ) {
                             Icon(
                                 Icons.Default.Check,
                                 contentDescription = "Valider",
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = MaterialTheme.colorScheme.primary,
                             )
                         }
                         IconButton(onClick = onCancelEdit) {
                             Icon(
                                 Icons.Default.Close,
                                 contentDescription = "Annuler",
-                                tint = MaterialTheme.colorScheme.outline
+                                tint = MaterialTheme.colorScheme.outline,
                             )
                         }
                     }
@@ -420,10 +432,10 @@ fun SenmlEntryCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.End,
                 ) {
                     TextButton(
-                        onClick = { onSaveCustomLabel(null) }
+                        onClick = { onSaveCustomLabel(null) },
                     ) {
                         Text("Réinitialiser (Effacer label)", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                     }

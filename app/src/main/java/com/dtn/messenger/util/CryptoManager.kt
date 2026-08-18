@@ -59,6 +59,9 @@ object CryptoManager {
         if (bytes.isEmpty()) return ByteArray(0)
 
         val ivSize = bytes[0].toInt() and 0xFF
+        if (bytes.size < 1 + ivSize) {
+            throw IllegalArgumentException("Corrupted ciphertext: payload size (${bytes.size}) is smaller than IV header (1 + $ivSize)")
+        }
         val iv = ByteArray(ivSize)
         System.arraycopy(bytes, 1, iv, 0, ivSize)
 

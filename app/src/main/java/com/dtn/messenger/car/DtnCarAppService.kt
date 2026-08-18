@@ -9,6 +9,7 @@ import androidx.car.app.model.*
 import androidx.car.app.validation.HostValidator
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import com.dtn.messenger.data.dao.BundleRecordDao
 import com.dtn.messenger.data.model.BundleRecord
 import com.dtn.messenger.service.DtnEngineService
@@ -17,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
@@ -95,7 +97,13 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
                 try {
                     val file = File(bundle.payloadFilePath)
                     if (file.exists()) {
-                        String(file.readBytes(), StandardCharsets.UTF_8).take(120)
+                        val header = ByteArray(512)
+                        val bytesRead = file.inputStream().use { it.read(header) }
+                        if (bytesRead > 0) {
+                            String(header, 0, bytesRead, StandardCharsets.UTF_8).take(120)
+                        } else {
+                            "Contenu Vide"
+                        }
                     } else {
                         "Contenu Binaire"
                     }
@@ -158,44 +166,48 @@ class ReplyCarScreen(
     }
 
     private fun sendReply(text: String) {
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch {
             val context = carContext
-            val payloadsDir = File(context.filesDir, "payloads")
-            if (!payloadsDir.exists()) payloadsDir.mkdirs()
+            withContext(Dispatchers.IO) {
+                val payloadsDir = File(context.filesDir, "payloads")
+                if (!payloadsDir.exists()) payloadsDir.mkdirs()
 
-            val bundleId = UUID.randomUUID().toString()
-            val payloadFile = File(payloadsDir, "$bundleId.bin")
-            FileOutputStream(payloadFile).use { fos ->
-                fos.write(text.toByteArray(StandardCharsets.UTF_8))
-            }
-
-            val record =
-                BundleRecord(
-                    bundleId = bundleId,
-                    destinationEid = replyToBundle.sourceEid,
-                    sourceEid = replyToBundle.destinationEid,
-                    creationTimestamp = System.currentTimeMillis(),
-                    sequenceNumber = System.currentTimeMillis() % 100000,
-                    lifetimeMs = 3600000L,
-                    payloadFilePath = payloadFile.absolutePath,
-                    state = com.dtn.messenger.data.model.BundleState.OUTBOX,
-                    isRead = true,
-                    bpsecStatus = com.dtn.messenger.data.model.BpsecStatus.UNVERIFIED,
-                    hopCount = 0,
-                )
-            bundleRecordDao.insert(record)
-
-            // Trigger engine service to flush the queue
-            val serviceIntent =
-                Intent(context, DtnEngineService::class.java).apply {
-                    action = "FLUSH_QUEUE"
+                val bundleId = UUID.randomUUID().toString()
+                val payloadFile = File(payloadsDir, "$bundleId.bin")
+                FileOutputStream(payloadFile).use { fos ->
+                    fos.write(text.toByteArray(StandardCharsets.UTF_8))
                 }
-            androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
 
-            // Pop back to the last message screen
-            CoroutineScope(Dispatchers.Main).launch {
-                screenManager.pop()
+                val record =
+                    BundleRecord(
+                        bundleId = bundleId,
+                        destinationEid = replyToBundle.sourceEid,
+                        sourceEid = replyToBundle.destinationEid,
+                        creationTimestamp = System.currentTimeMillis(),
+                        sequenceNumber = System.currentTimeMillis() % 100000,
+                        lifetimeMs = 3600000L,
+                        payloadFilePath = payloadFile.absolutePath,
+                        state = com.dtn.messenger.data.model.BundleState.OUTBOX,
+                        isRead = true,
+                        bpsecStatus = com.dtn.messenger.data.model.BpsecStatus.UNVERIFIED,
+                        hopCount = 0,
+                    )
+                bundleRecordDao.insert(record)
+
+                // Trigger engine service to flush the queue
+                val serviceIntent =
+                    Intent(context, DtnEngineService::class.java).apply {
+                        action = "FLUSH_QUEUE"
+                    }
+                try {
+                    androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
+                } catch (e: Exception) {
+                    android.util.Log.e("DtnCarAppService", "Failed to start foreground service: ${e.message}")
+                }
             }
+
+            // Pop back to the last message screen on main thread
+            screenManager.pop()
         }
     }
 }

@@ -37,7 +37,9 @@ import com.dtn.messenger.data.model.BundleRecord
 import com.dtn.messenger.data.model.BundleState
 import com.dtn.messenger.data.model.LocalService
 import com.dtn.messenger.service.DtnEngineService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -299,31 +301,33 @@ fun ChatScreen(
                                 return@IconButton
                             }
                             scope.launch {
-                                // Save payload
-                                val payloadsDir = File(context.filesDir, "payloads")
-                                if (!payloadsDir.exists()) payloadsDir.mkdirs()
-
                                 val bundleId = UUID.randomUUID().toString()
-                                val payloadFile = File(payloadsDir, "$bundleId.bin")
-                                FileOutputStream(payloadFile).use { fos ->
-                                    fos.write(replyText.toByteArray(Charsets.UTF_8))
-                                }
+                                withContext(Dispatchers.IO) {
+                                    // Save payload
+                                    val payloadsDir = File(context.filesDir, "payloads")
+                                    if (!payloadsDir.exists()) payloadsDir.mkdirs()
 
-                                val record =
-                                    BundleRecord(
-                                        bundleId = bundleId,
-                                        destinationEid = recipientEid,
-                                        sourceEid = serviceEid,
-                                        creationTimestamp = System.currentTimeMillis(),
-                                        sequenceNumber = System.currentTimeMillis() % 100000,
-                                        lifetimeMs = 3600000L,
-                                        payloadFilePath = payloadFile.absolutePath,
-                                        state = BundleState.OUTBOX,
-                                        isRead = true,
-                                        bpsecStatus = BpsecStatus.UNVERIFIED,
-                                        hopCount = 0,
-                                    )
-                                bundleRecordDao.insert(record)
+                                    val payloadFile = File(payloadsDir, "$bundleId.bin")
+                                    FileOutputStream(payloadFile).use { fos ->
+                                        fos.write(replyText.toByteArray(Charsets.UTF_8))
+                                    }
+
+                                    val record =
+                                        BundleRecord(
+                                            bundleId = bundleId,
+                                            destinationEid = recipientEid,
+                                            sourceEid = serviceEid,
+                                            creationTimestamp = System.currentTimeMillis(),
+                                            sequenceNumber = System.currentTimeMillis() % 100000,
+                                            lifetimeMs = 3600000L,
+                                            payloadFilePath = payloadFile.absolutePath,
+                                            state = BundleState.OUTBOX,
+                                            isRead = true,
+                                            bpsecStatus = BpsecStatus.UNVERIFIED,
+                                            hopCount = 0,
+                                        )
+                                    bundleRecordDao.insert(record)
+                                }
                                 replyText = ""
 
                                 // Trigger service flush

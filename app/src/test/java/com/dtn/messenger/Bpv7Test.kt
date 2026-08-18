@@ -218,4 +218,45 @@ class Bpv7Test {
 
         assertArrayEquals(bib.signature, computedSignature)
     }
+
+    @Test
+    fun testMalformedCborThrowsGracefully() {
+        // Empty array
+        val emptyArrayBytes = com.upokecenter.cbor.CBORObject.NewArray().EncodeToBytes()
+        assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserialize(emptyArrayBytes)
+        }
+
+        // Single element array (missing payload block)
+        val primaryOnly = com.upokecenter.cbor.CBORObject.NewArray()
+        primaryOnly.Add(
+            Bpv7Parser.serializePrimaryBlock(
+                PrimaryBlock(
+                    destination = Eid("dtn://dest"),
+                    source = Eid("dtn://src"),
+                    reportTo = Eid("dtn://src"),
+                    creationTimestamp = Pair(100L, 1L),
+                    lifetimeMs = 1000L,
+                ),
+            ),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserialize(primaryOnly.EncodeToBytes())
+        }
+
+        // Truncated / malformed EID
+        val malformedEid = com.upokecenter.cbor.CBORObject.NewArray()
+        malformedEid.Add(1) // only 1 element
+        assertThrows(IllegalArgumentException::class.java) {
+            Eid.fromCbor(malformedEid)
+        }
+
+        // Malformed PrimaryBlock (insufficient elements)
+        val malformedPrimary = com.upokecenter.cbor.CBORObject.NewArray()
+        malformedPrimary.Add(7)
+        malformedPrimary.Add(0L)
+        assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserializePrimaryBlock(malformedPrimary)
+        }
+    }
 }

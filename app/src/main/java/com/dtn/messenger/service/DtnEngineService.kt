@@ -45,8 +45,10 @@ class DtnEngineService : Service() {
     private var pullJob: Job? = null
     private var periodicFlushJob: Job? = null
     private val lastPullTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val bibeSeqCounter = java.util.concurrent.atomic.AtomicLong(1L)
 
     private val isAndroidAutoActiveFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
+    private var carConnectionTypeLiveData: androidx.lifecycle.LiveData<Int>? = null
     private val carConnectionObserver =
         Observer<Int> { connectionState ->
             val active = (
@@ -128,7 +130,8 @@ class DtnEngineService : Service() {
         // Initialize CarConnection observer
         try {
             val carConnection = androidx.car.app.connection.CarConnection(this)
-            carConnection.type.observeForever(carConnectionObserver)
+            carConnectionTypeLiveData = carConnection.type
+            carConnectionTypeLiveData?.observeForever(carConnectionObserver)
         } catch (e: Exception) {
             log("WARN", "CarConnection API not available: ${e.message}")
         }
@@ -284,9 +287,9 @@ class DtnEngineService : Service() {
             // Hop limit check
             val hopLimit = bundle.hopCountBlock?.hopLimit ?: 64
             val hopCount = bundle.hopCountBlock?.hopCount ?: 0
-            if (hopCount >= hopLimit) {
-                log("WARN", "Received bundle from ${primary.source.uri} exceeded hop limit ($hopCount/$hopLimit). Discarding.")
-                return true // Handled terminal discard
+            val isHopLimitExceeded = hopCount >= hopLimit
+            if (isHopLimitExceeded) {
+                log("WARN", "Received bundle from ${primary.source.uri} reached/exceeded hop limit ($hopCount/$hopLimit). Storing locally without forwarding.")
             }
 
             // Duplicate check
@@ -386,8 +389,9 @@ class DtnEngineService : Service() {
             // Verify if it is for local services on our node (supporting prefix/multicast match for multiple services)
             val localNodeBase = (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim()
 
-            val isLocalNode = com.dtn.messenger.util.PayloadUtils.isPrefixMatch(localNodeBase, primary.destination.uri) ||
-                com.dtn.messenger.util.PayloadUtils.isPrefixMatch(primary.destination.uri, localNodeBase)
+            val isLocalNode =
+                com.dtn.messenger.util.PayloadUtils.isPrefixMatch(localNodeBase, primary.destination.uri) ||
+                    com.dtn.messenger.util.PayloadUtils.isPrefixMatch(primary.destination.uri, localNodeBase)
 
             val localServices = localServiceDao.getAllList()
             val matchedLocalServices =
@@ -440,7 +444,7 @@ class DtnEngineService : Service() {
             // Check if we also need to forward it (multicast/anycast or transit routing)
             val nextHop = resolveNextHop(primary.destination.uri)
             val isMatchedBroadcast = matchedLocalServices.any { it.isBroadcast }
-            val shouldForward = findProfileForNextHop(nextHop) != null && (!isLocal || isMatchedBroadcast)
+            val shouldForward = !isHopLimitExceeded && findProfileForNextHop(nextHop) != null && (!isLocal || isMatchedBroadcast)
 
             val record =
                 BundleRecord(
@@ -451,7 +455,14 @@ class DtnEngineService : Service() {
                     sequenceNumber = seqNo,
                     lifetimeMs = primary.lifetimeMs,
                     payloadFilePath = payloadFile.absolutePath,
-                    state = if (isBibeDecapsulated) BundleState.DELIVERED else if (shouldForward) BundleState.OUTBOX else BundleState.RECEIVED,
+                    state =
+                        if (isBibeDecapsulated) {
+                            BundleState.DELIVERED
+                        } else if (shouldForward) {
+                            BundleState.OUTBOX
+                        } else {
+                            BundleState.RECEIVED
+                        },
                     isRead = isBibeDecapsulated,
                     bpsecStatus = bpsecStatus,
                     hopCount = hopCount,
@@ -495,9 +506,10 @@ class DtnEngineService : Service() {
     ) {
         try {
             val records = SenmlParser.parse(data, fallbackTimestamp)
-            val latestRecordsByName = records.groupBy { it.name }
-                .mapValues { (_, list) -> list.maxByOrNull { it.timestamp }!! }
-                .values
+            val latestRecordsByName =
+                records.groupBy { it.name }
+                    .mapValues { (_, list) -> list.maxByOrNull { it.timestamp }!! }
+                    .values
 
             for (rec in latestRecordsByName) {
                 val existing = senmlEntryDao.getEntry(serviceEid, rec.name)
@@ -509,7 +521,7 @@ class DtnEngineService : Service() {
                                 unit = rec.unit,
                                 timestamp = rec.timestamp,
                                 isDeleted = false,
-                            )
+                            ),
                         )
                     }
                 } else {
@@ -523,7 +535,7 @@ class DtnEngineService : Service() {
                             timestamp = rec.timestamp,
                             displayOrder = maxOrder + 1,
                             isDeleted = false,
-                        )
+                        ),
                     )
                 }
             }
@@ -651,13 +663,14 @@ class DtnEngineService : Service() {
         for (record in allOutgoing) {
             val file = File(record.payloadFilePath)
             if (!file.exists()) {
-                log("WARN", "Payload file not found for bundle ${record.bundleId}, skipping")
+                log("WARN", "Payload file not found for bundle ${record.bundleId}, removing orphaned record from queue")
+                bundleRecordDao.delete(record)
                 continue
             }
             val maxSizeBytes = com.dtn.messenger.util.PreferencesHelper.getMaxBundleSizeBytes(this)
             if (file.length() > maxSizeBytes) {
                 val maxMb = maxSizeBytes / (1024 * 1024)
-                log("WARN", "Bundle ${record.bundleId} payload size (${file.length()} bytes) exceeds maximum configured limit of ${maxMb} MB. Skipping.")
+                log("WARN", "Bundle ${record.bundleId} payload size (${file.length()} bytes) exceeds maximum configured limit of $maxMb MB. Skipping.")
                 continue
             }
             val payloadBytes = file.readBytes()
@@ -725,7 +738,8 @@ class DtnEngineService : Service() {
                             targetBlockNumber = payload.blockNumber,
                             targetBlockFlags = payload.blockControlFlags,
                             securityBlockType = 11,
-                            securityBlockNumber = 2, // BIB block number
+                            // BIB block number
+                            securityBlockNumber = 2,
                             securityBlockFlags = 3,
                             payloadBytes = payloadBytes,
                             scopeFlags = 7,
@@ -763,13 +777,14 @@ class DtnEngineService : Service() {
                 val localNodeBase = prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node"
                 val localBibeEid = "$localNodeBase/bibe"
 
-                val outerPrimary = PrimaryBlock(
-                    destination = Eid(gatewayBibeEid),
-                    source = Eid(localBibeEid),
-                    reportTo = Eid(localBibeEid),
-                    creationTimestamp = Pair(dtnTimeFromSystem(System.currentTimeMillis()), 0L),
-                    lifetimeMs = record.lifetimeMs,
-                )
+                val outerPrimary =
+                    PrimaryBlock(
+                        destination = Eid(gatewayBibeEid),
+                        source = Eid(localBibeEid),
+                        reportTo = Eid(localBibeEid),
+                        creationTimestamp = Pair(dtnTimeFromSystem(System.currentTimeMillis()), bibeSeqCounter.getAndIncrement()),
+                        lifetimeMs = record.lifetimeMs,
+                    )
                 val outerPayload = PayloadBlock(data = outerPayloadBytes)
                 val outerHopCount = HopCountBlock(hopLimit = 64, hopCount = record.hopCount + 1)
 
@@ -899,7 +914,7 @@ class DtnEngineService : Service() {
         log("INFO", "DtnEngineService destroying")
         isRunning = false
         try {
-            androidx.car.app.connection.CarConnection(this).type.removeObserver(carConnectionObserver)
+            carConnectionTypeLiveData?.removeObserver(carConnectionObserver)
         } catch (e: Exception) {
         }
         isTcpActive.value = false

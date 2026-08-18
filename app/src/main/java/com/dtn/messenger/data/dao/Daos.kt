@@ -151,25 +151,42 @@ interface SenmlEntryDao {
     suspend fun getAllEntriesForService(serviceEid: String): List<SenmlEntry>
 
     @Query("SELECT * FROM senml_entries WHERE serviceEid = :serviceEid AND name = :name")
-    suspend fun getEntry(serviceEid: String, name: String): SenmlEntry?
+    suspend fun getEntry(
+        serviceEid: String,
+        name: String,
+    ): SenmlEntry?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(entry: SenmlEntry)
 
     @Query("DELETE FROM senml_entries WHERE serviceEid = :serviceEid AND name = :name")
-    suspend fun deleteEntry(serviceEid: String, name: String)
+    suspend fun deleteEntry(
+        serviceEid: String,
+        name: String,
+    )
 
     @Query("DELETE FROM senml_entries WHERE serviceEid = :serviceEid")
     suspend fun deleteAllForService(serviceEid: String)
 
     @Query("UPDATE senml_entries SET isDeleted = 1 WHERE serviceEid = :serviceEid AND name = :name")
-    suspend fun markDeleted(serviceEid: String, name: String)
+    suspend fun markDeleted(
+        serviceEid: String,
+        name: String,
+    )
 
     @Query("UPDATE senml_entries SET customLabel = :customLabel WHERE serviceEid = :serviceEid AND name = :name")
-    suspend fun updateCustomLabel(serviceEid: String, name: String, customLabel: String?)
+    suspend fun updateCustomLabel(
+        serviceEid: String,
+        name: String,
+        customLabel: String?,
+    )
 
     @Query("UPDATE senml_entries SET displayOrder = :order WHERE serviceEid = :serviceEid AND name = :name")
-    suspend fun updateOrder(serviceEid: String, name: String, order: Int)
+    suspend fun updateOrder(
+        serviceEid: String,
+        name: String,
+        order: Int,
+    )
 
     @Query("SELECT MAX(displayOrder) FROM senml_entries WHERE serviceEid = :serviceEid")
     suspend fun getMaxOrder(serviceEid: String): Int?

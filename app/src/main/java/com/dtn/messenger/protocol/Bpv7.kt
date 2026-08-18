@@ -39,11 +39,17 @@ data class Eid(val uri: String) {
 
     companion object {
         fun fromCbor(cbor: CBORObject): Eid {
+            if (cbor.type != CBORType.Array || cbor.size() < 2) {
+                throw IllegalArgumentException("Invalid CBOR format for EID: expected array with size >= 2")
+            }
             val schemeCode = cbor[0].AsInt32()
             val sspObj = cbor[1]
             val scheme = if (schemeCode == 1) "dtn" else "ipn"
             val ssp =
                 if (sspObj.type == CBORType.Array) {
+                    if (sspObj.size() < 2) {
+                        throw IllegalArgumentException("Invalid CBOR format for IPN EID: expected array with size >= 2")
+                    }
                     "${sspObj[0].AsInt64Value()}.${sspObj[1].AsInt64Value()}"
                 } else {
                     sspObj.AsString()
@@ -66,7 +72,8 @@ data class PrimaryBlock(
     val destination: Eid,
     val source: Eid,
     val reportTo: Eid,
-    val creationTimestamp: Pair<Long, Long>, // <dtnTimeSeconds, sequenceNumber>
+    // <dtnTimeSeconds, sequenceNumber>
+    val creationTimestamp: Pair<Long, Long>,
     val lifetimeMs: Long,
 ) {
     var rawBytes: ByteArray? = null
@@ -107,12 +114,17 @@ data class HopCountBlock(
 data class BibBlock(
     val blockNumber: Int = 2,
     val blockControlFlags: Long = 0,
-    val targets: List<Int> = listOf(1), // usually targets payload block (1)
-    val securityContext: Int = 1, // BIB_HMAC_SHA2 = 1
-    val securityContextFlags: Long = 3, // source + parameters present
+    // usually targets payload block (1)
+    val targets: List<Int> = listOf(1),
+    // BIB_HMAC_SHA2 = 1
+    val securityContext: Int = 1,
+    // source + parameters present
+    val securityContextFlags: Long = 3,
     val securitySource: Eid,
-    val variant: Int = 5, // HMAC-256-256 = 5
-    val scopeFlags: Int = 7, // all included
+    // HMAC-256-256 = 5
+    val variant: Int = 5,
+    // all included
+    val scopeFlags: Int = 7,
     val signature: ByteArray,
 ) {
     var rawBytes: ByteArray? = null
@@ -174,6 +186,9 @@ object Bpv7Parser {
     }
 
     fun deserializePrimaryBlock(cbor: CBORObject): PrimaryBlock {
+        if (cbor.type != CBORType.Array || cbor.size() < 8) {
+            throw IllegalArgumentException("Invalid PrimaryBlock CBOR: expected array with size >= 8, got size ${if (cbor.type == CBORType.Array) cbor.size() else "non-array"}")
+        }
         val version = cbor[0].AsInt32()
         val flags = cbor[1].AsInt64Value()
         val crcType = cbor[2].AsInt32()
@@ -182,6 +197,9 @@ object Bpv7Parser {
         val reportTo = Eid.fromCbor(cbor[5])
 
         val timestampArray = cbor[6]
+        if (timestampArray.type != CBORType.Array || timestampArray.size() < 2) {
+            throw IllegalArgumentException("Invalid PrimaryBlock timestamp CBOR: expected array with size >= 2")
+        }
         val creationTime = timestampArray[0].AsInt64Value()
         val seq = timestampArray[1].AsInt64Value()
 
@@ -217,10 +235,16 @@ object Bpv7Parser {
     }
 
     fun deserializeHopCountBlock(cbor: CBORObject): HopCountBlock {
+        if (cbor.type != CBORType.Array || cbor.size() < 5) {
+            throw IllegalArgumentException("Invalid HopCountBlock CBOR: expected array with size >= 5")
+        }
         val number = cbor[1].AsInt32()
         val flags = cbor[2].AsInt64Value()
         val dataBytes = cbor[4].GetByteString()
         val hcData = CBORObject.DecodeFromBytes(dataBytes)
+        if (hcData.type != CBORType.Array || hcData.size() < 2) {
+            throw IllegalArgumentException("Invalid HopCountBlock data CBOR: expected array with size >= 2")
+        }
         val hopLimit = hcData[0].AsInt32()
         val hopCount = hcData[1].AsInt32()
         return HopCountBlock(number, flags, hopLimit, hopCount)
@@ -275,6 +299,9 @@ object Bpv7Parser {
     }
 
     fun deserializeBibBlock(cbor: CBORObject): BibBlock {
+        if (cbor.type != CBORType.Array || cbor.size() < 5) {
+            throw IllegalArgumentException("Invalid BibBlock CBOR: expected array with size >= 5")
+        }
         val number = cbor[1].AsInt32()
         val flags = cbor[2].AsInt64Value()
         val dataBytes = cbor[4].GetByteString()
@@ -284,8 +311,10 @@ object Bpv7Parser {
         // 1. Targets
         val targetsArray = CBORObject.Read(stream)
         val targets = mutableListOf<Int>()
-        for (i in 0 until targetsArray.size()) {
-            targets.add(targetsArray[i].AsInt32())
+        if (targetsArray.type == CBORType.Array) {
+            for (i in 0 until targetsArray.size()) {
+                targets.add(targetsArray[i].AsInt32())
+            }
         }
 
         // 2. Security Context
@@ -304,23 +333,33 @@ object Bpv7Parser {
         // 5. Parameters (present if bit 0 of flags is set)
         if ((securityContextFlags and 1L) != 0L) {
             val paramsArray = CBORObject.Read(stream)
-            for (i in 0 until paramsArray.size()) {
-                val param = paramsArray[i]
-                val paramId = param[0].AsInt32()
-                val paramVal = param[1].AsInt32()
-                if (paramId == 1) variant = paramVal
-                if (paramId == 3) scopeFlags = paramVal
+            if (paramsArray.type == CBORType.Array) {
+                for (i in 0 until paramsArray.size()) {
+                    val param = paramsArray[i]
+                    if (param.type == CBORType.Array && param.size() >= 2) {
+                        val paramId = param[0].AsInt32()
+                        val paramVal = param[1].AsInt32()
+                        if (paramId == 1) variant = paramVal
+                        if (paramId == 3) scopeFlags = paramVal
+                    }
+                }
             }
         }
 
         // 6. Results
         val resultsArray = CBORObject.Read(stream)
-        val targetResults = resultsArray[0]
-        for (i in 0 until targetResults.size()) {
-            val r = targetResults[i]
-            val rId = r[0].AsInt32()
-            if (rId == 1) {
-                signature = r[1].GetByteString()
+        if (resultsArray.type == CBORType.Array && resultsArray.size() > 0) {
+            val targetResults = resultsArray[0]
+            if (targetResults.type == CBORType.Array) {
+                for (i in 0 until targetResults.size()) {
+                    val r = targetResults[i]
+                    if (r.type == CBORType.Array && r.size() >= 2) {
+                        val rId = r[0].AsInt32()
+                        if (rId == 1) {
+                            signature = r[1].GetByteString()
+                        }
+                    }
+                }
             }
         }
 
@@ -341,6 +380,9 @@ object Bpv7Parser {
 
     fun deserialize(bytes: ByteArray): Bundle {
         val array = CBORObject.DecodeFromBytes(bytes)
+        if (array.type != CBORType.Array || array.size() < 2) {
+            throw IllegalArgumentException("Invalid Bundle CBOR: expected array with size >= 2")
+        }
         val primary = deserializePrimaryBlock(array[0])
         var payload: PayloadBlock? = null
         var hopCount: HopCountBlock? = null
@@ -348,6 +390,9 @@ object Bpv7Parser {
 
         for (i in 1 until array.size()) {
             val blockCbor = array[i]
+            if (blockCbor.type != CBORType.Array || blockCbor.size() < 5) {
+                continue
+            }
             val type = blockCbor[0].AsInt32()
             when (type) {
                 1 -> {

@@ -962,11 +962,12 @@ fun ServicesConfigTab(
                     Checkbox(
                         checked = isBroadcast,
                         onCheckedChange = { isBroadcast = it },
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = NeonCyan,
-                            uncheckedColor = TextGray,
-                            checkmarkColor = Color.Black,
-                        ),
+                        colors =
+                            CheckboxDefaults.colors(
+                                checkedColor = NeonCyan,
+                                uncheckedColor = TextGray,
+                                checkmarkColor = Color.Black,
+                            ),
                     )
                     Text("Broadcast / Multicast EID (relays messages back to network)", color = Color.White, fontSize = 14.sp)
                 }
@@ -979,11 +980,12 @@ fun ServicesConfigTab(
                     Checkbox(
                         checked = isNotificationEnabled,
                         onCheckedChange = { isNotificationEnabled = it },
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = NeonCyan,
-                            uncheckedColor = TextGray,
-                            checkmarkColor = Color.Black,
-                        ),
+                        colors =
+                            CheckboxDefaults.colors(
+                                checkedColor = NeonCyan,
+                                uncheckedColor = TextGray,
+                                checkmarkColor = Color.Black,
+                            ),
                     )
                     Text("Enable System Notifications", color = Color.White, fontSize = 14.sp)
                 }

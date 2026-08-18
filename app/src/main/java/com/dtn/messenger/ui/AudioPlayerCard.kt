@@ -70,8 +70,14 @@ fun AudioPlayerCard(
                     } else {
                         setDataSource(filePath)
                     }
-                    prepare()
-                    duration = this.duration
+                    setOnPreparedListener { mp ->
+                        duration = mp.duration
+                    }
+                    setOnErrorListener { _, what, extra ->
+                        android.util.Log.e("AudioPlayerCard", "MediaPlayer error: what=$what, extra=$extra for $filePath")
+                        true
+                    }
+                    prepareAsync()
                 } catch (e: Exception) {
                     android.util.Log.e("AudioPlayerCard", "Error preparing MediaPlayer for $filePath", e)
                 }
@@ -81,10 +87,17 @@ fun AudioPlayerCard(
         player.setOnCompletionListener {
             isPlaying = false
             currentPosition = 0
-            player.seekTo(0)
+            try {
+                player.seekTo(0)
+            } catch (e: Exception) {
+            }
         }
 
         onDispose {
+            try {
+                player.stop()
+            } catch (e: Exception) {
+            }
             player.release()
             mediaPlayer = null
         }

@@ -29,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.dtn.messenger.data.dao.BundleRecordDao
@@ -150,10 +152,12 @@ fun BundleListScreen(
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 val size =
-                                    try {
-                                        File(bundle.payloadFilePath).length()
-                                    } catch (e: Exception) {
-                                        0L
+                                    remember(bundle.payloadFilePath) {
+                                        try {
+                                            File(bundle.payloadFilePath).length()
+                                        } catch (e: Exception) {
+                                            0L
+                                        }
                                     }
                                 Text(
                                     "Date: ${SimpleDateFormat(
@@ -269,15 +273,17 @@ fun BundleDetailPane(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val payloadText =
-        remember(bundle.bundleId) {
-            try {
-                val file = File(bundle.payloadFilePath)
-                if (file.exists()) String(file.readBytes(), Charsets.UTF_8) else "No payload content"
-            } catch (e: Exception) {
-                "Unable to parse payload as UTF-8 string."
+    val payloadText by produceState(initialValue = "Loading payload...", key1 = bundle.bundleId) {
+        value =
+            withContext(Dispatchers.IO) {
+                try {
+                    val file = File(bundle.payloadFilePath)
+                    if (file.exists()) String(file.readBytes(), Charsets.UTF_8) else "No payload content"
+                } catch (e: Exception) {
+                    "Unable to parse payload as UTF-8 string."
+                }
             }
-        }
+    }
 
     Column(
         modifier =

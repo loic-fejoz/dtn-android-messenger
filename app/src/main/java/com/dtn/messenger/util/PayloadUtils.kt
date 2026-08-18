@@ -60,13 +60,17 @@ object PayloadUtils {
             return ext
         }
 
-        // Check if valid text / Markdown
+        // Check if valid text / Markdown (stream only first 4KB to avoid large memory allocations)
         try {
-            val text = String(file.readBytes(), StandardCharsets.UTF_8)
-            if (text.startsWith("#") || text.contains("**") || text.contains("* ")) {
-                return "md"
+            val headerBytes = ByteArray(4096)
+            val bytesRead = file.inputStream().use { it.read(headerBytes) }
+            if (bytesRead > 0) {
+                val text = String(headerBytes, 0, bytesRead, StandardCharsets.UTF_8)
+                if (text.startsWith("#") || text.contains("**") || text.contains("* ")) {
+                    return "md"
+                }
+                return "txt"
             }
-            return "txt"
         } catch (e: Exception) {
             // Ignore
         }
@@ -99,5 +103,33 @@ object PayloadUtils {
         if (p == c) return true
         val normalizedParent = if (p.endsWith("/")) p else "$p/"
         return c.startsWith(normalizedParent)
+    }
+
+    fun base64Encode(bytes: ByteArray): String {
+        val table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        val sb = StringBuilder((bytes.size * 4 + 2) / 3)
+        var i = 0
+        while (i < bytes.size) {
+            val b0 = bytes[i].toInt() and 0xFF
+            val b1 = if (i + 1 < bytes.size) bytes[i + 1].toInt() and 0xFF else -1
+            val b2 = if (i + 2 < bytes.size) bytes[i + 2].toInt() and 0xFF else -1
+
+            sb.append(table[b0 ushr 2])
+            if (b1 != -1) {
+                sb.append(table[((b0 and 0x03) shl 4) or (b1 ushr 4)])
+                if (b2 != -1) {
+                    sb.append(table[((b1 and 0x0F) shl 2) or (b2 ushr 6)])
+                    sb.append(table[b2 and 0x3F])
+                } else {
+                    sb.append(table[(b1 and 0x0F) shl 2])
+                    sb.append('=')
+                }
+            } else {
+                sb.append(table[(b0 and 0x03) shl 4])
+                sb.append("==")
+            }
+            i += 3
+        }
+        return sb.toString()
     }
 }

@@ -8,17 +8,17 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
 class BibeTest {
-
     @Test
     fun testBibePduEncapsulationAndDecapsulation() {
         // 1. Create a dummy inner bundle
-        val innerPrimary = PrimaryBlock(
-            destination = Eid("dtn://destination/chat"),
-            source = Eid("dtn://source/chat"),
-            reportTo = Eid("dtn://source/chat"),
-            creationTimestamp = Pair(1000L, 1L),
-            lifetimeMs = 3600000L
-        )
+        val innerPrimary =
+            PrimaryBlock(
+                destination = Eid("dtn://destination/chat"),
+                source = Eid("dtn://source/chat"),
+                reportTo = Eid("dtn://source/chat"),
+                creationTimestamp = Pair(1000L, 1L),
+                lifetimeMs = 3600000L,
+            )
         val innerPayload = PayloadBlock(data = "Hello inner bundle!".toByteArray(Charsets.UTF_8))
         val innerHopCount = HopCountBlock(hopLimit = 64, hopCount = 1)
         val innerBundle = Bundle(innerPrimary, innerPayload, innerHopCount, null)
@@ -29,7 +29,7 @@ class BibeTest {
         // Format: [64443, [transmission-id, retransmission-time, encapsulated-bundle]]
         val pduContent = CBORObject.NewArray()
         pduContent.Add(42) // transmission-id
-        pduContent.Add(0)  // retransmission-time
+        pduContent.Add(0) // retransmission-time
         pduContent.Add(innerBundleBytes)
 
         val pdu = CBORObject.NewArray()
@@ -39,13 +39,14 @@ class BibeTest {
         val outerPayloadBytes = pdu.EncodeToBytes()
 
         // 3. Encapsulate into an outer bundle
-        val outerPrimary = PrimaryBlock(
-            destination = Eid("dtn://gateway/bibe"),
-            source = Eid("dtn://my-node/bibe"),
-            reportTo = Eid("dtn://my-node/bibe"),
-            creationTimestamp = Pair(2000L, 1L),
-            lifetimeMs = 3600000L
-        )
+        val outerPrimary =
+            PrimaryBlock(
+                destination = Eid("dtn://gateway/bibe"),
+                source = Eid("dtn://my-node/bibe"),
+                reportTo = Eid("dtn://my-node/bibe"),
+                creationTimestamp = Pair(2000L, 1L),
+                lifetimeMs = 3600000L,
+            )
         val outerPayload = PayloadBlock(data = outerPayloadBytes)
         val outerHopCount = HopCountBlock(hopLimit = 64, hopCount = 1)
         val outerBundle = Bundle(outerPrimary, outerPayload, outerHopCount, null)
@@ -62,7 +63,7 @@ class BibeTest {
         val cbor = CBORObject.DecodeFromBytes(payloadData)
         assertEquals(CBORType.Array, cbor.type)
         assertEquals(2, cbor.size())
-        
+
         val recordType = cbor[0].AsInt32()
         assertEquals(64443, recordType)
 
@@ -81,13 +82,14 @@ class BibeTest {
     @Test
     fun testRawBundleInBundleDecapsulation() {
         // 1. Create a dummy inner bundle
-        val innerPrimary = PrimaryBlock(
-            destination = Eid("dtn://destination/chat"),
-            source = Eid("dtn://source/chat"),
-            reportTo = Eid("dtn://source/chat"),
-            creationTimestamp = Pair(1000L, 1L),
-            lifetimeMs = 3600000L
-        )
+        val innerPrimary =
+            PrimaryBlock(
+                destination = Eid("dtn://destination/chat"),
+                source = Eid("dtn://source/chat"),
+                reportTo = Eid("dtn://source/chat"),
+                creationTimestamp = Pair(1000L, 1L),
+                lifetimeMs = 3600000L,
+            )
         val innerPayload = PayloadBlock(data = "Hello raw inner!".toByteArray(Charsets.UTF_8))
         val innerHopCount = HopCountBlock(hopLimit = 64, hopCount = 1)
         val innerBundle = Bundle(innerPrimary, innerPayload, innerHopCount, null)
@@ -95,13 +97,14 @@ class BibeTest {
         val innerBundleBytes = Bpv7Parser.serialize(innerBundle)
 
         // 2. Encapsulate raw bundle bytes directly in outer bundle's payload
-        val outerPrimary = PrimaryBlock(
-            destination = Eid("dtn://gateway/bibe"),
-            source = Eid("dtn://my-node/bibe"),
-            reportTo = Eid("dtn://my-node/bibe"),
-            creationTimestamp = Pair(2000L, 1L),
-            lifetimeMs = 3600000L
-        )
+        val outerPrimary =
+            PrimaryBlock(
+                destination = Eid("dtn://gateway/bibe"),
+                source = Eid("dtn://my-node/bibe"),
+                reportTo = Eid("dtn://my-node/bibe"),
+                creationTimestamp = Pair(2000L, 1L),
+                lifetimeMs = 3600000L,
+            )
         val outerPayload = PayloadBlock(data = innerBundleBytes)
         val outerHopCount = HopCountBlock(hopLimit = 64, hopCount = 1)
         val outerBundle = Bundle(outerPrimary, outerPayload, outerHopCount, null)
@@ -122,10 +125,11 @@ class BibeTest {
     @Test
     fun testMalformedBibePduDoesNotCrash() {
         // 1. Array with invalid record type
-        val invalidTypeCbor = CBORObject.NewArray().apply {
-            Add(99999) // Unknown admin record type
-            Add(CBORObject.NewArray())
-        }
+        val invalidTypeCbor =
+            CBORObject.NewArray().apply {
+                Add(99999) // Unknown admin record type
+                Add(CBORObject.NewArray())
+            }
         // Should not crash when trying to parse or process
         try {
             val cbor = CBORObject.DecodeFromBytes(invalidTypeCbor.EncodeToBytes())
@@ -140,10 +144,11 @@ class BibeTest {
         }
 
         // 2. Array with correct type but empty content array
-        val emptyContentCbor = CBORObject.NewArray().apply {
-            Add(64443)
-            Add(CBORObject.NewArray()) // Empty content array (size 0, should be >= 3)
-        }
+        val emptyContentCbor =
+            CBORObject.NewArray().apply {
+                Add(64443)
+                Add(CBORObject.NewArray()) // Empty content array (size 0, should be >= 3)
+            }
         try {
             val cbor = CBORObject.DecodeFromBytes(emptyContentCbor.EncodeToBytes())
             if (cbor.type == CBORType.Array && cbor.size() >= 2) {
@@ -173,18 +178,20 @@ class BibeTest {
 
         // Scenario 2: Local unicast service only -> should NOT forward
         val isLocal2 = true
-        val matchedLocalServices2 = listOf(
-            LocalService(serviceEid = "dtn://my-node/chat", displayName = "Chat", viewerType = ViewerType.CHAT, isBroadcast = false)
-        )
+        val matchedLocalServices2 =
+            listOf(
+                LocalService(serviceEid = "dtn://my-node/chat", displayName = "Chat", viewerType = ViewerType.CHAT, isBroadcast = false),
+            )
         val isMatchedBroadcast2 = matchedLocalServices2.any { it.isBroadcast }
         val shouldForward2 = nextHopProfileExists && (!isLocal2 || isMatchedBroadcast2)
         assertFalse(shouldForward2)
 
         // Scenario 3: Local broadcast service -> should forward
         val isLocal3 = true
-        val matchedLocalServices3 = listOf(
-            LocalService(serviceEid = "dtn://group/chat", displayName = "Group Chat", viewerType = ViewerType.CHAT, isBroadcast = true)
-        )
+        val matchedLocalServices3 =
+            listOf(
+                LocalService(serviceEid = "dtn://group/chat", displayName = "Group Chat", viewerType = ViewerType.CHAT, isBroadcast = true),
+            )
         val isMatchedBroadcast3 = matchedLocalServices3.any { it.isBroadcast }
         val shouldForward3 = nextHopProfileExists && (!isLocal3 || isMatchedBroadcast3)
         assertTrue(shouldForward3)

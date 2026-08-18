@@ -3,7 +3,6 @@ package com.dtn.messenger.protocol
 import com.code_intelligence.jazzer.junit.FuzzTest
 
 class SenmlParserFuzzTest {
-
     @FuzzTest(maxDuration = "1m")
     fun fuzzSenmlParser(data: ByteArray) {
         try {
