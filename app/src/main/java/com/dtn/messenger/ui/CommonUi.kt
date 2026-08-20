@@ -17,6 +17,9 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.TextUnit
+import coil.compose.AsyncImage
 
 @Composable
 fun GlassCard(
@@ -166,19 +169,16 @@ fun MarkdownText(text: String) {
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text("•", color = NeonCyan, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            text = parseMarkdownInline(line.substring(line.indexOf(' ') + 1)),
-                            fontSize = 14.sp,
-                            color = Color.White,
-                        )
+                        val lineContent = line.substring(line.indexOf(' ') + 1)
+                        val elements = MarkdownImageParser.parseLineElements(lineContent)
+                        Box(modifier = Modifier.weight(1f)) {
+                            RenderLineContent(elements = elements, fontSize = 14.sp, color = Color.White)
+                        }
                     }
                 } else {
                     if (line.isNotEmpty()) {
-                        Text(
-                            text = parseMarkdownInline(line),
-                            fontSize = 14.sp,
-                            color = Color.White,
-                        )
+                        val elements = MarkdownImageParser.parseLineElements(line)
+                        RenderLineContent(elements = elements, fontSize = 14.sp, color = Color.White)
                     } else {
                         Spacer(modifier = Modifier.height(4.dp))
                     }
@@ -202,6 +202,69 @@ fun MarkdownText(text: String) {
                         .padding(8.dp),
             )
             codeBlockContent.clear()
+        }
+    }
+}
+
+@Composable
+fun MarkdownImage(imageUrl: String, altText: String) {
+    val model: Any? = remember(imageUrl) {
+        if (imageUrl.startsWith("data:", ignoreCase = true)) {
+            MarkdownImageParser.decodeBase64DataUri(imageUrl)
+        } else {
+            imageUrl
+        }
+    }
+
+    if (model != null) {
+        AsyncImage(
+            model = model,
+            contentDescription = altText.ifEmpty { "Markdown Image" },
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 240.dp)
+                .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                .padding(4.dp),
+            contentScale = ContentScale.Fit
+        )
+    } else {
+        Text(
+            text = "[Image could not be loaded: $altText]",
+            color = Color.Red,
+            fontSize = 12.sp,
+            fontStyle = FontStyle.Italic
+        )
+    }
+}
+
+@Composable
+fun RenderLineContent(
+    elements: List<MarkdownLineElement>,
+    fontSize: TextUnit = 14.sp,
+    color: Color = Color.White,
+) {
+    if (elements.size == 1 && elements[0] is MarkdownLineElement.Text) {
+        Text(
+            text = parseMarkdownInline((elements[0] as MarkdownLineElement.Text).content),
+            fontSize = fontSize,
+            color = color,
+        )
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            for (element in elements) {
+                when (element) {
+                    is MarkdownLineElement.Text -> {
+                        Text(
+                            text = parseMarkdownInline(element.content),
+                            fontSize = fontSize,
+                            color = color,
+                        )
+                    }
+                    is MarkdownLineElement.Image -> {
+                        MarkdownImage(imageUrl = element.url, altText = element.altText)
+                    }
+                }
+            }
         }
     }
 }
