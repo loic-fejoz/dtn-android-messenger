@@ -243,6 +243,7 @@ private fun downloadBundlePayload(
                         "bmp" -> "image/bmp"
                         "txt" -> "text/plain"
                         "md" -> "text/markdown"
+                        "html", "htm" -> "text/html"
                         else -> "application/octet-stream"
                     }
                 put(MediaStore.MediaColumns.MIME_TYPE, mime)

@@ -2,6 +2,7 @@ package com.dtn.messenger.util
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -76,6 +77,27 @@ class PayloadUtilsTest {
         val txtFile = File(tempDir.toFile(), "plain.bin")
         txtFile.writeText("Simple plain text message.")
         assertEquals("txt", PayloadUtils.getPayloadFileExtension(txtFile.absolutePath))
+
+        val htmlFile = File(tempDir.toFile(), "test_html.bin")
+        htmlFile.writeText("<!DOCTYPE html><html><body><h1>Hello</h1></body></html>")
+        assertEquals("html", PayloadUtils.getPayloadFileExtension(htmlFile.absolutePath))
+
+        val htmlFile2 = File(tempDir.toFile(), "test_html2.bin")
+        htmlFile2.writeText("<html lang=\"en\">\n<head></head>\n<body></body>\n</html>")
+        assertEquals("html", PayloadUtils.getPayloadFileExtension(htmlFile2.absolutePath))
+
+        val htmlFile3 = File(tempDir.toFile(), "test_html3.bin")
+        htmlFile3.writeText("\uFEFF<!DOCTYPE html>\n<html><body>Hello</body></html>")
+        assertEquals("html", PayloadUtils.getPayloadFileExtension(htmlFile3.absolutePath))
+
+        val htmlFile4 = File(tempDir.toFile(), "test_html4.bin")
+        val longContent = StringBuilder("<!DOCTYPE html>\n<html><head><title>Test</title></head><body>")
+        for (i in 1..1000) {
+            longContent.append("<p>Some dummy paragraphs to bloat the file size...</p>\n")
+        }
+        longContent.append("</body></html>")
+        htmlFile4.writeText(longContent.toString())
+        assertEquals("html", PayloadUtils.getPayloadFileExtension(htmlFile4.absolutePath))
     }
 
     @Test
@@ -84,6 +106,15 @@ class PayloadUtilsTest {
         assertTrue(PayloadUtils.isValidEid("ipn:1.2"))
         assertFalse(PayloadUtils.isValidEid(""))
         assertFalse(PayloadUtils.isValidEid("http://example.com"))
+    }
+
+    @Test
+    fun testGetPayloadFileExtensionIndexHtml() {
+        val resource = javaClass.classLoader?.getResource("index.html")
+        assertNotNull(resource)
+        val file = File(resource!!.toURI())
+        val ext = PayloadUtils.getPayloadFileExtension(file.absolutePath)
+        assertEquals("html", ext)
     }
 
     @Test

@@ -60,12 +60,26 @@ object PayloadUtils {
             return ext
         }
 
-        // Check if valid text / Markdown (stream only first 4KB to avoid large memory allocations)
+        // Check if valid text / Markdown / HTML (stream only first 4KB to avoid large memory allocations)
         try {
             val headerBytes = ByteArray(4096)
             val bytesRead = file.inputStream().use { it.read(headerBytes) }
             if (bytesRead > 0) {
                 val text = String(headerBytes, 0, bytesRead, StandardCharsets.UTF_8)
+                val cleanText = text.replace("\uFEFF", "").trim()
+                if (cleanText.startsWith("<!DOCTYPE html", ignoreCase = true) ||
+                    cleanText.startsWith("<html", ignoreCase = true) ||
+                    (cleanText.contains("<html", ignoreCase = true) && (
+                        cleanText.contains("<head", ignoreCase = true) ||
+                        cleanText.contains("<body", ignoreCase = true) ||
+                        cleanText.contains("<title", ignoreCase = true) ||
+                        cleanText.contains("</html>", ignoreCase = true) ||
+                        cleanText.contains("</head>", ignoreCase = true) ||
+                        cleanText.contains("</body>", ignoreCase = true)
+                    ))
+                ) {
+                    return "html"
+                }
                 if (text.startsWith("#") || text.contains("**") || text.contains("* ")) {
                     return "md"
                 }
