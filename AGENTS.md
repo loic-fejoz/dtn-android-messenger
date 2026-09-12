@@ -11,7 +11,7 @@ Provide a reliable, delay-tolerant messaging client on Android using BPv7, with 
 
 ### Directory Map
 - `app/src/main/AndroidManifest.xml`: Application declarations and permissions.
-- `app/src/main/java/com/dtn/messenger/`:
+- `app/src/main/java/io/github/loic_fejoz/dtn_android_messenger/`:
   - `car/`: Android Auto integration and CarAppService.
   - `cla/`: Convergence Layer Adapters (TCPCLv4, Bluetooth Classic).
   - `data/`: Room DB entities, DAOs, and database configuration.

@@ -29,7 +29,7 @@
         errorLine1="        val scans = wifiManager.scanResults"
         errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/ConfigurationScreen.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
             line="70"
             column="21"/>
     </issue>
@@ -40,7 +40,7 @@
         errorLine1="        val scans = wifiManager.scanResults"
         errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/ConfigurationScreen.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
             line="70"
             column="21"/>
     </issue>
@@ -51,7 +51,7 @@
         errorLine1="        val configs = wifiManager.configuredNetworks"
         errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/ConfigurationScreen.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
             line="80"
             column="23"/>
     </issue>
@@ -62,7 +62,7 @@
         errorLine1="        val configs = wifiManager.configuredNetworks"
         errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/ConfigurationScreen.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
             line="80"
             column="23"/>
     </issue>
@@ -73,7 +73,7 @@
         errorLine1="    return String.format(&quot;%02d:%02d&quot;, mins, secs)"
         errorLine2="           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/AudioPlayerCard.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/AudioPlayerCard.kt"
             line="186"
             column="12"/>
     </issue>
@@ -84,7 +84,7 @@
         errorLine1="                                    text = String.format(&quot;Recording: %02d:%02d&quot;, recordingDuration / 60, recordingDuration % 60),"
         errorLine2="                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/SendBundleScreen.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
             line="624"
             column="44"/>
     </issue>
@@ -95,7 +95,7 @@
         errorLine1="        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)"
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/BundleListScreen.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/BundleListScreen.kt"
             line="247"
             column="35"/>
     </issue>
@@ -392,7 +392,7 @@
         errorLine1="    var duration by remember { mutableStateOf(0) }"
         errorLine2="                               ~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/AudioPlayerCard.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/AudioPlayerCard.kt"
             line="57"
             column="32"/>
     </issue>
@@ -403,7 +403,7 @@
         errorLine1="    var currentPosition by remember { mutableStateOf(0) }"
         errorLine2="                                      ~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/AudioPlayerCard.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/AudioPlayerCard.kt"
             line="58"
             column="39"/>
     </issue>
@@ -414,7 +414,7 @@
         errorLine1="    var selectedFileSize by remember { mutableStateOf(0L) }"
         errorLine2="                                       ~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/SendBundleScreen.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
             line="139"
             column="40"/>
     </issue>
@@ -425,7 +425,7 @@
         errorLine1="    var recordingDuration by remember { mutableStateOf(0) }"
         errorLine2="                                        ~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/SendBundleScreen.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
             line="145"
             column="41"/>
     </issue>
@@ -479,7 +479,7 @@
         errorLine1="                        val uri = Uri.parse(filePath)"
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/AudioPlayerCard.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/AudioPlayerCard.kt"
             line="66"
             column="35"/>
     </issue>
@@ -490,7 +490,7 @@
         errorLine1="                    prefs.edit().putString(&quot;local_node_name&quot;, it.trim()).apply()"
         errorLine2="                    ~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/ConfigurationScreen.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
             line="180"
             column="21"/>
     </issue>
@@ -501,7 +501,7 @@
         errorLine1="                                    prefs.edit().putString(&quot;bpsec_policy&quot;, p).apply()"
         errorLine2="                                    ~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/ConfigurationScreen.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
             line="634"
             column="37"/>
     </issue>
@@ -512,7 +512,7 @@
         errorLine1="        val soundUri = service.notificationSoundUri?.let { Uri.parse(it) } ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)"
         errorLine2="                                                           ~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/service/DtnEngineService.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/service/DtnEngineService.kt"
             line="461"
             column="60"/>
     </issue>
@@ -523,7 +523,7 @@
         errorLine1="    var selectedFileUri by remember { mutableStateOf&lt;Uri?>(if (preFilledFileUri.isNotEmpty()) Uri.parse(preFilledFileUri) else null) }"
         errorLine2="                                                                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/SendBundleScreen.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
             line="137"
             column="95"/>
     </issue>
@@ -534,7 +534,7 @@
         errorLine1="                            prefs.edit().putString(&quot;last_destination_eid&quot;, destination.trim()).apply()"
         errorLine2="                            ~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/dtn/messenger/ui/SendBundleScreen.kt"
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
             line="706"
             column="29"/>
     </issue>

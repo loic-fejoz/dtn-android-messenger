@@ -9,11 +9,11 @@ This document outlines the coding standards, patterns, and critical lifecycle ru
 Room database schemas are strictly validated by Android. Modifying database schemas without providing a migration path or fallback will crash the application on startup with an `IllegalStateException`.
 
 ### 1.1 Modifying Entities
-- Any schema changes (adding columns, modifying tables) in [`Entities.kt`](../app/src/main/java/com/dtn/messenger/data/model/Entities.kt) **MUST** be accompanied by a database version increment in [`AppDatabase.kt`](../app/src/main/java/com/dtn/messenger/data/db/AppDatabase.kt#L41).
+- Any schema changes (adding columns, modifying tables) in [`Entities.kt`](../app/src/main/java/io/github/loic_fejoz/dtn_android_messenger/data/model/Entities.kt) **MUST** be accompanied by a database version increment in [`AppDatabase.kt`](../app/src/main/java/io/github/loic_fejoz/dtn_android_messenger/data/db/AppDatabase.kt#L41).
 
 ### 1.2 Migration Path or Destructive Fallback
-* **Development/Testing**: During early feature iteration, you can temporarily enable `.fallbackToDestructiveMigration()` in the database builder inside [`Modules.kt`](../app/src/main/java/com/dtn/messenger/di/Modules.kt#L15). This forces Room to recreate the tables automatically when schemas change, avoiding manual uninstalls.
-* **Production/Stable Builds**: You **MUST** define an explicit `Migration` object in [`AppDatabase.kt`](../app/src/main/java/com/dtn/messenger/data/db/AppDatabase.kt) and attach it to the builder using `.addMigrations()`.
+* **Development/Testing**: During early feature iteration, you can temporarily enable `.fallbackToDestructiveMigration()` in the database builder inside [`Modules.kt`](../app/src/main/java/io/github/loic_fejoz/dtn_android_messenger/di/Modules.kt#L15). This forces Room to recreate the tables automatically when schemas change, avoiding manual uninstalls.
+* **Production/Stable Builds**: You **MUST** define an explicit `Migration` object in [`AppDatabase.kt`](../app/src/main/java/io/github/loic_fejoz/dtn_android_messenger/data/db/AppDatabase.kt) and attach it to the builder using `.addMigrations()`.
 
 ---
 
@@ -26,7 +26,7 @@ Android 12+ (API 31+) and Android 14 (API 34+) impose strict rules on background
 * **Correct Call**: Always start the service using `androidx.core.content.ContextCompat.startForegroundService()`. Do not call `context.startService()` directly for a foreground service, as it throws `IllegalStateException` on Android 8.0+.
 
 ### 2.2 Defensive Programming
-- Inside [`DtnEngineService.onCreate()`](../app/src/main/java/com/dtn/messenger/service/DtnEngineService.kt#L95), wrap `startForeground()` in a `try-catch` block capturing `Exception`.
+- Inside [`DtnEngineService.onCreate()`](../app/src/main/java/io/github/loic_fejoz/dtn_android_messenger/service/DtnEngineService.kt#L95), wrap `startForeground()` in a `try-catch` block capturing `Exception`.
 - **CRITICAL**: If `startForeground()` fails and throws `ForegroundServiceStartNotAllowedException`, you **MUST** call `stopSelf()` immediately inside the catch block to prevent the Android OS from throwing a `RemoteServiceException` (ANR/crash) 5 seconds later.
 
 ---

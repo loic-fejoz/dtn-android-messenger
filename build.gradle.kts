@@ -8,7 +8,7 @@ plugins {
     id("org.cyclonedx.bom") version "1.10.0"
 }
 
-group = "com.dtn.messenger"
+group = "io.github.loic_fejoz.dtn_android_messenger"
 version = "1.0.0"
 
 tasks.named<org.cyclonedx.gradle.CycloneDxTask>("cyclonedxBom") {

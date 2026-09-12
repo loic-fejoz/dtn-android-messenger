@@ -3,7 +3,7 @@
 This document details how to write, mock, and run tests for the DTN Android Messenger project.
 
 ## 1. Test Locations
-- **Unit Tests**: Located under [`app/src/test/java/com/dtn/messenger/`](../app/src/test/java/com/dtn/messenger).
+- **Unit Tests**: Located under [`app/src/test/java/io/github/loic_fejoz/dtn_android_messenger/`](../app/src/test/java/io/github/loic_fejoz/dtn_android_messenger).
 - **Instrumentation (Android) Tests**: Located under `app/src/androidTest/`.
 
 ---
@@ -25,8 +25,8 @@ Always verify your work before declaring a task finished by running:
 This compiles the code and runs all unit tests.
 
 ### 3.2 Protocol Testing (BPv7)
-- Core protocol serialization and security blocks validation are tested in [`Bpv7Test.kt`](../app/src/test/java/com/dtn/messenger/Bpv7Test.kt).
-- When writing tests for custom bundle blocks or parsers, replicate the byte-level tests defined in [`Bpv7Test.kt`](../app/src/test/java/com/dtn/messenger/Bpv7Test.kt#L10) to verify correctness against RFC 9171 (BPv7).
+- Core protocol serialization and security blocks validation are tested in [`Bpv7Test.kt`](../app/src/test/java/io/github/loic_fejoz/dtn_android_messenger/Bpv7Test.kt).
+- When writing tests for custom bundle blocks or parsers, replicate the byte-level tests defined in [`Bpv7Test.kt`](../app/src/test/java/io/github/loic_fejoz/dtn_android_messenger/Bpv7Test.kt#L10) to verify correctness against RFC 9171 (BPv7).
 
 ---
 
@@ -42,5 +42,5 @@ For repository or DAO testing:
 
 ### 4.2 Network & Bluetooth Mocking
 - **Never** instantiate or connect to real sockets (`TcpSocket` / `BluetoothSocket`) in unit tests.
-- Instead, mock the [`ConvergenceLayerAdapter`](../app/src/main/java/com/dtn/messenger/cla/ConvergenceLayer.kt#L10) interface.
+- Instead, mock the [`ConvergenceLayerAdapter`](../app/src/main/java/io/github/loic_fejoz/dtn_android_messenger/cla/ConvergenceLayer.kt#L10) interface.
 - Provide fake/mock implementations that simulate successful or failed network transmissions to test routing or service recovery scenarios.

@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.dtn.messenger"
+    namespace = "io.github.loic_fejoz.dtn_android_messenger"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.dtn.messenger"
+        applicationId = "io.github.loic_fejoz.dtn_android_messenger"
         minSdk = 23
         targetSdk = 35
         versionCode = 1

@@ -1,0 +1,29 @@
+Categories:
+  - Messaging
+  - Internet
+License: Apache-2.0
+AuthorName: Loïc Fejoz
+SourceCode: https://github.com/loic-fejoz/dtn-android-messenger
+IssueTracker: https://github.com/loic-fejoz/dtn-android-messenger/issues
+
+AutoName: DTN Messenger
+Summary: Client de messagerie tolérant aux délais/disruptions (BPv7 / RFC 9171)
+Description: |-
+  Application Android native de messagerie et de transfert autonome de bundles 
+  conforme aux spécifications BPv7 (RFC 9171), TCPCLv4 (RFC 9103) et Bluetooth Classic.
+
+RepoType: git
+Repo: https://github.com/loic-fejoz/dtn-android-messenger.git
+
+Builds:
+  - versionName: 0.1.0
+    versionCode: 1
+    commit: v0.1.0
+    subdir: app
+    gradle:
+      - yes
+
+AutoUpdateMode: Version v%v
+UpdateCheckMode: Tags
+CurrentVersion: 0.1.0
+CurrentVersionCode: 1

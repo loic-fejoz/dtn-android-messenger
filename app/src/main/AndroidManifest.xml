@@ -16,7 +16,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
     <application
-        android:name="com.dtn.messenger.DtnApplication"
+        android:name="io.github.loic_fejoz.dtn_android_messenger.DtnApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -33,7 +33,7 @@
             android:value="1" />
 
         <activity
-            android:name="com.dtn.messenger.ui.MainActivity"
+            android:name="io.github.loic_fejoz.dtn_android_messenger.ui.MainActivity"
             android:exported="true"
             android:theme="@style/Theme.DtnMessenger">
             <intent-filter>
@@ -54,8 +54,8 @@
         </activity>
 
         <activity-alias
-            android:name="com.dtn.messenger.ui.FileShareActivity"
-            android:targetActivity="com.dtn.messenger.ui.MainActivity"
+            android:name="io.github.loic_fejoz.dtn_android_messenger.ui.FileShareActivity"
+            android:targetActivity="io.github.loic_fejoz.dtn_android_messenger.ui.MainActivity"
             android:exported="true"
             android:label="DTN Messenger - Any File">
             <intent-filter>
@@ -67,12 +67,12 @@
         </activity-alias>
 
         <service
-            android:name="com.dtn.messenger.service.DtnEngineService"
+            android:name="io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService"
             android:foregroundServiceType="connectedDevice"
             android:exported="false" />
 
         <service
-            android:name="com.dtn.messenger.car.DtnCarAppService"
+            android:name="io.github.loic_fejoz.dtn_android_messenger.car.DtnCarAppService"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>
@@ -82,7 +82,7 @@
         </service>
 
         <receiver
-            android:name="com.dtn.messenger.receiver.DtnMessageReceiver"
+            android:name="io.github.loic_fejoz.dtn_android_messenger.receiver.DtnMessageReceiver"
             android:exported="false" />
 
     </application>
