@@ -1,0 +1,2 @@
+json_key_file("") # Path to the json secret file - Follow https://docs.fastlane.tools/actions/supply/#setup to get one
+package_name("io.github.loic_fejoz.dtn_android_messenger") # e.g. com.krausefx.app

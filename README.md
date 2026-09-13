@@ -33,16 +33,18 @@ with stimulations from the [RADIANT project](https://radiant.amsat-uk.org/).
 
 Here are screenshots of the application showcasing its main features:
 
-![Main Registry View](screencap.png)
-![Chat Service View](screencap_chat.png)
-![SenML Last Service View](screencap_senml_last.png)
-![File Exchange Service View](screencap_files.png)
-![Bundle Detail View](screencap_bundle_detail.png)
-![Opportunistic Text Sender View](screencap_opportunistic_send.png)
-![Opportunistic Image Sender View](screencap_opportunistic_send_image.png)
-![Convergence Layers Configuration View](screencap_convergence_layers.png)
-![Routing Configuration View](screencap_routing.png)
-![Local Services Configuration View](screencap_local_services.png)
+![Main Registry View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap.png)
+![Chat Service View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_chat.png)
+![SenML Last Service View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_senml_last.png)
+![File Exchange Service View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_files.png)
+![Bundle Detail Markdown View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_bundle_detail_markdown.png)
+![Bundle Detail Image View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_bundle_detail_image.png)
+![Bundle Detail Vocal View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_bundle_detail_vocal.png)
+![Opportunistic Text Sender View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_opportunistic_send.png)
+![Opportunistic Image Sender View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_opportunistic_send_image.png)
+![Convergence Layers Configuration View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_convergence_layers.png)
+![Routing Configuration View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_routing.png)
+![Local Services Configuration View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_local_services.png)
 
 ---
 
