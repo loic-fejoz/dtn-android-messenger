@@ -56,6 +56,13 @@ android {
         baseline = file("lint-baseline.xml")
         enable += setOf("HardcodedDebugMode", "UnprotectedReceiver", "ExportedService")
     }
+
+    applicationVariants.all {
+        outputs.all {
+            val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            output?.outputFileName = "dtn-android-messenger-v${versionName}-${buildType.name}.apk"
+        }
+    }
 }
 
 dependencies {

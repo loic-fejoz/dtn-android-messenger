@@ -11,7 +11,7 @@ clear_previous_screenshots(true)
 use_timestamp_suffix(false)
 
 # Path to built APKs
-app_apk_path('app/build/outputs/apk/debug/app-debug.apk')
+app_apk_path(Dir['app/build/outputs/apk/debug/dtn-android-messenger-v*.apk'].first || 'app/build/outputs/apk/debug/app-debug.apk')
 tests_apk_path('app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')
 
 # Directory where screenshots will be saved

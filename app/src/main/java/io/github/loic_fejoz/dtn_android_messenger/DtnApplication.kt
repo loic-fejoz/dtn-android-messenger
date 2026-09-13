@@ -54,11 +54,10 @@ class DtnApplication : Application() {
                 if (profiles.isEmpty()) {
                     convergenceProfileDao.insert(
                         ConvergenceProfile(
-                            profileId = "dtn://f4jxq-2",
-                            name = "Hardy Instance f4jxq-2 (TCPCL)",
+                            profileId = "dtn://f4jxq",
+                            name = "Hardy Instance f4jxq (TCPCL)",
                             triggerType = TriggerType.PERIODIC_INTERNET,
-                            // 10.0.2.2 points to the host loopback from the emulator
-                            targetAddress = "10.0.2.2:4556",
+                            targetAddress = "44.27.131.233:4556",
                             // Check every 120 minutes (2 hours)
                             triggerCondition = "120",
                         ),

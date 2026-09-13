@@ -48,6 +48,47 @@ Here are screenshots of the application showcasing its main features:
 
 ---
 
+## Getting Started: Installing the APK on your Smartphone
+
+If you want to test the application directly on your Android smartphone, you can install the `.apk` file compiled automatically by the GitHub CI pipeline.
+
+### Step 1: Download the `.apk` File
+1. Open this GitHub repository in your smartphone browser.
+2. Go to **Releases** (or tap the **Actions** tab to access the latest build artifacts).
+3. Download the `dtn-android-messenger-v1.0-debug.apk` file (or matching version release APK) to your device.
+
+### Step 2: Enable Developer Mode & Unknown App Installation
+Android restricts installing applications directly from browser downloads by default. Follow these steps to allow installation (compatible with Android 6.0 / API 23 up to Android 15):
+
+1. **Activate Developer Mode**:
+   * Open the **Settings** app on your phone.
+   * Scroll down and tap **About phone** (or **System > About phone**).
+   * Locate **Build number** (Numéro de build).
+   * Tap **Build number 7 times** continuously until a message pops up saying *"You are now a developer!"*.
+2. **Allow Installation from Unknown Sources**:
+   * Go back to **Settings** and navigate to **Apps** (or **Security & Privacy > Special app access**).
+   * Tap **Install unknown apps** (or *Sources inconnues / Installation d'applications inconnues*).
+   * Select the browser or file manager you used to download the file (e.g., *Chrome*, *Firefox*, or *Files*).
+   * Toggle **Allow from this source** to **ON**.
+
+### Step 3: Install and Launch
+1. Open your phone's **Downloads** folder (or tap the download complete notification).
+2. Tap the `dtn-android-messenger-v1.0-debug.apk` file.
+3. Tap **Install** and wait for completion.
+4. Open **DTN Messenger**!
+
+### Step 4: Security Cleanup (Recommended)
+Once the installation is complete, it is recommended best practice to revoke unknown app permissions and turn off Developer Mode to keep your smartphone secure:
+
+1. **Revoke Unknown Apps Permission**:
+   * Go back to **Settings > Apps > Special app access > Install unknown apps** (or *Sources inconnues*).
+   * Select your browser / file manager and toggle **Allow from this source** back to **OFF**.
+2. **Disable Developer Mode**:
+   * Go to **Settings > System > Developer options** (or **Developer options** at the bottom of main Settings).
+   * Toggle the top switch (**Use developer options**) to **OFF**.
+
+---
+
 ## Current Limitations & Design Trade-offs
 
 To remain lightweight, memory-efficient, and easy to maintain on mobile and embedded Android devices (API 23+), the convergence layer implementation deliberately opts for simplicity rather than full-blown complex streaming architectures:
@@ -110,21 +151,18 @@ You can launch an emulator directly from your terminal using the Android SDK bin
 
 ---
 
-## 3. HOW TO TEST WITH YOUR HARDY INSTANCE (`dtn://f4jxq-2` on Port 4556)
+## 3. HOW TO TEST WITH YOUR HARDY INSTANCE (`dtn://f4jxq` on Port 4556)
 
 The application database is pre-populated with a convergence profile specifically for this scenario:
 
 *   **Pre-populated Target Profile:**
-    *   **EID:** `dtn://f4jxq-2`
+    *   **EID:** `dtn://f4jxq`
     *   **Adapter:** TCPCLv4
-    *   **Target Address:** `10.0.2.2:4556`
-
-> [!NOTE]
-> `10.0.2.2` is a special loopback IP address mapped by the Android Emulator to access the host machine's loopback (`127.0.0.1`). When the app connects to `10.0.2.2:4556`, it communicates directly with your Hardy instance listening on port `4556` on the host machine.
+    *   **Target Address:** `44.27.131.233:4556`
 
 ### Testing steps:
-1.  **Start your Hardy instance** on the host machine, ensuring it is listening on port `4556` using its TCPCLv4 convergence adapter.
-2.  **Open the DTN Messenger app** on the emulator.
+1.  **Start your Hardy instance** listening on port `4556` using its TCPCLv4 convergence adapter.
+2.  **Open the DTN Messenger app**.
 3.  **Configure Local Node Name (Optional):**
     *   Go to settings (gear icon in the top right of the EID registry screen).
     *   Tap the **SERVICES** tab.
@@ -133,14 +171,14 @@ The application database is pre-populated with a convergence profile specificall
     *   Go back to the registry screen and tap the Floating Action Button (**+**) in the bottom-right corner to open the **Opportunistic Sender**.
     *   The screen displays the **Resolved Source EID** (derived by concatenating the local Node EID and your service name, e.g., `dtn://my-node/chat`).
     *   **Source Service:** Manually type your service name (e.g. `chat` or `sensor`). Alternatively, tap the dropdown arrow on the right to select from the registered local services, which will automatically fill in the service part. If the list is empty, you can still type it manually.
-    *   **Destination EID:** Type `dtn://f4jxq-2/chat` (or another path targeting your Hardy instance).
+    *   **Destination EID:** Type `dtn://f4jxq/chat` (or another path targeting your Hardy instance).
     *   **Payload text content:** Write your test message.
 5.  Tap **QUEUE FOR TRANSMISSION**.
 6.  The bundle is generated, signed (if you register a BPSec key for the destination under Settings), and placed in the `OUTBOX` queue.
 7.  The background flusher runs automatically every 10 seconds. You can monitor the status in real time:
     *   Go back to the registry screen and tap the **Logs** button (list icon in the top right).
     *   You will see logs such as:
-        *   `[TCPCL] Connecting to 10.0.2.2:4556`
+        *   `[TCPCL] Connecting to 44.27.131.233:4556`
         *   `[TCPCL] Successfully sent bundle, acknowledged X bytes`
         *   `Bundle successfully sent! New state: DELIVERED`
 
@@ -164,7 +202,7 @@ If the application starts with a clean database, it will automatically populate 
   * `dtn://my-node/chat` (Default Chat Service)
   * `dtn://my-node/files` (Default File Exchange)
 * **Convergence Profiles**:
-  * `dtn://f4jxq-2` : Pointing to `10.0.2.2:4556` (representing the host PC loopback from the emulator via TCPCL)
+  * `dtn://f4jxq` : Pointing to `44.27.131.233:4556` (representing the Hardy TCPCLv4 peer)
   * `dtn://node-bt` : Pointing to a dummy Bluetooth MAC address `00:11:22:33:44:55` (edit this in the **Profiles Config** tab of settings to match your remote phone's actual address).
 
 ---
