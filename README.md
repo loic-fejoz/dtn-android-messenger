@@ -33,18 +33,20 @@ with stimulations from the [RADIANT project](https://radiant.amsat-uk.org/).
 
 Here are screenshots of the application showcasing its main features:
 
-![Main Registry View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap.png)
-![Chat Service View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_chat.png)
-![SenML Last Service View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_senml_last.png)
-![File Exchange Service View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_files.png)
-![Bundle Detail Markdown View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_bundle_detail_markdown.png)
-![Bundle Detail Image View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_bundle_detail_image.png)
-![Bundle Detail Vocal View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_bundle_detail_vocal.png)
-![Opportunistic Text Sender View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_opportunistic_send.png)
-![Opportunistic Image Sender View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_opportunistic_send_image.png)
-![Convergence Layers Configuration View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_convergence_layers.png)
-![Routing Configuration View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_routing.png)
-![Local Services Configuration View](fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_local_services.png)
+<p align="center">
+  <a href="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap.png"><img src="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap.png" width="200" alt="Main Registry View" /></a>
+  <a href="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_chat.png"><img src="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_chat.png" width="200" alt="Chat Service View" /></a>
+  <a href="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_senml_last.png"><img src="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_senml_last.png" width="200" alt="SenML View" /></a>
+  <a href="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_files.png"><img src="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_files.png" width="200" alt="File Exchange View" /></a>
+  <a href="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_bundle_detail_markdown.png"><img src="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_bundle_detail_markdown.png" width="200" alt="Bundle Detail Markdown View" /></a>
+  <a href="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_bundle_detail_image.png"><img src="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_bundle_detail_image.png" width="200" alt="Bundle Detail Image View" /></a>
+  <a href="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_bundle_detail_vocal.png"><img src="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_bundle_detail_vocal.png" width="200" alt="Bundle Detail Vocal View" /></a>
+  <a href="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_opportunistic_send.png"><img src="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_opportunistic_send.png" width="200" alt="Opportunistic Text Sender View" /></a>
+  <a href="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_opportunistic_send_image.png"><img src="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_opportunistic_send_image.png" width="200" alt="Opportunistic Image Sender View" /></a>
+  <a href="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_convergence_layers.png"><img src="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_convergence_layers.png" width="200" alt="Convergence Layers Configuration View" /></a>
+  <a href="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_routing.png"><img src="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_routing.png" width="200" alt="Routing Configuration View" /></a>
+  <a href="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_local_services.png"><img src="fastlane/metadata/android/fr-FR/images/phoneScreenshots/screencap_local_services.png" width="200" alt="Local Services Configuration View" /></a>
+</p>
 
 ---
 
@@ -54,8 +56,8 @@ If you want to test the application directly on your Android smartphone, you can
 
 ### Step 1: Download the `.apk` File
 1. Open this GitHub repository in your smartphone browser.
-2. Go to **Releases** (or tap the **Actions** tab to access the latest build artifacts).
-3. Download the `dtn-android-messenger-v1.0-debug.apk` file (or matching version release APK) to your device.
+2. [Go to **Releases**](https://github.com/loic-fejoz/dtn-android-messenger/releases) (or tap the **Actions** tab to access the latest build artifacts).
+3. Download the [`dtn-android-messenger-v1.0-debug.apk`](https://github.com/loic-fejoz/dtn-android-messenger/releases/download/v1.0.0/dtn-android-messenger-v1.0-debug.apk) file (or matching version release APK) to your device.
 
 ### Step 2: Enable Developer Mode & Unknown App Installation
 Android restricts installing applications directly from browser downloads by default. Follow these steps to allow installation (compatible with Android 6.0 / API 23 up to Android 15):
@@ -87,6 +89,42 @@ Once the installation is complete, it is recommended best practice to revoke unk
    * Go to **Settings > System > Developer options** (or **Developer options** at the bottom of main Settings).
    * Toggle the top switch (**Use developer options**) to **OFF**.
 
+### Step 5: Setup some DTN services
+On first launch, it is recommended to set a few services to be able to interact with other DTN nodes. By default, the TCPclV4 convergence layer to my 44net Hardy instance (`dtn://f4jxq`) is set. However, you should configure your own node's EID and a few services. 
+
+> [!TIP]
+> To edit an existing service, tap on its card in the list to pre-fill the registration form.
+
+1. **Chat service**: (Recommended)
+   * Within the app, click on the parameters gear icon, then select the "Services" tab.
+   * Delete all existing services.
+   * Set your local EID to something like `dtn://yourcallsign-9`. Here I am reusing the SSID concept from APRS but this is not mandatory. Yet please use your hamradio callsign.
+   * Register a new local DTN Service
+      * Service EID: `dtn://yourcallsign-9/chat`
+      * Display Name: `Chat`
+      * UI Viewer Type: `CHAT`
+      * You can enable or disable notification as you wish.
+   * Click "Register".
+   * You are now ready to chat with other people. For instance, send me a message to `dtn://f4jxq/chat`.
+2. **File Exchange Service** (Recommended)
+   * Scroll up to Register a new local DTN service
+      * Service EID: `dtn://yourcallsign-9/files`
+      * Display Name: `Files`
+      * UI Viewer Type: `BUNDLE_LIST`
+      * You can enable or disable notification as you wish.   
+3. **SenML Service** (Optional) - Useful if something/someone is sending you sensors' values.
+   * Scroll up to Register a new local DTN service
+      * Service EID: `dtn://yourcallsign-9/senml`
+      * Display Name: `SenML`
+      * UI Viewer Type: `SENML_LAST`
+      * Disable notification as you probably wish.
+4. **RADIANT Beacon** (Optional) - Useful if you would like to take part of the RADIANT project and view beacons
+   * Scroll up to Register a new local DTN service
+      * Service EID: `dtn://beacon/` - The last `/` is mandatory.
+      * Display Name: `RADIANT Beacon`
+      * UI Viewer Type: `CHAT`
+      * Activate the broadcast/multicast checkbox.
+      * Disable notification as you probably wish.
 ---
 
 ## Current Limitations & Design Trade-offs
@@ -243,4 +281,3 @@ To run the local unit test suite (covering BPv7 parser, block serializers, and B
 ./gradlew test
 ```
 The test task compiles the modules and runs the tests in `Bpv7Test.kt` and `PayloadUtilsTest.kt`.
-
