@@ -45,7 +45,7 @@ class Converters {
         SystemLog::class,
         SenmlEntry::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -97,6 +97,14 @@ abstract class AppDatabase : RoomDatabase() {
             object : Migration(5, 6) {
                 override fun migrate(db: SupportSQLiteDatabase) {
                     db.execSQL("ALTER TABLE local_services ADD COLUMN isNotificationEnabled INTEGER NOT NULL DEFAULT 1")
+                }
+            }
+
+        val MIGRATION_6_7 =
+            object : Migration(6, 7) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE local_services ADD COLUMN autoSaveEnabled INTEGER NOT NULL DEFAULT 0")
+                    db.execSQL("ALTER TABLE local_services ADD COLUMN autoSaveTargetDirectory TEXT NOT NULL DEFAULT 'Podcasts'")
                 }
             }
     }

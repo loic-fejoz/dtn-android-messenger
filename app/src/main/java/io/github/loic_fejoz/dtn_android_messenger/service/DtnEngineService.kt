@@ -481,6 +481,14 @@ class DtnEngineService : Service() {
                     if (service.viewerType == ViewerType.SENML_LAST) {
                         processSenmlPayload(service.serviceEid, payload.data, creationTime)
                     }
+                    if (service.autoSaveEnabled) {
+                        val savedLocation = io.github.loic_fejoz.dtn_android_messenger.util.AutoSaveUtils.autoSavePayload(this, service, record, payloadFile)
+                        if (savedLocation != null) {
+                            log("INFO", "Auto-saved bundle $bundleId payload to shared directory: $savedLocation")
+                        } else {
+                            log("WARN", "Auto-save enabled for ${service.serviceEid} but failed to save payload to ${service.autoSaveTargetDirectory}")
+                        }
+                    }
                     if (service.isNotificationEnabled) {
                         triggerMessageNotification(service, record, payload.data)
                     }

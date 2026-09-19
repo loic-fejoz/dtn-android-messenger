@@ -102,6 +102,28 @@ object PayloadUtils {
         return ext in listOf("ogg", "opus", "mp3", "m4a", "mp4", "wav", "amr")
     }
 
+    fun getMimeTypeFromExtension(ext: String): String {
+        return when (ext.lowercase(java.util.Locale.US)) {
+            "mp3" -> "audio/mpeg"
+            "m4a", "mp4" -> "audio/mp4"
+            "ogg", "opus" -> "audio/ogg"
+            "png" -> "image/png"
+            "jpg", "jpeg" -> "image/jpeg"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "bmp" -> "image/bmp"
+            "txt" -> "text/plain"
+            "md" -> "text/markdown"
+            "html" -> "text/html"
+            else -> "application/octet-stream"
+        }
+    }
+
+    fun getPayloadMimeType(filePath: String): String {
+        val ext = getPayloadFileExtension(filePath)
+        return getMimeTypeFromExtension(ext)
+    }
+
     fun isValidEid(eid: String): Boolean {
         val trimmed = eid.trim()
         if (trimmed.isEmpty()) return false

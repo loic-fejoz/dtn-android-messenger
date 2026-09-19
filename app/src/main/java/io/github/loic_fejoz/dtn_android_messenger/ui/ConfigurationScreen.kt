@@ -875,6 +875,8 @@ fun ServicesConfigTab(
     var defaultDest by remember { mutableStateOf("") }
     var isBroadcast by remember { mutableStateOf(false) }
     var isNotificationEnabled by remember { mutableStateOf(true) }
+    var autoSaveEnabled by remember { mutableStateOf(false) }
+    var autoSaveTargetDirectory by remember { mutableStateOf("Podcasts") }
 
     var editingService by remember { mutableStateOf<LocalService?>(null) }
     var isEditMode by remember { mutableStateOf(false) }
@@ -992,6 +994,53 @@ fun ServicesConfigTab(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Checkbox(
+                        checked = autoSaveEnabled,
+                        onCheckedChange = { autoSaveEnabled = it },
+                        colors =
+                            CheckboxDefaults.colors(
+                                checkedColor = NeonCyan,
+                                uncheckedColor = TextGray,
+                                checkmarkColor = Color.Black,
+                            ),
+                    )
+                    Text("Auto-save incoming files to shared directory", color = Color.White, fontSize = 14.sp)
+                }
+
+                if (autoSaveEnabled) {
+                    var dirExpanded by remember { mutableStateOf(false) }
+                    val dirOptions = listOf("Podcasts", "Music", "Download", "Documents", "Pictures", "Movies")
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = autoSaveTargetDirectory,
+                            onValueChange = { autoSaveTargetDirectory = it },
+                            label = { Text("Shared Target Directory (ex: Podcasts)", color = TextGray) },
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                IconButton(onClick = { dirExpanded = true }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Select directory", tint = NeonCyan)
+                                }
+                            },
+                        )
+                        DropdownMenu(expanded = dirExpanded, onDismissRequest = { dirExpanded = false }) {
+                            dirOptions.forEach { dir ->
+                                DropdownMenuItem(
+                                    text = { Text(dir) },
+                                    onClick = {
+                                        autoSaveTargetDirectory = dir
+                                        dirExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (isEditMode) {
@@ -1002,6 +1051,9 @@ fun ServicesConfigTab(
                                 name = ""
                                 defaultDest = ""
                                 isBroadcast = false
+                                isNotificationEnabled = true
+                                autoSaveEnabled = false
+                                autoSaveTargetDirectory = "Podcasts"
                                 viewerType = ViewerType.CHAT
                                 editingService = null
                             },
@@ -1031,6 +1083,8 @@ fun ServicesConfigTab(
                                         defaultDestinationEid = defaultDest.trim(),
                                         isBroadcast = isBroadcast,
                                         isNotificationEnabled = isNotificationEnabled,
+                                        autoSaveEnabled = autoSaveEnabled,
+                                        autoSaveTargetDirectory = autoSaveTargetDirectory.trim().ifBlank { "Podcasts" },
                                     ),
                                 )
                                 // Clear form
@@ -1040,6 +1094,8 @@ fun ServicesConfigTab(
                                 defaultDest = ""
                                 isBroadcast = false
                                 isNotificationEnabled = true
+                                autoSaveEnabled = false
+                                autoSaveTargetDirectory = "Podcasts"
                                 viewerType = ViewerType.CHAT
                                 editingService = null
                                 Toast.makeText(context, "Service Saved", Toast.LENGTH_SHORT).show()
@@ -1069,6 +1125,8 @@ fun ServicesConfigTab(
                             defaultDest = service.defaultDestinationEid ?: ""
                             isBroadcast = service.isBroadcast
                             isNotificationEnabled = service.isNotificationEnabled
+                            autoSaveEnabled = service.autoSaveEnabled
+                            autoSaveTargetDirectory = service.autoSaveTargetDirectory
                         },
                 shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(containerColor = GlassCardColor),
@@ -1096,6 +1154,9 @@ fun ServicesConfigTab(
                             color = if (service.isBroadcast) NeonCyan else TextGray,
                             fontSize = 11.sp,
                         )
+                        if (service.autoSaveEnabled) {
+                            Text("Auto-save: Enabled (${service.autoSaveTargetDirectory})", color = NeonCyan, fontSize = 11.sp)
+                        }
                         if (!service.defaultDestinationEid.isNullOrBlank()) {
                             Text("Default Dest: ${service.defaultDestinationEid}", color = NeonPurple, fontSize = 11.sp)
                         }

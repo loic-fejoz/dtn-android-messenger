@@ -57,6 +57,8 @@ data class LocalService(
     val defaultDestinationEid: String? = null,
     val isBroadcast: Boolean = false,
     val isNotificationEnabled: Boolean = true,
+    val autoSaveEnabled: Boolean = false,
+    val autoSaveTargetDirectory: String = "Podcasts",
 )
 
 @Entity(tableName = "bundle_records")
