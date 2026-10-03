@@ -167,7 +167,7 @@ GEM
       rdoc (>= 4.0.0)
       reline (>= 0.4.2)
     jmespath (1.6.2)
-    json (2.19.4)
+    json (2.19.9)
     jwt (3.1.2)
       base64
     logger (1.7.0)
@@ -298,7 +298,7 @@ CHECKSUMS
   io-console (0.7.1) sha256=a5ffa9fa6be28c4cc7337f7924d2e094ac6c34776f480e3b418a427f155bbcba
   irb (1.13.1) sha256=aa552f30b33f15615cff4ca8d04bace0bdd442777efb5187d9a621707889f292
   jmespath (1.6.2) sha256=238d774a58723d6c090494c8879b5e9918c19485f7e840f2c1c7532cf84ebcb1
-  json (2.19.4) sha256=670a7d333fb3b18ca5b29cb255eb7bef099e40d88c02c80bd42a3f30fe5239ac
+  json (2.19.9) sha256=9b9025b7cdddafa38d316eca0b2358488e42d417045c1b90d216a9fefe46b79a
   jwt (3.1.2) sha256=af6991f19a6bb4060d618d9add7a66f0eeb005ac0bc017cd01f63b42e122d535
   logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
   mini_magick (4.13.2) sha256=71d6258e0e8a3d04a9a0a09784d5d857b403a198a51dd4f882510435eb95ddd9
