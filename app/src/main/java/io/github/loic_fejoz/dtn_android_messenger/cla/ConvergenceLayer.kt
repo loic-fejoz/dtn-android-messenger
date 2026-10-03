@@ -269,7 +269,12 @@ class TcpClAdapter(
                                 java.nio.ByteBuffer.wrap(ackMsg, 10, 8).putLong(length.toLong())
                                 output.writeFully(ackMsg, 0, 18)
                             } else {
-                                log("WARN", "Bundle ingestion failed or rejected; withholding XFER_ACK for transfer $transferId")
+                                log("WARN", "Bundle ingestion failed or rejected; sending XFER_REFUSE for transfer $transferId")
+                                val refuseMsg = ByteArray(10)
+                                refuseMsg[0] = MSG_XFER_REFUSE.toByte() // 3
+                                refuseMsg[1] = 0 // Reason: Unknown / Not Acceptable
+                                java.nio.ByteBuffer.wrap(refuseMsg, 2, 8).putLong(transferId)
+                                output.writeFully(refuseMsg, 0, 10)
                             }
                         }
                     }
@@ -642,6 +647,18 @@ private class ActiveTcpclSession(
                             }
                         deferred?.complete(true)
                     }
+                    MSG_XFER_REFUSE -> {
+                        val refuseBody = ByteArray(9)
+                        input.readFully(refuseBody, 0, 9)
+                        val refuseReason = refuseBody[0].toInt()
+                        val refuseTransferId = java.nio.ByteBuffer.wrap(refuseBody, 1, 8).long
+                        log("WARN", "Received XFER_REFUSE for transfer $refuseTransferId (reason code $refuseReason) from $targetAddress")
+                        val deferred =
+                            synchronized(acksLock) {
+                                pendingAcks.remove(refuseTransferId)
+                            }
+                        deferred?.complete(false)
+                    }
                     MSG_XFER_SEGMENT -> {
                         withTimeout(15000) {
                             val flags = input.readByte().toInt()
@@ -687,7 +704,14 @@ private class ActiveTcpclSession(
                                     output.writeFully(ackMsg, 0, 18)
                                 }
                             } else {
-                                log("WARN", "Bundle ingestion failed or rejected; withholding XFER_ACK for transfer $transferId")
+                                log("WARN", "Bundle ingestion failed or rejected; sending XFER_REFUSE for transfer $transferId")
+                                val refuseMsg = ByteArray(10)
+                                refuseMsg[0] = MSG_XFER_REFUSE.toByte()
+                                refuseMsg[1] = 0 // Reason: Unknown / Not Acceptable
+                                java.nio.ByteBuffer.wrap(refuseMsg, 2, 8).putLong(transferId)
+                                writeLock.withLock {
+                                    output.writeFully(refuseMsg, 0, 10)
+                                }
                             }
                         }
                     }

@@ -24,6 +24,10 @@ Provide a reliable, delay-tolerant messaging client on Android using BPv7, with 
 ### Core DTN Rules & Principles
 - **Source EID vs. CLA Node ID**: The **Bundle Source EID** (`primaryBlock.source`) is a BPv7 application-layer endpoint identifier (e.g. `LocalService.serviceEid`, aliases, or inner encapsulated EIDs). It **MUST NEVER** be assumed to be identical to, or forcibly rewritten with, the **CLA Node ID** announced during transport handshakes (e.g. TCPCLv4 `SESS_INIT`). With services like `dtnbib` (BIBE), routing aliases, and multi-service nodes, bundles can validly originate from service EIDs distinct from the CLA transport node identifier.
 - **Responsibility Transfer**: `XFER_ACK` (TCPCLv4) and RFCOMM ACKs **MUST ONLY** be transmitted after an incoming bundle is verified, its payload is written to persistent disk storage, and its record is securely committed to Room DB.
+- **BPv7 Extension Blocks & Regulatory Exclusions**:
+  - **Supported Blocks**: Type 1 (Payload), Type 6 (Previous Node), Type 10 (Hop Count), Type 11 (BPSec BIB HMAC-SHA256).
+  - **Excluded Blocks**: Type 12 (BPSec BCB - Block Confidentiality Block) is **strictly excluded** to ensure compliance with amateur radio cleartext regulations (ITU Article 25).
+  - **Future Roadmap**: Type 7 (Bundle Age Block - RFC 9171), Type 13 (CTEB - CCSDS 734.6-O-1), Type 14 (CSREB - CCSDS 734.6-O-1), and Traceroute Extension Block (TREB - `draft-koo-dtn-traceroute-eb`).
 
 ### Documentation Index
 Refer to these detailed guides in `agent_docs/` for specific tasks:

@@ -259,4 +259,51 @@ class Bpv7Test {
             Bpv7Parser.deserializePrimaryBlock(malformedPrimary)
         }
     }
+
+    @Test
+    fun testRfc9173HmacScopeFlagsVariability() {
+        val secretKey = "shared_secret_key_456".toByteArray(Charsets.UTF_8)
+        val payloadBytes = "RFC 9173 Scope Flags Test".toByteArray(Charsets.UTF_8)
+
+        val primary = PrimaryBlock(
+            destination = Eid("dtn://node-b/app"),
+            source = Eid("dtn://node-a/app"),
+            reportTo = Eid("dtn://node-a/app"),
+            creationTimestamp = Pair(100000L, 14L),
+            lifetimeMs = 600000L
+        )
+        val primaryBytes = Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
+
+        // RFC 9173 Section 3.2: Scope flags mask scopeFlags = 7 (all included) vs scopeFlags = 1 (primary + payload)
+        val sigFullScope = Bpv7Parser.computeHmac(
+            secretKey = secretKey,
+            primaryBlockBytes = primaryBytes,
+            targetBlockType = 1,
+            targetBlockNumber = 1,
+            targetBlockFlags = 0L,
+            securityBlockType = 11,
+            securityBlockNumber = 2,
+            securityBlockFlags = 3L,
+            payloadBytes = payloadBytes,
+            scopeFlags = 7
+        )
+
+        val sigPrimaryOnlyScope = Bpv7Parser.computeHmac(
+            secretKey = secretKey,
+            primaryBlockBytes = primaryBytes,
+            targetBlockType = 1,
+            targetBlockNumber = 1,
+            targetBlockFlags = 0L,
+            securityBlockType = 11,
+            securityBlockNumber = 2,
+            securityBlockFlags = 3L,
+            payloadBytes = payloadBytes,
+            scopeFlags = 1
+        )
+
+        // Both signatures are valid for their respective RFC 9173 scope flag configurations
+        assertTrue(sigFullScope.isNotEmpty())
+        assertTrue(sigPrimaryOnlyScope.isNotEmpty())
+        assertFalse(sigFullScope.contentEquals(sigPrimaryOnlyScope), "Signatures with different RFC 9173 scope flags MUST differ")
+    }
 }
