@@ -190,6 +190,9 @@ object Bpv7Parser {
             throw IllegalArgumentException("Invalid PrimaryBlock CBOR: expected array with size >= 8, got size ${if (cbor.type == CBORType.Array) cbor.size() else "non-array"}")
         }
         val version = cbor[0].AsInt32()
+        if (version != 7) {
+            throw IllegalArgumentException("Unsupported BP version: $version. Only BPv7 (version 7) is supported.")
+        }
         val flags = cbor[1].AsInt64Value()
         val crcType = cbor[2].AsInt32()
         val destination = Eid.fromCbor(cbor[3])
