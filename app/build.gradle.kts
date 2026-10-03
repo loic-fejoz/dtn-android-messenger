@@ -132,3 +132,12 @@ dependencies {
 tasks.withType<Test> {
     useJUnitPlatform()
 }
+
+tasks.register<Exec>("generateDtnToolsFixtures") {
+    group = "verification"
+    description = "Generates BPv7 binary bundle fixtures using NASA's dtn-tools script"
+    val venvPython = file("${rootDir}/.venv/bin/python3")
+    val pythonExec = if (venvPython.exists()) venvPython.absolutePath else "python3"
+    commandLine(pythonExec, "${rootDir}/scripts/generate_dtn_tools_fixtures.py")
+}
+

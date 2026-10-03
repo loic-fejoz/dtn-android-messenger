@@ -290,8 +290,16 @@ To perform opportunistic synchronization and core services, the application requ
 
 ## 8. CODE VERIFICATION & TESTING
 
-To run the local unit test suite (covering BPv7 parser, block serializers, and BPSec HMAC validation):
+To run the local unit test suite (covering BPv7 parser, block serializers, BPSec HMAC validation, and `dtn-tools` compliance):
 ```bash
 ./gradlew test
 ```
-The test task compiles the modules and runs the tests in `Bpv7Test.kt` and `PayloadUtilsTest.kt`.
+The test task compiles the modules and runs unit test suites including `Bpv7Test.kt`, `PayloadUtilsTest.kt`, `RoutingIntegrationTest.kt`, and `DtnToolsComplianceTest.kt`.
+
+### NASA DTN-Tools Integration
+
+We utilize NASA's **[`dtn-tools`](https://gitlab.com/nasa/cfs/dtn-tools)** (a Python BPv7 RFC 9171 testing suite) to generate canonical binary `.bundle` test vectors (nominal, off-nominal, and bit-flipped):
+- **Fixture Generation Script**: `scripts/generate_dtn_tools_fixtures.py` (generates binary bundle fixtures into `app/src/test/resources/fixtures/dtn_tools/`).
+- **Gradle Automated Task**: `./gradlew generateDtnToolsFixtures` regenerates test vector fixtures automatically if `dtn-tools` and Python dependencies are present.
+- **Compliance & Robustness Tests**: `DtnToolsComplianceTest.kt` parses `dtn-tools` fixtures to ensure 100% RFC 9171 decoding accuracy and resilience against corrupted/malformed bundles.
+
