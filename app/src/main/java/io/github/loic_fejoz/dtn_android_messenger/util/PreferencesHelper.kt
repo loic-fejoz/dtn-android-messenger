@@ -12,6 +12,10 @@ object PreferencesHelper {
 
     private var securePrefs: SharedPreferences? = null
 
+    fun setSharedPreferencesForTesting(prefs: SharedPreferences) {
+        securePrefs = prefs
+    }
+
     fun getEncryptedSharedPreferences(context: Context): SharedPreferences {
         return securePrefs ?: synchronized(this) {
             securePrefs ?: createSecurePrefs(context).also { securePrefs = it }

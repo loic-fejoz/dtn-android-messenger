@@ -123,4 +123,17 @@ class PayloadUtilsTest {
         assertTrue(PayloadUtils.isPrefixMatch("dtn://node-1/chat", "dtn://node-1/chat"))
         assertFalse(PayloadUtils.isPrefixMatch("dtn://node-1/chat", "dtn://node-2/chat"))
     }
+
+    @Test
+    fun testWildcardPrefixMatchingEdgeCases() {
+        val pattern = "dtn://node-b/*".replace("*", "")
+
+        // Matching destinations
+        assertTrue(PayloadUtils.isPrefixMatch(pattern, "dtn://node-b/chat"))
+        assertTrue(PayloadUtils.isPrefixMatch(pattern, "dtn://node-b/sensors/temp"))
+
+        // Non-matching destinations
+        assertFalse(PayloadUtils.isPrefixMatch(pattern, "dtn://node-c/chat"))
+        assertFalse(PayloadUtils.isPrefixMatch(pattern, "dtn://node-b-other/chat"))
+    }
 }

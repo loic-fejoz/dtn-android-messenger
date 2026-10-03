@@ -38,6 +38,7 @@ class DtnEngineService : Service() {
     private val bpsecKeyDao: BpsecKeyDao by inject()
     private val logDao: SystemLogDao by inject()
     private val senmlEntryDao: SenmlEntryDao by inject()
+    private val timeProvider: io.github.loic_fejoz.dtn_android_messenger.util.TimeProvider by inject()
 
     private lateinit var tcpClAdapter: TcpClAdapter
     private lateinit var bluetoothAdapter: BluetoothClassicAdapter
@@ -692,6 +693,18 @@ class DtnEngineService : Service() {
                     continue
                 }
                 val payloadBytes = file.readBytes()
+
+                val isExpired = (record.creationTimestamp + record.lifetimeMs) < timeProvider.currentTimeMillis()
+                if (isExpired) {
+                    log("INFO", "Bundle ${record.bundleId} expired. Deleting payload and record.")
+                    try {
+                        val fileObj = File(record.payloadFilePath)
+                        if (fileObj.exists()) fileObj.delete()
+                    } catch (e: Exception) {
+                    }
+                    bundleRecordDao.delete(record)
+                    continue
+                }
 
                 if (record.hopCount + 1 >= 64) {
                     log("WARN", "Bundle ${record.bundleId} exceeded hop limit (64) during forwarding. Discarding.")

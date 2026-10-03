@@ -24,4 +24,5 @@ val appModule =
         single { get<AppDatabase>().bpsecKeyDao() }
         single { get<AppDatabase>().systemLogDao() }
         single { get<AppDatabase>().senmlEntryDao() }
+        single<io.github.loic_fejoz.dtn_android_messenger.util.TimeProvider> { io.github.loic_fejoz.dtn_android_messenger.util.SystemTimeProvider }
     }

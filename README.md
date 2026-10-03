@@ -248,9 +248,23 @@ If the application starts with a clean database, it will automatically populate 
 ## 5. SECURITY & AMATEUR RADIO REGULATORY COMPLIANCE
 
 This application is specifically designed to comply with **Amateur Radio (Ham Radio) regulations** (such as ITU Article 25 and FCC Part 97 rules):
-*   **No Payload Encryption:** Obscuring the meaning of messages (encryption) is legally prohibited on amateur bands. Therefore, this implementation **does not and will not support payload encryption** (BPSec BCB - Block Confidentiality Block).
-*   **Integrity & Authentication Only:** We utilize BPSec BIB (Block Integrity Block) with HMAC-SHA256 signatures. This ensures message integrity (detecting transmission errors or tampering) and source authentication (preventing spoofing) while keeping the payload in plain text, making it 100% compliant with cleartext regulations.
+*   **No Payload Encryption:** Obscuring the meaning of messages (encryption) is legally prohibited on amateur bands. Therefore, this implementation **does not and will not support payload encryption** (BPSec BCB - Block Confidentiality Block, Type 12).
+*   **Integrity & Authentication Only:** We utilize BPSec BIB (Block Integrity Block, Type 11) with HMAC-SHA256 signatures. This ensures message integrity (detecting transmission errors or tampering) and source authentication (preventing spoofing) while keeping the payload in plain text, making it 100% compliant with cleartext regulations.
 *   **No TLS on Amateur Links:** Transport-layer encryption (TLS) on TCPCLv4 connections is disabled to comply with cleartext requirements on ham radio links.
+
+### BPv7 Bundle Block Types Support & Roadmap
+
+| Code (Type) | Nom du bloc | Reference / Standard | Status | Note / Rationale |
+| --- | --- | --- | --- | --- |
+| **1** | **Bundle Payload Block** | RFC 9171 | **Supported** | Core application payload data. |
+| **6** | **Previous Node Insertion Block** | RFC 9171 | **Supported** | Forwarding invariant enforced (stripped/updated prior to forwarding). |
+| **7** | **Bundle Age Block** | RFC 9171 | *Planned (Roadmap)* | For nodes without synchronized real-time clocks. |
+| **10** | **Hop Count Block** | RFC 9171 | **Supported** | Loop detection and hop limit enforcement. |
+| **11** | **Block Integrity Block (BIB)** | RFC 9172 (BPSec) | **Supported** | HMAC-SHA256 signature for source authentication & integrity. |
+| **12** | **Block Confidentiality Block (BCB)** | RFC 9172 (BPSec) | **Excluded** | **Strictly excluded** to maintain 100% amateur radio cleartext compliance. |
+| **13** | **Custody Transfer Extension Block (CTEB)** | CCSDS 734.6-O-1 | *Planned (Roadmap)* | Intermediate custody transfer management. |
+| **14** | **Compressed Status Reporting (CSREB)** | CCSDS 734.6-O-1 | *Planned (Roadmap)* | Bandwidth-efficient status reporting. |
+| **192–255** | **Traceroute Extension Block (TREB)** | `draft-koo-dtn-traceroute-eb` | *Planned (Roadmap)* | Will be added once the IETF specification matures. |
 
 ---
 

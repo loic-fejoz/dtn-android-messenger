@@ -56,7 +56,7 @@ data class Eid(val uri: String) {
                 }
             val uri =
                 if (scheme == "dtn") {
-                    if (ssp.startsWith("//")) "$scheme:$ssp" else "$scheme://$ssp"
+                    if (ssp == "none" || ssp == "0") "dtn:none" else if (ssp.startsWith("//")) "$scheme:$ssp" else "$scheme://$ssp"
                 } else {
                     "$scheme:$ssp"
                 }
