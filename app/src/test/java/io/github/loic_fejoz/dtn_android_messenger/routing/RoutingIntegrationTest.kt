@@ -94,7 +94,9 @@ class RoutingIntegrationTest {
         nodeEid: String,
         onBundleReceived: (ByteArray) -> Unit
     ): Thread {
+        val readyLatch = CountDownLatch(1)
         val thread = Thread {
+            readyLatch.countDown()
             try {
                 val socket = serverSocket.accept()
                 val dis = DataInputStream(socket.getInputStream())
@@ -170,6 +172,7 @@ class RoutingIntegrationTest {
             }
         }
         thread.start()
+        readyLatch.await(5, TimeUnit.SECONDS)
         return thread
     }
 
