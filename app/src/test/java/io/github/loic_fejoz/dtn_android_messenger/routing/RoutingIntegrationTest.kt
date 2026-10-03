@@ -214,7 +214,7 @@ class RoutingIntegrationTest {
         // Set time to 200000ms (before 700000ms expiration)
         testTimeProvider.initialTimeMs = 200000L
 
-        val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+        val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val primary = PrimaryBlock(
             destination = Eid(record.destinationEid),
             source = Eid(record.sourceEid),
@@ -328,7 +328,7 @@ class RoutingIntegrationTest {
         // Set time to 200000ms (before expiration)
         testTimeProvider.initialTimeMs = 200000L
 
-        val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+        val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val primary = PrimaryBlock(
             destination = Eid(record.destinationEid),
             source = Eid(record.sourceEid),
@@ -400,7 +400,7 @@ class RoutingIntegrationTest {
         val bundle = io.github.loic_fejoz.dtn_android_messenger.protocol.Bundle(primary, payload, hopCount, bibBlock)
         val bundleBytes = Bpv7Parser.serialize(bundle)
 
-        val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+        val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         var acked = false
         val item = Pair<ByteArray, (suspend () -> Unit)?>(bundleBytes) { acked = true }
 
@@ -457,7 +457,7 @@ class RoutingIntegrationTest {
         val isHopLimitExceeded = (record.hopCount + 1 > maxHopLimit) || (record.hopCount >= maxHopLimit)
 
         if (!isHopLimitExceeded) {
-            val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+            val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
             val primary = PrimaryBlock(
                 destination = Eid(record.destinationEid),
                 source = Eid(record.sourceEid),
@@ -506,7 +506,7 @@ class RoutingIntegrationTest {
         val bundle = io.github.loic_fejoz.dtn_android_messenger.protocol.Bundle(primary, payload, hopCount, null)
         val bundleBytes = Bpv7Parser.serialize(bundle)
 
-        val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+        val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val success = adapter.sendBundles(listOf(Pair(bundleBytes, null)), "127.0.0.1:$port")
 
         assertTrue(latch.await(5, TimeUnit.SECONDS))
@@ -551,7 +551,7 @@ class RoutingIntegrationTest {
         val payload = PayloadBlock(data = "Control flags test".toByteArray())
         val bundle = io.github.loic_fejoz.dtn_android_messenger.protocol.Bundle(primary, payload, null, null)
 
-        val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+        val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val success = adapter.sendBundles(listOf(Pair(Bpv7Parser.serialize(bundle), null)), "127.0.0.1:$port")
 
         assertTrue(latch.await(5, TimeUnit.SECONDS))
@@ -591,7 +591,7 @@ class RoutingIntegrationTest {
         val hopCount1 = HopCountBlock(hopLimit = 64, hopCount = 1)
         val bundle1 = io.github.loic_fejoz.dtn_android_messenger.protocol.Bundle(primary, payload, hopCount1, null)
 
-        val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+        val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         adapter.sendBundles(listOf(Pair(Bpv7Parser.serialize(bundle1), null)), "127.0.0.1:$portB")
         assertTrue(latchB.await(5, TimeUnit.SECONDS))
 
@@ -670,7 +670,7 @@ class RoutingIntegrationTest {
         val parsedBundle = Bpv7Parser.deserialize(bundleBytes)
         val forwardedBundleBytes = Bpv7Parser.serialize(parsedBundle)
 
-        val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+        val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val success = adapter.sendBundles(listOf(Pair(forwardedBundleBytes, null)), "127.0.0.1:$port")
 
         assertTrue(latch.await(5, TimeUnit.SECONDS))
@@ -771,7 +771,7 @@ class RoutingIntegrationTest {
         val payload = PayloadBlock(data = adminPayloadData)
         val bundle = io.github.loic_fejoz.dtn_android_messenger.protocol.Bundle(primary, payload, null, null)
 
-        val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+        val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val success = adapter.sendBundles(listOf(Pair(Bpv7Parser.serialize(bundle), null)), "127.0.0.1:$port")
 
         assertTrue(latch.await(5, TimeUnit.SECONDS))
@@ -816,7 +816,7 @@ class RoutingIntegrationTest {
         val payload = PayloadBlock(data = "Do Not Fragment payload".toByteArray())
         val bundle = io.github.loic_fejoz.dtn_android_messenger.protocol.Bundle(primary, payload, null, null)
 
-        val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+        val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val success = adapter.sendBundles(listOf(Pair(Bpv7Parser.serialize(bundle), null)), "127.0.0.1:$port")
 
         assertTrue(latch.await(5, TimeUnit.SECONDS))
@@ -917,7 +917,7 @@ class RoutingIntegrationTest {
 
         kotlinx.coroutines.delay(200)
 
-        val senderAdapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+        val senderAdapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         var senderAcked = false
         val item = Pair<ByteArray, (suspend () -> Unit)?>(corruptedBundleBytes) { senderAcked = true }
 
@@ -969,7 +969,7 @@ class RoutingIntegrationTest {
         val bundle = io.github.loic_fejoz.dtn_android_messenger.protocol.Bundle(primary, payload, hopCount, null)
         val bundleBytes = Bpv7Parser.serialize(bundle)
 
-        val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+        val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
 
         // --- ATTEMPT 1: Transfer starts, but connection fails/drops before XFER_ACK ---
         val serverSocket1 = ServerSocket(0)
@@ -1130,7 +1130,7 @@ class RoutingIntegrationTest {
         val canTransmit = !profile.isPaused
 
         if (canTransmit) {
-            val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+            val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
             val primary = PrimaryBlock(
                 destination = Eid(record.destinationEid),
                 source = Eid(record.sourceEid),
@@ -1214,7 +1214,7 @@ class RoutingIntegrationTest {
         val bundle = io.github.loic_fejoz.dtn_android_messenger.protocol.Bundle(primary, payload, hopCount, null)
         val bundleBytes = Bpv7Parser.serialize(bundle)
 
-        val adapter = TcpClAdapter(context = fakeContext, port = 5051, logDao = fakeLogDao)
+        val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val success = adapter.sendBundles(listOf(Pair(bundleBytes, null)), "127.0.0.1:$port")
 
         assertTrue(latch.await(5, TimeUnit.SECONDS))
