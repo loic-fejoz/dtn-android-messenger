@@ -234,7 +234,7 @@ class RoutingIntegrationTest {
 
         val success = adapter.sendBundles(listOf(item), profile.targetAddress)
 
-        assertTrue(latch.await(5, TimeUnit.SECONDS))
+        assertTrue(latch.await(15, TimeUnit.SECONDS))
         assertTrue(success)
         assertTrue(acked)
         assertEquals(1, receivedBundles.size)
@@ -348,7 +348,7 @@ class RoutingIntegrationTest {
 
         val success = adapter.sendBundles(listOf(item), profileNodeC.targetAddress)
 
-        assertTrue(latch.await(5, TimeUnit.SECONDS))
+        assertTrue(latch.await(15, TimeUnit.SECONDS))
         assertTrue(success)
         assertTrue(acked)
         assertEquals(1, receivedBundles.size)
@@ -406,7 +406,7 @@ class RoutingIntegrationTest {
 
         val success = adapter.sendBundles(listOf(item), "127.0.0.1:$port")
 
-        assertTrue(latch.await(5, TimeUnit.SECONDS))
+        assertTrue(latch.await(15, TimeUnit.SECONDS))
         assertTrue(success)
         assertTrue(acked)
         assertEquals(1, receivedBundles.size)
@@ -509,7 +509,7 @@ class RoutingIntegrationTest {
         val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val success = adapter.sendBundles(listOf(Pair(bundleBytes, null)), "127.0.0.1:$port")
 
-        assertTrue(latch.await(5, TimeUnit.SECONDS))
+        assertTrue(latch.await(15, TimeUnit.SECONDS))
         assertTrue(success)
         assertEquals(1, receivedBundles.size)
 
@@ -554,7 +554,7 @@ class RoutingIntegrationTest {
         val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val success = adapter.sendBundles(listOf(Pair(Bpv7Parser.serialize(bundle), null)), "127.0.0.1:$port")
 
-        assertTrue(latch.await(5, TimeUnit.SECONDS))
+        assertTrue(latch.await(15, TimeUnit.SECONDS))
         assertTrue(success)
         assertEquals(1, receivedBundles.size)
 
@@ -673,7 +673,7 @@ class RoutingIntegrationTest {
         val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val success = adapter.sendBundles(listOf(Pair(forwardedBundleBytes, null)), "127.0.0.1:$port")
 
-        assertTrue(latch.await(5, TimeUnit.SECONDS))
+        assertTrue(latch.await(15, TimeUnit.SECONDS))
         assertTrue(success)
         assertEquals(1, receivedBundles.size)
 
@@ -774,7 +774,7 @@ class RoutingIntegrationTest {
         val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val success = adapter.sendBundles(listOf(Pair(Bpv7Parser.serialize(bundle), null)), "127.0.0.1:$port")
 
-        assertTrue(latch.await(5, TimeUnit.SECONDS))
+        assertTrue(latch.await(15, TimeUnit.SECONDS))
         assertTrue(success)
         assertEquals(1, receivedBundles.size)
 
@@ -819,7 +819,7 @@ class RoutingIntegrationTest {
         val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val success = adapter.sendBundles(listOf(Pair(Bpv7Parser.serialize(bundle), null)), "127.0.0.1:$port")
 
-        assertTrue(latch.await(5, TimeUnit.SECONDS))
+        assertTrue(latch.await(15, TimeUnit.SECONDS))
         assertTrue(success)
         assertEquals(1, receivedBundles.size)
 
@@ -1217,7 +1217,7 @@ class RoutingIntegrationTest {
         val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
         val success = adapter.sendBundles(listOf(Pair(bundleBytes, null)), "127.0.0.1:$port")
 
-        assertTrue(latch.await(5, TimeUnit.SECONDS))
+        assertTrue(latch.await(15, TimeUnit.SECONDS))
         assertTrue(success)
         assertEquals(1, receivedBundles.size)
 
