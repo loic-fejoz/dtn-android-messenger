@@ -335,7 +335,7 @@ fun ChatScreen(
                                             sourceEid = serviceEid,
                                             creationTimestamp = System.currentTimeMillis(),
                                             sequenceNumber = System.currentTimeMillis() % 100000,
-                                            lifetimeMs = 3600000L,
+                                            lifetimeMs = BundleRecord.DEFAULT_LIFETIME_MS,
                                             payloadFilePath = payloadFile.absolutePath,
                                             state = BundleState.OUTBOX,
                                             isRead = true,

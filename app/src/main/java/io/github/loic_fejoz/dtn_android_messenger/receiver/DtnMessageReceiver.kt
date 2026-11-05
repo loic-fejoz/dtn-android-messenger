@@ -60,8 +60,8 @@ class DtnMessageReceiver : BroadcastReceiver(), KoinComponent {
                                 sourceEid = destEid,
                                 creationTimestamp = System.currentTimeMillis(),
                                 sequenceNumber = System.currentTimeMillis() % 100000,
-                                // 1 hour lifetime
-                                lifetimeMs = 3600000L,
+                                // 48 hours default lifetime
+                                lifetimeMs = BundleRecord.DEFAULT_LIFETIME_MS,
                                 payloadFilePath = payloadFile.absolutePath,
                                 state = BundleState.OUTBOX,
                                 isRead = true,

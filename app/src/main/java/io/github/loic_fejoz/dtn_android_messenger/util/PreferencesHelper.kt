@@ -13,7 +13,7 @@ object PreferencesHelper {
 
     private var securePrefs: SharedPreferences? = null
 
-    fun setSharedPreferencesForTesting(prefs: SharedPreferences) {
+    fun setSharedPreferencesForTesting(prefs: SharedPreferences?) {
         securePrefs = prefs
     }
 

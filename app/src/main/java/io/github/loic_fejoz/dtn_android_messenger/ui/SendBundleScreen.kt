@@ -128,7 +128,7 @@ fun SendBundleScreen(
     val prefs = remember { io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getEncryptedSharedPreferences(context) }
     val lastDestination = remember { prefs.getString("last_destination_eid", "") ?: "" }
     var destination by remember { mutableStateOf(preFilledDest.ifEmpty { lastDestination }) }
-    var ttlValue by remember { mutableStateOf("1") }
+    var ttlValue by remember { mutableStateOf("48") }
     var ttlUnit by remember { mutableStateOf("h") }
     val localNodeName = remember { mutableStateOf(prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node") }
 
@@ -736,7 +736,7 @@ fun SendBundleScreen(
                             // Save last destination EID in preferences
                             prefs.edit().putString("last_destination_eid", destination.trim()).apply()
 
-                            val parsedTtlValue = ttlValue.toLongOrNull() ?: 1L
+                            val parsedTtlValue = ttlValue.toLongOrNull() ?: 48L
                             val multiplier =
                                 when (ttlUnit) {
                                     "s" -> 1000L

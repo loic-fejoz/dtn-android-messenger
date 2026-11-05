@@ -12,6 +12,7 @@ import io.github.loic_fejoz.dtn_android_messenger.data.model.ViewerType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -107,6 +108,11 @@ class OnboardingHelperTest {
         servicesList.clear()
         profilesList.clear()
         PreferencesHelper.setSharedPreferencesForTesting(fakePrefs)
+    }
+
+    @AfterEach
+    fun tearDown() {
+        PreferencesHelper.setSharedPreferencesForTesting(null)
     }
 
     @Test
