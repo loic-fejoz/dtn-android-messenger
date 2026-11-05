@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -57,6 +58,9 @@ fun ChatScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val prefs = remember { io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getEncryptedSharedPreferences(context) }
+    val prefKey = remember(serviceEid) { "chat_last_recipient_$serviceEid" }
+
     var service by remember { mutableStateOf<LocalService?>(null) }
     var selectedBundle by remember { mutableStateOf<BundleRecord?>(null) }
     val allBundles by bundleRecordDao.getAll().collectAsState(initial = emptyList())
@@ -69,21 +73,28 @@ fun ChatScreen(
                 io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(it.sourceEid, serviceEid)
         }
 
-    var recipientEid by remember { mutableStateOf("") }
-    var replyText by remember { mutableStateOf("") }
+    var recipientEid by rememberSaveable(serviceEid) {
+        mutableStateOf(prefs.getString(prefKey, "") ?: "")
+    }
+    var replyText by rememberSaveable { mutableStateOf("") }
 
-    LaunchedEffect(serviceEid, messages) {
+    LaunchedEffect(serviceEid) {
         val s = localServiceDao.getById(serviceEid)
         service = s
-        if (recipientEid.isEmpty()) {
-            if (s?.defaultDestinationEid != null && s.defaultDestinationEid.isNotBlank()) {
-                recipientEid = s.defaultDestinationEid
+        if (recipientEid.isBlank()) {
+            val saved = prefs.getString(prefKey, null)
+            if (!saved.isNullOrBlank()) {
+                recipientEid = saved
+            } else if (!s?.defaultDestinationEid.isNullOrBlank()) {
+                recipientEid = s!!.defaultDestinationEid!!
+                prefs.edit().putString(prefKey, recipientEid).apply()
             } else {
                 val partner =
                     messages.firstOrNull { it.sourceEid != serviceEid }?.sourceEid
                         ?: messages.firstOrNull { it.destinationEid != serviceEid }?.destinationEid
                         ?: "dtn://remote-node/chat"
                 recipientEid = partner
+                prefs.edit().putString(prefKey, recipientEid).apply()
             }
         }
     }
@@ -136,7 +147,10 @@ fun ChatScreen(
                     )
                     BasicTextField(
                         value = recipientEid,
-                        onValueChange = { recipientEid = it },
+                        onValueChange = {
+                            recipientEid = it
+                            prefs.edit().putString(prefKey, it.trim()).apply()
+                        },
                         textStyle =
                             TextStyle(
                                 color = Color.White,
@@ -214,6 +228,7 @@ fun ChatScreen(
                                     .clickable {
                                         val target = if (isMe) msg.destinationEid else msg.sourceEid
                                         recipientEid = target
+                                        prefs.edit().putString(prefKey, target.trim()).apply()
                                         Toast.makeText(context, "Recipient set to: $target", Toast.LENGTH_SHORT).show()
                                     },
                         ) {
@@ -300,6 +315,7 @@ fun ChatScreen(
                                 ).show()
                                 return@IconButton
                             }
+                            prefs.edit().putString(prefKey, recipientEid.trim()).apply()
                             scope.launch {
                                 val bundleId = UUID.randomUUID().toString()
                                 withContext(Dispatchers.IO) {

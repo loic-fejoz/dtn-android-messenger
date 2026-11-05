@@ -12,10 +12,14 @@ object CryptoManager {
     private const val ALGORITHM = "AES/GCM/NoPadding"
     private const val KEY_ALIAS = "bpsec_db_key"
 
-    private val keyStore =
+    var encryptOverride: ((ByteArray) -> ByteArray)? = null
+    var decryptOverride: ((ByteArray) -> ByteArray)? = null
+
+    private val keyStore by lazy {
         KeyStore.getInstance("AndroidKeyStore").apply {
             load(null)
         }
+    }
 
     private fun getKey(): SecretKey {
         val existingKey = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
@@ -42,6 +46,7 @@ object CryptoManager {
     }
 
     fun encrypt(bytes: ByteArray): ByteArray {
+        encryptOverride?.let { return it(bytes) }
         val cipher = Cipher.getInstance(ALGORITHM)
         cipher.init(Cipher.ENCRYPT_MODE, getKey())
         val iv = cipher.iv
@@ -56,6 +61,7 @@ object CryptoManager {
     }
 
     fun decrypt(bytes: ByteArray): ByteArray {
+        decryptOverride?.let { return it(bytes) }
         if (bytes.isEmpty()) return ByteArray(0)
 
         val ivSize = bytes[0].toInt() and 0xFF

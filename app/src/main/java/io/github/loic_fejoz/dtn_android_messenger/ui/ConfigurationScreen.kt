@@ -7,6 +7,8 @@ import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,9 +20,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BackHand
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,8 +44,13 @@ import io.github.loic_fejoz.dtn_android_messenger.data.dao.BpsecKeyDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.ConvergenceProfileDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.LocalServiceDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.RoutingRuleDao
+import io.github.loic_fejoz.dtn_android_messenger.data.dao.SenmlEntryDao
 import io.github.loic_fejoz.dtn_android_messenger.data.model.*
 import io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService
+import io.github.loic_fejoz.dtn_android_messenger.util.ConfigBackupManager
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -101,6 +112,7 @@ fun ConfigurationScreen(
     routingRuleDao: RoutingRuleDao,
     convergenceProfileDao: ConvergenceProfileDao,
     bpsecKeyDao: BpsecKeyDao,
+    senmlEntryDao: SenmlEntryDao = org.koin.compose.koinInject(),
 ) {
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -112,6 +124,11 @@ fun ConfigurationScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NeonCyan)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { selectedTab = 4 }) {
+                        Icon(Icons.Default.Backup, contentDescription = "Backup & Restore", tint = NeonCyan)
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = CharcoalBg),
@@ -126,7 +143,7 @@ fun ConfigurationScreen(
                     .padding(paddingValues),
         ) {
             // Tab Rows
-            val tabs = listOf("CLA Profiles", "Routing", "BPSec", "Services")
+            val tabs = listOf("CLA Profiles", "Routing", "BPSec", "Services", "Backup")
             ScrollableTabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = Color.Black.copy(alpha = 0.2f),
@@ -151,7 +168,8 @@ fun ConfigurationScreen(
                     0 -> ProfilesConfigTab(convergenceProfileDao, scope)
                     1 -> RoutingConfigTab(routingRuleDao, scope)
                     2 -> KeystoreConfigTab(bpsecKeyDao, scope)
-                    3 -> ServicesConfigTab(localServiceDao, scope)
+                    3 -> ServicesConfigTab(localServiceDao, scope, senmlEntryDao)
+                    4 -> BackupConfigTab(localServiceDao, convergenceProfileDao, routingRuleDao, bpsecKeyDao, senmlEntryDao, scope)
                 }
             }
         }
@@ -1108,6 +1126,260 @@ fun ServicesConfigTab(
                     }) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = GlowRed)
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BackupConfigTab(
+    localServiceDao: LocalServiceDao,
+    convergenceProfileDao: ConvergenceProfileDao,
+    routingRuleDao: RoutingRuleDao,
+    bpsecKeyDao: BpsecKeyDao,
+    senmlEntryDao: SenmlEntryDao,
+    scope: CoroutineScope,
+) {
+    val context = LocalContext.current
+    val scrollState = rememberScrollState()
+    var clearExistingBeforeImport by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
+    var isError by remember { mutableStateOf(false) }
+
+    val exportLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument("application/json"),
+        ) { uri ->
+            if (uri != null) {
+                scope.launch {
+                    try {
+                        context.contentResolver.openOutputStream(uri)?.use { stream ->
+                            ConfigBackupManager.exportToStream(
+                                stream,
+                                context,
+                                localServiceDao,
+                                convergenceProfileDao,
+                                routingRuleDao,
+                                bpsecKeyDao,
+                                senmlEntryDao,
+                            )
+                        }
+                        statusMessage = "Configuration exported successfully to file!"
+                        isError = false
+                        Toast.makeText(context, "Export successful!", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        statusMessage = "Export failed: ${e.message}"
+                        isError = true
+                        Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+
+    val importLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument(),
+        ) { uri ->
+            if (uri != null) {
+                scope.launch {
+                    try {
+                        val result =
+                            context.contentResolver.openInputStream(uri)?.use { stream ->
+                                ConfigBackupManager.importFromStream(
+                                    stream,
+                                    context,
+                                    localServiceDao,
+                                    convergenceProfileDao,
+                                    routingRuleDao,
+                                    bpsecKeyDao,
+                                    senmlEntryDao,
+                                    clearExisting = clearExistingBeforeImport,
+                                )
+                            } ?: throw IllegalStateException("Unable to open input stream")
+                        statusMessage = result.summary
+                        isError = false
+                        Toast.makeText(context, result.summary, Toast.LENGTH_LONG).show()
+                    } catch (e: Exception) {
+                        statusMessage = "Import failed: ${e.message}"
+                        isError = true
+                        Toast.makeText(context, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .verticalScroll(scrollState),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        // Status Alert Card (if any)
+        statusMessage?.let { msg ->
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor = if (isError) GlowRed.copy(alpha = 0.2f) else GlowGreen.copy(alpha = 0.2f),
+                    ),
+                border = BorderStroke(1.dp, if (isError) GlowRed else GlowGreen),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = msg,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+        }
+
+        // Info Card
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = GlassCardColor),
+            border = BorderStroke(1.dp, Color(0x11FFFFFF)),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("CONFIGURATION BACKUP & RESTORE", fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                Text(
+                    "Export your complete node configuration to a JSON backup file to avoid data loss during reinstallations, device migrations, or updates. The backup includes:\n" +
+                        "• Local Node EID, Identity & Limits\n" +
+                        "• Convergence Layer Profiles (TCPCL & Bluetooth)\n" +
+                        "• Next-Hop Routing Rules\n" +
+                        "• BPSec Pre-shared HMAC Keys (safely re-encryptable)\n" +
+                        "• Local Channels & Services\n" +
+                        "• SenML Sensor custom labels & display orders",
+                    color = TextGray,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                )
+            }
+        }
+
+        // Export Card
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = GlassCardColor),
+            border = BorderStroke(1.dp, Color(0x11FFFFFF)),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("EXPORT CONFIGURATION", fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                Text(
+                    "Save a JSON backup file to external storage, cloud drive, or share it with other apps.",
+                    color = TextGray,
+                    fontSize = 12.sp,
+                )
+                Button(
+                    onClick = {
+                        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                        exportLauncher.launch("dtn_backup_$timestamp.json")
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black),
+                ) {
+                    Icon(Icons.Default.FileDownload, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("SAVE BACKUP FILE (.JSON)", fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                val json =
+                                    ConfigBackupManager.exportConfigJson(
+                                        context,
+                                        localServiceDao,
+                                        convergenceProfileDao,
+                                        routingRuleDao,
+                                        bpsecKeyDao,
+                                        senmlEntryDao,
+                                    )
+                                val sendIntent =
+                                    Intent(Intent.ACTION_SEND).apply {
+                                        type = "application/json"
+                                        putExtra(Intent.EXTRA_SUBJECT, "DTN Android Messenger Backup")
+                                        putExtra(Intent.EXTRA_TEXT, json)
+                                    }
+                                val shareIntent = Intent.createChooser(sendIntent, "Share Backup JSON")
+                                context.startActivity(shareIntent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Share failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCyan),
+                    border = BorderStroke(1.dp, NeonCyan),
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("SHARE CONFIGURATION VIA...", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // Import Card
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = GlassCardColor),
+            border = BorderStroke(1.dp, Color(0x11FFFFFF)),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("IMPORT CONFIGURATION", fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                Text(
+                    "Restore settings from an existing DTN Messenger JSON backup file.",
+                    color = TextGray,
+                    fontSize = 12.sp,
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { clearExistingBeforeImport = !clearExistingBeforeImport },
+                ) {
+                    Checkbox(
+                        checked = clearExistingBeforeImport,
+                        onCheckedChange = { clearExistingBeforeImport = it },
+                        colors =
+                            CheckboxDefaults.colors(
+                                checkedColor = NeonCyan,
+                                checkmarkColor = Color.Black,
+                                uncheckedColor = TextGray,
+                            ),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Wipe existing configuration before import (replace instead of merge)",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonPurple, contentColor = Color.White),
+                ) {
+                    Icon(Icons.Default.FileUpload, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("SELECT & IMPORT BACKUP FILE", fontWeight = FontWeight.Bold)
                 }
             }
         }

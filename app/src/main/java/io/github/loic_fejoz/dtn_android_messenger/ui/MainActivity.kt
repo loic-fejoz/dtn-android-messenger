@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
     private val convergenceProfileDao: ConvergenceProfileDao by inject()
     private val bpsecKeyDao: BpsecKeyDao by inject()
     private val systemLogDao: SystemLogDao by inject()
+    private val senmlEntryDao: SenmlEntryDao by inject()
 
     private val requestPermissionLauncher =
         registerForActivityResult(
@@ -185,6 +186,7 @@ class MainActivity : ComponentActivity() {
                             routingRuleDao = routingRuleDao,
                             bpsecKeyDao = bpsecKeyDao,
                             localServiceDao = localServiceDao,
+                            senmlEntryDao = senmlEntryDao,
                         )
                     }
 

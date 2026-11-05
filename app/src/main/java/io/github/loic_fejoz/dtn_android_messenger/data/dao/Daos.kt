@@ -20,6 +20,9 @@ interface LocalServiceDao {
 
     @Query("SELECT * FROM local_services WHERE serviceEid = :serviceEid")
     suspend fun getById(serviceEid: String): LocalService?
+
+    @Query("DELETE FROM local_services")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -86,6 +89,9 @@ interface RoutingRuleDao {
 
     @Delete
     suspend fun delete(rule: RoutingRule)
+
+    @Query("DELETE FROM routing_rules")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -101,6 +107,9 @@ interface ConvergenceProfileDao {
 
     @Delete
     suspend fun delete(profile: ConvergenceProfile)
+
+    @Query("DELETE FROM convergence_profiles")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -119,6 +128,9 @@ interface BpsecKeyDao {
 
     @Query("SELECT * FROM bpsec_keys WHERE nodeEid = :nodeEid")
     suspend fun getByKeyId(nodeEid: String): BpsecKey?
+
+    @Query("DELETE FROM bpsec_keys")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -150,6 +162,9 @@ interface SenmlEntryDao {
     @Query("SELECT * FROM senml_entries WHERE serviceEid = :serviceEid")
     suspend fun getAllEntriesForService(serviceEid: String): List<SenmlEntry>
 
+    @Query("SELECT * FROM senml_entries")
+    suspend fun getAllList(): List<SenmlEntry>
+
     @Query("SELECT * FROM senml_entries WHERE serviceEid = :serviceEid AND name = :name")
     suspend fun getEntry(
         serviceEid: String,
@@ -167,6 +182,9 @@ interface SenmlEntryDao {
 
     @Query("DELETE FROM senml_entries WHERE serviceEid = :serviceEid")
     suspend fun deleteAllForService(serviceEid: String)
+
+    @Query("DELETE FROM senml_entries")
+    suspend fun deleteAll()
 
     @Query("UPDATE senml_entries SET isDeleted = 1 WHERE serviceEid = :serviceEid AND name = :name")
     suspend fun markDeleted(

@@ -37,14 +37,14 @@ class DtnApplication : Application() {
                     localServiceDao.insert(
                         LocalService(
                             serviceEid = "dtn://my-node/chat",
-                            displayName = "Node Chat (EID dtn://my-node/chat)",
+                            displayName = "Chat",
                             viewerType = ViewerType.CHAT,
                         ),
                     )
                     localServiceDao.insert(
                         LocalService(
                             serviceEid = "dtn://my-node/files",
-                            displayName = "Bundle File Exchange (EID dtn://my-node/files)",
+                            displayName = "Files",
                             viewerType = ViewerType.BUNDLE_LIST,
                         ),
                     )
