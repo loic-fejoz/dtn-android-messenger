@@ -29,50 +29,15 @@ class DtnApplication : Application() {
             modules(appModule)
         }
 
-        // Prepopulate default database values if empty
+        // Check for existing installation to ensure seamless upgrades without blocking users
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val services = localServiceDao.getAll().first()
-                if (services.isEmpty()) {
-                    localServiceDao.insert(
-                        LocalService(
-                            serviceEid = "dtn://my-node/chat",
-                            displayName = "Chat",
-                            viewerType = ViewerType.CHAT,
-                        ),
-                    )
-                    localServiceDao.insert(
-                        LocalService(
-                            serviceEid = "dtn://my-node/files",
-                            displayName = "Files",
-                            viewerType = ViewerType.BUNDLE_LIST,
-                        ),
-                    )
-                }
-
-                val profiles = convergenceProfileDao.getAllList()
-                if (profiles.isEmpty()) {
-                    convergenceProfileDao.insert(
-                        ConvergenceProfile(
-                            profileId = "dtn://f4jxq",
-                            name = "Hardy Instance f4jxq (TCPCL)",
-                            triggerType = TriggerType.PERIODIC_INTERNET,
-                            targetAddress = "44.27.131.233:4556",
-                            // Check every 120 minutes (2 hours)
-                            triggerCondition = "120",
-                        ),
-                    )
-                    convergenceProfileDao.insert(
-                        ConvergenceProfile(
-                            profileId = "dtn://node-bt",
-                            name = "Bluetooth Node",
-                            triggerType = TriggerType.BLUETOOTH_ALWAYS,
-                            targetAddress = "00:11:22:33:44:55",
-                        ),
-                    )
+                val services = localServiceDao.getAllList()
+                if (services.isNotEmpty() && !io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.isOnboardingCompleted(this@DtnApplication)) {
+                    io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.setOnboardingCompleted(this@DtnApplication, true)
                 }
             } catch (e: Exception) {
-                // Database pre-population failed, log it or handle gracefully
+                // Ignore initialization errors
             }
         }
     }

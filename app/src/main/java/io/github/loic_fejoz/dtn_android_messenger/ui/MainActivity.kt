@@ -21,6 +21,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.*
 import io.github.loic_fejoz.dtn_android_messenger.data.model.ViewerType
+import io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper
 import org.koin.android.ext.android.inject
 
 class MainActivity : ComponentActivity() {
@@ -85,10 +86,53 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                val isOnboardingDone = remember {
+                    val completed = PreferencesHelper.isOnboardingCompleted(this@MainActivity)
+                    if (!completed) {
+                        val prefs = PreferencesHelper.getEncryptedSharedPreferences(this@MainActivity)
+                        val nodeName = prefs.getString("local_node_name", "")
+                        if (!nodeName.isNullOrBlank() && nodeName != "dtn://my-node") {
+                            PreferencesHelper.setOnboardingCompleted(this@MainActivity, true)
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        true
+                    }
+                }
+
+                var startDest by remember { mutableStateOf(if (isOnboardingDone) "registry" else "onboarding") }
+
+                LaunchedEffect(Unit) {
+                    if (!isOnboardingDone) {
+                        val services = localServiceDao.getAllList()
+                        if (services.isNotEmpty()) {
+                            PreferencesHelper.setOnboardingCompleted(this@MainActivity, true)
+                            startDest = "registry"
+                        }
+                    }
+                }
+
                 NavHost(
                     navController = navController,
-                    startDestination = "registry",
+                    startDestination = startDest,
                 ) {
+                    composable("onboarding") {
+                        OnboardingScreen(
+                            localServiceDao = localServiceDao,
+                            convergenceProfileDao = convergenceProfileDao,
+                            routingRuleDao = routingRuleDao,
+                            bpsecKeyDao = bpsecKeyDao,
+                            senmlEntryDao = senmlEntryDao,
+                            onOnboardingFinished = {
+                                navController.navigate("registry") {
+                                    popUpTo("onboarding") { inclusive = true }
+                                }
+                            },
+                        )
+                    }
+
                     composable("registry") {
                         RegistryScreen(
                             navController = navController,

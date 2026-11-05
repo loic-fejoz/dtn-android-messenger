@@ -26,7 +26,9 @@ import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -48,6 +50,7 @@ import io.github.loic_fejoz.dtn_android_messenger.data.dao.SenmlEntryDao
 import io.github.loic_fejoz.dtn_android_messenger.data.model.*
 import io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService
 import io.github.loic_fejoz.dtn_android_messenger.util.ConfigBackupManager
+import io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -169,7 +172,7 @@ fun ConfigurationScreen(
                     1 -> RoutingConfigTab(routingRuleDao, scope)
                     2 -> KeystoreConfigTab(bpsecKeyDao, scope)
                     3 -> ServicesConfigTab(localServiceDao, scope, senmlEntryDao)
-                    4 -> BackupConfigTab(localServiceDao, convergenceProfileDao, routingRuleDao, bpsecKeyDao, senmlEntryDao, scope)
+                    4 -> BackupConfigTab(localServiceDao, convergenceProfileDao, routingRuleDao, bpsecKeyDao, senmlEntryDao, navController, scope)
                 }
             }
         }
@@ -1139,6 +1142,7 @@ fun BackupConfigTab(
     routingRuleDao: RoutingRuleDao,
     bpsecKeyDao: BpsecKeyDao,
     senmlEntryDao: SenmlEntryDao,
+    navController: NavController,
     scope: CoroutineScope,
 ) {
     val context = LocalContext.current
@@ -1146,6 +1150,7 @@ fun BackupConfigTab(
     var clearExistingBeforeImport by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
+    var showResetDialog by remember { mutableStateOf(false) }
 
     val exportLauncher =
         rememberLauncherForActivityResult(
@@ -1383,6 +1388,76 @@ fun BackupConfigTab(
                 }
             }
         }
+
+        // Reset Card
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = GlassCardColor),
+            border = BorderStroke(1.dp, GlowRed.copy(alpha = 0.5f)),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("RÉINITIALISATION DE L'APPLICATION", fontSize = 11.sp, color = GlowRed, fontWeight = FontWeight.Bold)
+                Text(
+                    "Efface l'ensemble des données de configuration locales (services, clés BPSec, profils CLA, routes) et réaffiche l'écran d'accueil de premier lancement.",
+                    color = TextGray,
+                    fontSize = 12.sp,
+                )
+
+                Button(
+                    onClick = { showResetDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = GlowRed, contentColor = Color.White),
+                ) {
+                    Icon(Icons.Default.RestartAlt, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("RÉINITIALISER LA CONFIGURATION", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = GlowRed) },
+            title = { Text("Réinitialiser l'application ?", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Cette action supprimera tous vos services locaux, profils CLA, routes, clés BPSec et préférences. L'application redémarrera sur l'écran d'accueil.",
+                    color = TextGray,
+                    fontSize = 13.sp,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetDialog = false
+                        scope.launch {
+                            localServiceDao.deleteAll()
+                            convergenceProfileDao.deleteAll()
+                            routingRuleDao.deleteAll()
+                            bpsecKeyDao.deleteAll()
+                            senmlEntryDao.deleteAll()
+                            PreferencesHelper.getEncryptedSharedPreferences(context).edit().clear().apply()
+                            PreferencesHelper.setOnboardingCompleted(context, false)
+                            navController.navigate("onboarding") {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GlowRed, contentColor = Color.White),
+                ) {
+                    Text("RÉINITIALISER TOUT", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text("ANNULER", color = TextGray)
+                }
+            },
+            containerColor = CharcoalBg,
+        )
     }
 }
 

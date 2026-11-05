@@ -9,6 +9,7 @@ object PreferencesHelper {
     const val PREF_MAX_BUNDLE_SIZE_MB = "max_bundle_size_mb"
     const val DEFAULT_MAX_BUNDLE_SIZE_MB = 10
     const val MAX_BUNDLE_SIZE_MB_LIMIT = 100
+    const val PREF_ONBOARDING_COMPLETED = "pref_onboarding_completed"
 
     private var securePrefs: SharedPreferences? = null
 
@@ -26,6 +27,16 @@ object PreferencesHelper {
         val prefs = getEncryptedSharedPreferences(context)
         val mb = prefs.getInt(PREF_MAX_BUNDLE_SIZE_MB, DEFAULT_MAX_BUNDLE_SIZE_MB).coerceIn(1, MAX_BUNDLE_SIZE_MB_LIMIT)
         return mb.toLong() * 1024L * 1024L
+    }
+
+    fun isOnboardingCompleted(context: Context): Boolean {
+        val prefs = getEncryptedSharedPreferences(context)
+        return prefs.getBoolean(PREF_ONBOARDING_COMPLETED, false)
+    }
+
+    fun setOnboardingCompleted(context: Context, completed: Boolean) {
+        val prefs = getEncryptedSharedPreferences(context)
+        prefs.edit().putBoolean(PREF_ONBOARDING_COMPLETED, completed).apply()
     }
 
     private fun createSecurePrefs(context: Context): SharedPreferences {
