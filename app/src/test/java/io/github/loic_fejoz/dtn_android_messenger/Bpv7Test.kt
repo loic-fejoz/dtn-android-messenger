@@ -47,6 +47,105 @@ class Bpv7Test {
         assertEquals(primary.reportTo.uri, deserialized.reportTo.uri)
         assertEquals(primary.creationTimestamp, deserialized.creationTimestamp)
         assertEquals(primary.lifetimeMs, deserialized.lifetimeMs)
+        assertEquals(8, cbor.size())
+    }
+
+    @Test
+    fun testPrimaryBlockSerializationDefaultCrc32c() {
+        val primary =
+            PrimaryBlock(
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn://node-a/chat"),
+                creationTimestamp = Pair(12345678L, 99L),
+                lifetimeMs = 3600000L,
+            )
+
+        // Default crcType must be 2 (CRC-32C Castagnoli) per RFC 9171 §4.3.1
+        assertEquals(2, primary.crcType)
+
+        val cbor = Bpv7Parser.serializePrimaryBlock(primary)
+        assertEquals(9, cbor.size(), "CBOR array must have 9 elements when crcType is 2")
+
+        val crcElement = cbor[8]
+        assertEquals(com.upokecenter.cbor.CBORType.ByteString, crcElement.type)
+        assertEquals(4, crcElement.GetByteString().size, "CRC-32C must be 4 bytes")
+
+        val deserialized = Bpv7Parser.deserializePrimaryBlock(cbor)
+        assertEquals(2, deserialized.crcType)
+        assertNotNull(deserialized.crc)
+        assertArrayEquals(crcElement.GetByteString(), deserialized.crc)
+        assertEquals(primary.destination.uri, deserialized.destination.uri)
+    }
+
+    @Test
+    fun testPrimaryBlockSerializationCrc16() {
+        val primary =
+            PrimaryBlock(
+                crcType = 1, // CRC-16 (X.25)
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn://node-a/chat"),
+                creationTimestamp = Pair(12345678L, 99L),
+                lifetimeMs = 3600000L,
+            )
+
+        val cbor = Bpv7Parser.serializePrimaryBlock(primary)
+        assertEquals(9, cbor.size(), "CBOR array must have 9 elements when crcType is 1")
+
+        val crcElement = cbor[8]
+        assertEquals(com.upokecenter.cbor.CBORType.ByteString, crcElement.type)
+        assertEquals(2, crcElement.GetByteString().size, "CRC-16 must be 2 bytes")
+
+        val deserialized = Bpv7Parser.deserializePrimaryBlock(cbor)
+        assertEquals(1, deserialized.crcType)
+        assertNotNull(deserialized.crc)
+        assertArrayEquals(crcElement.GetByteString(), deserialized.crc)
+    }
+
+    @Test
+    fun testPrimaryBlockCorruptedCrcThrows() {
+        val primary =
+            PrimaryBlock(
+                crcType = 2,
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn://node-a/chat"),
+                creationTimestamp = Pair(12345678L, 99L),
+                lifetimeMs = 3600000L,
+            )
+
+        val cbor = Bpv7Parser.serializePrimaryBlock(primary)
+        val validCrc = cbor[8].GetByteString()
+        val corruptCrc = validCrc.clone().apply { this[0] = (this[0].toInt() xor 0xFF).toByte() }
+        cbor[8] = com.upokecenter.cbor.CBORObject.FromObject(corruptCrc)
+
+        val ex = assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserializePrimaryBlock(cbor)
+        }
+        assertTrue(ex.message!!.contains("CRC-32C mismatch"))
+    }
+
+    @Test
+    fun testPrimaryBlockMissingCrcThrows() {
+        // Construct 8-element array with crcType = 2 (missing 9th element)
+        val array = com.upokecenter.cbor.CBORObject.NewArray()
+        array.Add(7)
+        array.Add(0L)
+        array.Add(2) // crcType = 2
+        array.Add(Eid("dtn://node-b/chat").toCbor())
+        array.Add(Eid("dtn://node-a/chat").toCbor())
+        array.Add(Eid("dtn://node-a/chat").toCbor())
+        val ts = com.upokecenter.cbor.CBORObject.NewArray()
+        ts.Add(100L)
+        ts.Add(1L)
+        array.Add(ts)
+        array.Add(1000L)
+
+        val ex = assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserializePrimaryBlock(array)
+        }
+        assertTrue(ex.message!!.contains("Missing CRC field in PrimaryBlock"))
     }
 
     @Test

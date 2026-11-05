@@ -68,15 +68,48 @@ data class Eid(val uri: String) {
 data class PrimaryBlock(
     val version: Int = 7,
     val bundleControlFlags: Long = 0,
-    val crcType: Int = 0,
+    val crcType: Int = 2,
     val destination: Eid,
     val source: Eid,
     val reportTo: Eid,
     // <dtnTimeSeconds, sequenceNumber>
     val creationTimestamp: Pair<Long, Long>,
     val lifetimeMs: Long,
+    val crc: ByteArray? = null,
 ) {
     var rawBytes: ByteArray? = null
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as PrimaryBlock
+        if (version != other.version) return false
+        if (bundleControlFlags != other.bundleControlFlags) return false
+        if (crcType != other.crcType) return false
+        if (destination != other.destination) return false
+        if (source != other.source) return false
+        if (reportTo != other.reportTo) return false
+        if (creationTimestamp != other.creationTimestamp) return false
+        if (lifetimeMs != other.lifetimeMs) return false
+        if (crc != null) {
+            if (other.crc == null) return false
+            if (!crc.contentEquals(other.crc)) return false
+        } else if (other.crc != null) return false
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = version
+        result = 31 * result + bundleControlFlags.hashCode()
+        result = 31 * result + crcType
+        result = 31 * result + destination.hashCode()
+        result = 31 * result + source.hashCode()
+        result = 31 * result + reportTo.hashCode()
+        result = 31 * result + creationTimestamp.hashCode()
+        result = 31 * result + lifetimeMs.hashCode()
+        result = 31 * result + (crc?.contentHashCode() ?: 0)
+        return result
+    }
 }
 
 data class PayloadBlock(
@@ -166,7 +199,70 @@ data class Bundle(
     val bibBlock: BibBlock? = null,
 )
 
+object CrcHelper {
+    // CRC-32C (Castagnoli)
+    // Poly: 0x1EDC6F41 (reversed: 0x82F63B78)
+    // Init: 0xFFFFFFFF, RefIn: true, RefOut: true, XorOut: 0xFFFFFFFF
+    private val CRC32C_TABLE = IntArray(256) { i ->
+        var crc = i
+        for (j in 0 until 8) {
+            crc = if ((crc and 1) != 0) {
+                (crc ushr 1) xor 0x82F63B78.toInt()
+            } else {
+                crc ushr 1
+            }
+        }
+        crc
+    }
+
+    // CRC-16 (X.25 / CRC-16-IBM-SDLC)
+    // Poly: 0x1021 (reversed: 0x8408)
+    // Init: 0xFFFF, RefIn: true, RefOut: true, XorOut: 0xFFFF
+    private val CRC16_TABLE = IntArray(256) { i ->
+        var crc = i
+        for (j in 0 until 8) {
+            crc = if ((crc and 1) != 0) {
+                (crc ushr 1) xor 0x8408
+            } else {
+                crc ushr 1
+            }
+        }
+        crc and 0xFFFF
+    }
+
+    fun computeCrc32c(data: ByteArray): ByteArray {
+        var crc = 0xFFFFFFFF.toInt()
+        for (b in data) {
+            val index = (crc xor b.toInt()) and 0xFF
+            crc = CRC32C_TABLE[index] xor (crc ushr 8)
+        }
+        val result = crc xor 0xFFFFFFFF.toInt()
+        return byteArrayOf(
+            ((result ushr 24) and 0xFF).toByte(),
+            ((result ushr 16) and 0xFF).toByte(),
+            ((result ushr 8) and 0xFF).toByte(),
+            (result and 0xFF).toByte(),
+        )
+    }
+
+    fun computeCrc16(data: ByteArray): ByteArray {
+        var crc = 0xFFFF
+        for (b in data) {
+            val index = (crc xor b.toInt()) and 0xFF
+            crc = CRC16_TABLE[index] xor (crc ushr 8)
+        }
+        val result = (crc xor 0xFFFF) and 0xFFFF
+        return byteArrayOf(
+            ((result ushr 8) and 0xFF).toByte(),
+            (result and 0xFF).toByte(),
+        )
+    }
+}
+
 object Bpv7Parser {
+    fun computeCrc32c(data: ByteArray): ByteArray = CrcHelper.computeCrc32c(data)
+    fun computeCrc16(data: ByteArray): ByteArray = CrcHelper.computeCrc16(data)
+
     fun serializePrimaryBlock(primary: PrimaryBlock): CBORObject {
         val array = CBORObject.NewArray()
         array.Add(primary.version)
@@ -182,6 +278,32 @@ object Bpv7Parser {
         array.Add(timestamp)
 
         array.Add(primary.lifetimeMs)
+
+        when (primary.crcType) {
+            1 -> {
+                val crcBytes = primary.crc ?: run {
+                    array.Add(CBORObject.FromObject(ByteArray(2)))
+                    computeCrc16(array.EncodeToBytes())
+                }
+                if (array.size() > 8) {
+                    array.set(8, CBORObject.FromObject(crcBytes))
+                } else {
+                    array.Add(CBORObject.FromObject(crcBytes))
+                }
+            }
+            2 -> {
+                val crcBytes = primary.crc ?: run {
+                    array.Add(CBORObject.FromObject(ByteArray(4)))
+                    computeCrc32c(array.EncodeToBytes())
+                }
+                if (array.size() > 8) {
+                    array.set(8, CBORObject.FromObject(crcBytes))
+                } else {
+                    array.Add(CBORObject.FromObject(crcBytes))
+                }
+            }
+        }
+
         return array
     }
 
@@ -208,7 +330,37 @@ object Bpv7Parser {
 
         val lifetime = cbor[7].AsInt64Value()
 
-        return PrimaryBlock(version, flags, crcType, destination, source, reportTo, Pair(creationTime, seq), lifetime).apply {
+        var crcBytes: ByteArray? = null
+        if (crcType != 0) {
+            if (cbor.size() < 9) {
+                throw IllegalArgumentException("Missing CRC field in PrimaryBlock: expected 9 elements for crcType $crcType, got ${cbor.size()}")
+            }
+            crcBytes = cbor[8].GetByteString()
+            val expectedLen = if (crcType == 1) 2 else if (crcType == 2) 4 else -1
+            if (expectedLen != -1 && crcBytes.size != expectedLen) {
+                throw IllegalArgumentException("Invalid CRC length in PrimaryBlock: expected $expectedLen bytes, got ${crcBytes.size}")
+            }
+
+            val verifyArray = CBORObject.NewArray()
+            for (i in 0 until 8) {
+                verifyArray.Add(cbor[i])
+            }
+            if (crcType == 1) {
+                verifyArray.Add(CBORObject.FromObject(ByteArray(2)))
+                val computed = computeCrc16(verifyArray.EncodeToBytes())
+                if (!computed.contentEquals(crcBytes)) {
+                    throw IllegalArgumentException("PrimaryBlock CRC-16 mismatch: expected ${crcBytes.joinToString("") { "%02x".format(it) }}, computed ${computed.joinToString("") { "%02x".format(it) }}")
+                }
+            } else if (crcType == 2) {
+                verifyArray.Add(CBORObject.FromObject(ByteArray(4)))
+                val computed = computeCrc32c(verifyArray.EncodeToBytes())
+                if (!computed.contentEquals(crcBytes)) {
+                    throw IllegalArgumentException("PrimaryBlock CRC-32C mismatch: expected ${crcBytes.joinToString("") { "%02x".format(it) }}, computed ${computed.joinToString("") { "%02x".format(it) }}")
+                }
+            }
+        }
+
+        return PrimaryBlock(version, flags, crcType, destination, source, reportTo, Pair(creationTime, seq), lifetime, crcBytes).apply {
             rawBytes = cbor.EncodeToBytes()
         }
     }
