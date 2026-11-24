@@ -314,54 +314,69 @@ class DtnEngineService : Service() {
             val policy = prefs.getString("bpsec_policy", "none") ?: "none"
 
             if (bib != null) {
-                val keyRecord = findBpsecKey(primary.source.uri)
-                if (keyRecord != null) {
-                    val decryptedKey =
-                        try {
-                            io.github.loic_fejoz.dtn_android_messenger.util.CryptoManager.decrypt(keyRecord.secretKey)
-                        } catch (e: Exception) {
-                            log("ERROR", "Failed to decrypt BPSec key for ${primary.source.uri}")
-                            return false
-                        }
-                    // Compute expected signature
-                    // For calculation, we need raw primary block bytes.
-                    val rawPrimaryBytes = primary.rawBytes ?: Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
-
-                    val computedSignature =
-                        Bpv7Parser.computeHmac(
-                            secretKey = decryptedKey,
-                            primaryBlockBytes = rawPrimaryBytes,
-                            targetBlockType = 1,
-                            targetBlockNumber = payload.blockNumber,
-                            targetBlockFlags = payload.blockControlFlags,
-                            securityBlockType = 11,
-                            securityBlockNumber = bib.blockNumber,
-                            securityBlockFlags = bib.blockControlFlags,
-                            payloadBytes = payload.data,
-                            scopeFlags = bib.scopeFlags,
-                        )
-
-                    bpsecStatus =
-                        if (computedSignature.contentEquals(bib.signature)) {
-                            BpsecStatus.VALID
-                        } else {
-                            BpsecStatus.INVALID
-                        }
-                    log("INFO", "BPSec signature verification: $bpsecStatus")
-
-                    if (bpsecStatus == BpsecStatus.INVALID) {
-                        if (policy == "strict") {
-                            log("ERROR", "BPSec signature invalid under STRICT policy. Discarding bundle from ${primary.source.uri}.")
-                            return false
-                        } else if (policy == "warn") {
-                            log("WARN", "BPSec signature invalid under WARN policy for bundle from ${primary.source.uri}.")
-                        }
+                val isSupportedBib =
+                    bib.securityContext == 1 &&
+                        bib.variant == 5 &&
+                        bib.targets.contains(payload.blockNumber)
+                if (!isSupportedBib) {
+                    log(
+                        "WARN",
+                        "Unsupported BIB parameters (context=${bib.securityContext}, variant=${bib.variant}, targets=${bib.targets}) from ${primary.source.uri}",
+                    )
+                    if (policy == "strict") {
+                        log("ERROR", "Unsupported BIB block under STRICT policy. Discarding bundle from ${primary.source.uri}.")
+                        return false
                     }
                 } else {
-                    log("WARN", "No BPSec key found for source ${primary.source.uri}, verification skipped")
-                    if (policy == "strict") {
-                        log("ERROR", "BPSec key missing under STRICT policy. Discarding bundle from ${primary.source.uri}.")
-                        return false
+                    val keyRecord = findBpsecKey(bib.securitySource.uri) ?: findBpsecKey(primary.source.uri)
+                    if (keyRecord != null) {
+                        val decryptedKey =
+                            try {
+                                io.github.loic_fejoz.dtn_android_messenger.util.CryptoManager.decrypt(keyRecord.secretKey)
+                            } catch (e: Exception) {
+                                log("ERROR", "Failed to decrypt BPSec key for ${primary.source.uri}")
+                                return false
+                            }
+                        // Compute expected signature
+                        // For calculation, we need raw primary block bytes.
+                        val rawPrimaryBytes = primary.rawBytes ?: Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
+
+                        val computedSignature =
+                            Bpv7Parser.computeHmac(
+                                secretKey = decryptedKey,
+                                primaryBlockBytes = rawPrimaryBytes,
+                                targetBlockType = 1,
+                                targetBlockNumber = payload.blockNumber,
+                                targetBlockFlags = payload.blockControlFlags,
+                                securityBlockType = 11,
+                                securityBlockNumber = bib.blockNumber,
+                                securityBlockFlags = bib.blockControlFlags,
+                                payloadBytes = payload.data,
+                                scopeFlags = bib.scopeFlags,
+                            )
+
+                        bpsecStatus =
+                            if (java.security.MessageDigest.isEqual(computedSignature, bib.signature)) {
+                                BpsecStatus.VALID
+                            } else {
+                                BpsecStatus.INVALID
+                            }
+                        log("INFO", "BPSec signature verification: $bpsecStatus")
+
+                        if (bpsecStatus == BpsecStatus.INVALID) {
+                            if (policy == "strict") {
+                                log("ERROR", "BPSec signature invalid under STRICT policy. Discarding bundle from ${primary.source.uri}.")
+                                return false
+                            } else if (policy == "warn") {
+                                log("WARN", "BPSec signature invalid under WARN policy for bundle from ${primary.source.uri}.")
+                            }
+                        }
+                    } else {
+                        log("WARN", "No BPSec key found for source ${bib.securitySource.uri} / ${primary.source.uri}, verification skipped")
+                        if (policy == "strict") {
+                            log("ERROR", "BPSec key missing under STRICT policy. Discarding bundle from ${primary.source.uri}.")
+                            return false
+                        }
                     }
                 }
             } else {
@@ -733,8 +748,14 @@ class DtnEngineService : Service() {
                     continue
                 }
 
-                // Load BPSec Key if present to sign bundle
-                val keyRecord = bpsecKeyDao.getByKeyId(record.destinationEid) ?: bpsecKeyDao.getByKeyId(nextHop)
+                // Load BPSec Key if present to sign bundle (peer key or local node signing key)
+                val prefs = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getEncryptedSharedPreferences(this@DtnEngineService)
+                val localNodeBase = (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim()
+                val keyRecord =
+                    findBpsecKey(record.destinationEid)
+                        ?: findBpsecKey(nextHop)
+                        ?: findBpsecKey(record.sourceEid)
+                        ?: findBpsecKey(localNodeBase)
 
                 // Build blocks
                 val primary =
@@ -807,9 +828,7 @@ class DtnEngineService : Service() {
                     // 2. Build the outer bundle targeting the gateway's bibe service
                     val cleanGateway = bibeGateway.trim().trimEnd('/')
                     val gatewayBibeEid = if (cleanGateway.endsWith("/bibe")) cleanGateway else "$cleanGateway/bibe"
-                    val prefs = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getEncryptedSharedPreferences(this@DtnEngineService)
-                    val localNodeBase = (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim().trimEnd('/')
-                    val localBibeEid = "$localNodeBase/bibe"
+                    val localBibeEid = "${localNodeBase.trimEnd('/')}/bibe"
 
                     val outerPrimary =
                         PrimaryBlock(

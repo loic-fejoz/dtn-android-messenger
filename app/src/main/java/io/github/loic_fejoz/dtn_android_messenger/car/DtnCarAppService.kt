@@ -10,6 +10,7 @@ import androidx.car.app.validation.HostValidator
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import io.github.loic_fejoz.dtn_android_messenger.BuildConfig
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BundleRecordDao
 import io.github.loic_fejoz.dtn_android_messenger.data.model.BundleRecord
 import io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService
@@ -28,7 +29,13 @@ import java.util.UUID
 
 class DtnCarAppService : CarAppService() {
     override fun createHostValidator(): HostValidator {
-        return HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
+        return if (BuildConfig.DEBUG) {
+            HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
+        } else {
+            HostValidator.Builder(applicationContext)
+                .addAllowedHosts(androidx.car.app.R.array.hosts_allowlist_sample)
+                .build()
+        }
     }
 
     override fun onCreateSession(): Session {

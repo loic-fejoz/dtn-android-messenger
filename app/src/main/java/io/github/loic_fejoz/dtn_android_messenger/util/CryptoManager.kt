@@ -12,7 +12,10 @@ object CryptoManager {
     private const val ALGORITHM = "AES/GCM/NoPadding"
     private const val KEY_ALIAS = "bpsec_db_key"
 
+    @androidx.annotation.VisibleForTesting
     var encryptOverride: ((ByteArray) -> ByteArray)? = null
+
+    @androidx.annotation.VisibleForTesting
     var decryptOverride: ((ByteArray) -> ByteArray)? = null
 
     private val keyStore by lazy {
@@ -21,6 +24,7 @@ object CryptoManager {
         }
     }
 
+    @Synchronized
     private fun getKey(): SecretKey {
         val existingKey = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
         return existingKey?.secretKey ?: generateKey()

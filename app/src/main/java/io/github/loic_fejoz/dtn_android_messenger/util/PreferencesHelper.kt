@@ -11,6 +11,7 @@ object PreferencesHelper {
     const val MAX_BUNDLE_SIZE_MB_LIMIT = 100
     const val PREF_ONBOARDING_COMPLETED = "pref_onboarding_completed"
 
+    @Volatile
     private var securePrefs: SharedPreferences? = null
 
     fun setSharedPreferencesForTesting(prefs: SharedPreferences?) {
@@ -50,6 +51,7 @@ object PreferencesHelper {
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
             )
         } catch (e: Exception) {
+            android.util.Log.w("PreferencesHelper", "EncryptedSharedPreferences failed; falling back to standard SharedPreferences: ${e.message}")
             // Fallback to standard preferences if keystore initialization fails
             context.applicationContext.getSharedPreferences("dtn_prefs", Context.MODE_PRIVATE)
         }
