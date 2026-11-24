@@ -66,6 +66,9 @@ interface BundleRecordDao {
     @Query("SELECT * FROM bundle_records WHERE (creationTimestamp + lifetimeMs) < :now")
     suspend fun getExpired(now: Long): List<BundleRecord>
 
+    @Query("SELECT * FROM bundle_records WHERE state = 'RECEIVED' ORDER BY creationTimestamp DESC LIMIT 1")
+    fun getLatestReceived(): Flow<BundleRecord?>
+
     @Query(
         "SELECT * FROM bundle_records WHERE sourceEid = :sourceEid AND creationTimestamp = :creationTime AND sequenceNumber = :seqNo LIMIT 1",
     )
@@ -137,6 +140,9 @@ interface BpsecKeyDao {
 interface SystemLogDao {
     @Query("SELECT * FROM system_logs ORDER BY timestamp DESC")
     fun getAll(): Flow<List<SystemLog>>
+
+    @Query("SELECT * FROM system_logs ORDER BY timestamp DESC LIMIT :limit")
+    fun getRecent(limit: Int = 500): Flow<List<SystemLog>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(log: SystemLog)

@@ -82,25 +82,6 @@ private fun getAvailableWifiSsids(context: Context): List<String> {
                 ssids.add(clean)
             }
         }
-
-        val scans = wifiManager.scanResults
-        if (scans != null) {
-            for (scan in scans) {
-                if (scan.SSID != null && scan.SSID.isNotEmpty()) {
-                    ssids.add(scan.SSID.trim('"'))
-                }
-            }
-        }
-
-        @Suppress("DEPRECATION")
-        val configs = wifiManager.configuredNetworks
-        if (configs != null) {
-            for (config in configs) {
-                if (config.SSID != null && config.SSID.isNotEmpty()) {
-                    ssids.add(config.SSID.trim('"'))
-                }
-            }
-        }
     } catch (e: Exception) {
         // Fallback to manual SSID entry
     }
@@ -482,8 +463,12 @@ fun ProfilesConfigTab(
                                         action = "FORCE_PULL"
                                         putExtra("address", profile.targetAddress)
                                     }
-                                context.startService(intent)
-                                Toast.makeText(context, "Forcing connection to ${profile.targetAddress}...", Toast.LENGTH_SHORT).show()
+                                try {
+                                    androidx.core.content.ContextCompat.startForegroundService(context, intent)
+                                    Toast.makeText(context, "Forcing connection to ${profile.targetAddress}...", Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Unable to start service: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
                             }) {
                                 Icon(Icons.Default.BackHand, contentDescription = "Force Connection", tint = NeonCyan)
                             }

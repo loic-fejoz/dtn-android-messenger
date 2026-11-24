@@ -75,6 +75,7 @@ class RoutingIntegrationTest {
     private val fakeLogDao = object : SystemLogDao {
         override suspend fun insert(log: SystemLog) {}
         override fun getAll(): Flow<List<SystemLog>> = emptyFlow()
+        override fun getRecent(limit: Int): Flow<List<SystemLog>> = emptyFlow()
         override suspend fun clearAll() {}
         override suspend fun deleteLogsOlderThan(cutoff: Long) {}
         override suspend fun getOldestLogs(limit: Int): List<SystemLog> = emptyList()

@@ -1,6 +1,7 @@
 package io.github.loic_fejoz.dtn_android_messenger.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 enum class ViewerType {
@@ -59,7 +60,14 @@ data class LocalService(
     val isNotificationEnabled: Boolean = true,
 )
 
-@Entity(tableName = "bundle_records")
+@Entity(
+    tableName = "bundle_records",
+    indices = [
+        Index(value = ["sourceEid", "creationTimestamp", "sequenceNumber"]),
+        Index(value = ["state"]),
+        Index(value = ["destinationEid"]),
+    ],
+)
 data class BundleRecord(
     // Hash or UUID of Primary Block
     @PrimaryKey val bundleId: String,
@@ -74,6 +82,7 @@ data class BundleRecord(
     val isRead: Boolean,
     val bpsecStatus: BpsecStatus,
     val hopCount: Int,
+    val hopLimit: Int = 64,
 ) {
     companion object {
         // 48 hours default lifetime in milliseconds (RFC 9171)

@@ -77,6 +77,24 @@ class DtnEngineService : Service() {
         val updateTrigger = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(replay = 1)
         val isTcpActive = kotlinx.coroutines.flow.MutableStateFlow(false)
         val isBluetoothActive = kotlinx.coroutines.flow.MutableStateFlow(false)
+        private const val MAX_BIBE_DEPTH = 3
+
+        internal fun selectNextHop(
+            destination: String,
+            rules: List<RoutingRule>,
+        ): String {
+            val sortedRules =
+                rules.sortedByDescending {
+                    it.destinationEidPattern.replace("*", "").trimEnd('/').length
+                }
+            for (rule in sortedRules) {
+                val pattern = rule.destinationEidPattern.replace("*", "").trimEnd('/')
+                if (io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(pattern, destination)) {
+                    return rule.nextHopEid
+                }
+            }
+            return destination
+        }
 
         @Volatile
         var isRunning = false
@@ -122,6 +140,7 @@ class DtnEngineService : Service() {
         } catch (e: Exception) {
             log("ERROR", "Failed to start foreground service: ${e.message}")
             stopSelf()
+            return
         }
 
         // Initialize adapters
@@ -151,7 +170,11 @@ class DtnEngineService : Service() {
                 val bluetoothEnabled = profiles.any { it.triggerType == TriggerType.BLUETOOTH_ALWAYS && !it.isPaused } && !autoActive
                 val tcpEnabled =
                     profiles.any {
-                        (it.triggerType == TriggerType.WIFI_SSID || it.triggerType == TriggerType.PERIODIC_INTERNET) && !it.isPaused
+                        !it.isPaused &&
+                            (
+                                it.triggerType == TriggerType.PERIODIC_INTERNET ||
+                                    (it.triggerType == TriggerType.WIFI_SSID && isProfileEligible(it))
+                            )
                     }
 
                 // Manage Bluetooth Adapter
@@ -282,7 +305,14 @@ class DtnEngineService : Service() {
             }
     }
 
-    private suspend fun onBundleReceived(bundleBytes: ByteArray): Boolean {
+    private suspend fun onBundleReceived(
+        bundleBytes: ByteArray,
+        depth: Int = 0,
+    ): Boolean {
+        if (depth > MAX_BIBE_DEPTH) {
+            log("ERROR", "Exceeded maximum BIBE encapsulation depth ($MAX_BIBE_DEPTH). Rejecting bundle.")
+            return false
+        }
         try {
             val bundle = Bpv7Parser.deserialize(bundleBytes)
             val primary = bundle.primaryBlock
@@ -403,7 +433,10 @@ class DtnEngineService : Service() {
             }
             val extension = io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.getPayloadFileExtension(tempFile.absolutePath)
             val payloadFile = File(payloadsDir, "$bundleId.$extension")
-            tempFile.renameTo(payloadFile)
+            if (!tempFile.renameTo(payloadFile)) {
+                tempFile.copyTo(payloadFile, overwrite = true)
+                tempFile.delete()
+            }
 
             // Verify if it is for local services on our node (supporting prefix/multicast match for multiple services)
             val localNodeBase = (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim()
@@ -421,7 +454,15 @@ class DtnEngineService : Service() {
             val isLocal = isLocalNode || matchedLocalServices.isNotEmpty()
 
             var isBibeDecapsulated = false
-            if (isLocal) {
+            val isBibeCandidate =
+                isLocal &&
+                    depth < MAX_BIBE_DEPTH &&
+                    (
+                        (primary.bundleControlFlags and 0x02L) != 0L ||
+                            primary.destination.uri.trimEnd('/').endsWith("/bibe", ignoreCase = true)
+                    )
+            if (isBibeCandidate) {
+                var innerBytesToProcess: ByteArray? = null
                 // 1. Check if payload is a BIBE PDU (Administrative Record 64443)
                 try {
                     val cbor = com.upokecenter.cbor.CBORObject.DecodeFromBytes(payload.data)
@@ -430,12 +471,8 @@ class DtnEngineService : Service() {
                         if (recordType == 64443) {
                             val content = cbor[1]
                             if (content.type == com.upokecenter.cbor.CBORType.Array && content.size() >= 3) {
-                                val innerBundleBytes = content[2].GetByteString()
+                                innerBytesToProcess = content[2].GetByteString()
                                 log("INFO", "Decapsulated BIBE PDU (type 64443). Re-processing inner bundle.")
-                                isBibeDecapsulated = true
-                                serviceScope.launch {
-                                    onBundleReceived(innerBundleBytes)
-                                }
                             }
                         }
                     }
@@ -444,19 +481,26 @@ class DtnEngineService : Service() {
                 }
 
                 // 2. Fallback: Check if payload is a raw encapsulated bundle
-                if (!isBibeDecapsulated) {
+                if (innerBytesToProcess == null) {
                     try {
                         val innerBundle = Bpv7Parser.deserialize(payload.data)
                         if (innerBundle.primaryBlock.version == 7) {
+                            innerBytesToProcess = payload.data
                             log("INFO", "Decapsulated raw Bundle-in-Bundle. Re-processing inner bundle.")
-                            isBibeDecapsulated = true
-                            serviceScope.launch {
-                                onBundleReceived(payload.data)
-                            }
                         }
                     } catch (e: Exception) {
                         // Not a raw bundle
                     }
+                }
+
+                if (innerBytesToProcess != null) {
+                    val innerAccepted = onBundleReceived(innerBytesToProcess, depth + 1)
+                    if (!innerAccepted) {
+                        log("ERROR", "Inner BIBE bundle ingestion failed; withholding outer XFER_ACK.")
+                        if (payloadFile.exists()) payloadFile.delete()
+                        return false
+                    }
+                    isBibeDecapsulated = true
                 }
             }
 
@@ -485,9 +529,15 @@ class DtnEngineService : Service() {
                     isRead = isBibeDecapsulated,
                     bpsecStatus = bpsecStatus,
                     hopCount = hopCount,
+                    hopLimit = hopLimit,
                 )
 
-            bundleRecordDao.insert(record)
+            try {
+                bundleRecordDao.insert(record)
+            } catch (e: Exception) {
+                if (payloadFile.exists()) payloadFile.delete()
+                throw e
+            }
             log("INFO", "Bundle $bundleId inserted. State: ${record.state}")
             updateTrigger.emit(Unit)
 
@@ -721,8 +771,8 @@ class DtnEngineService : Service() {
                     continue
                 }
 
-                if (record.hopCount + 1 >= 64) {
-                    log("WARN", "Bundle ${record.bundleId} exceeded hop limit (64) during forwarding. Discarding.")
+                if (record.hopCount + 1 >= record.hopLimit) {
+                    log("WARN", "Bundle ${record.bundleId} exceeded hop limit (${record.hopLimit}) during forwarding. Discarding.")
                     try {
                         val fileObj = File(record.payloadFilePath)
                         if (fileObj.exists()) fileObj.delete()
@@ -768,7 +818,7 @@ class DtnEngineService : Service() {
                     )
 
                 val payload = PayloadBlock(data = payloadBytes)
-                val hopCount = HopCountBlock(hopLimit = 64, hopCount = record.hopCount + 1)
+                val hopCount = HopCountBlock(hopLimit = record.hopLimit, hopCount = record.hopCount + 1)
 
                 var bib: BibBlock? = null
                 if (keyRecord != null) {
@@ -884,19 +934,45 @@ class DtnEngineService : Service() {
 
     private suspend fun resolveNextHop(destination: String): String {
         val rules = routingRuleDao.getAllList()
-        for (rule in rules) {
-            val pattern = rule.destinationEidPattern.replace("*", "").trimEnd('/')
-            if (io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(pattern, destination)) {
-                return rule.nextHopEid
+        return selectNextHop(destination, rules)
+    }
+
+    private fun isProfileEligible(profile: ConvergenceProfile): Boolean {
+        if (profile.isPaused) return false
+        if (profile.triggerType != TriggerType.WIFI_SSID) return true
+        return try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            val activeNetwork = cm.activeNetwork ?: return false
+            val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return false
+            if (!capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) {
+                return false
             }
+            val requiredSsid = profile.triggerCondition?.trim().orEmpty()
+            if (requiredSsid.isEmpty()) return true
+            val currentSsid =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    (capabilities.transportInfo as? android.net.wifi.WifiInfo)?.ssid
+                } else {
+                    @Suppress("DEPRECATION")
+                    val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+                    @Suppress("DEPRECATION")
+                    wm?.connectionInfo?.ssid
+                }?.trim('"')
+            if (currentSsid.isNullOrEmpty() || currentSsid == "<unknown ssid>") {
+                // SSID may be redacted without location permission; Wi-Fi transport is active
+                true
+            } else {
+                currentSsid.equals(requiredSsid, ignoreCase = true)
+            }
+        } catch (e: Exception) {
+            true
         }
-        return destination // Default direct
     }
 
     private suspend fun findProfileForNextHop(nextHop: String): ConvergenceProfile? {
         val profiles = convergenceProfileDao.getAllList()
         // Try direct profile ID or name match
-        var match = profiles.find { (it.profileId == nextHop || it.name == nextHop) && !it.isPaused }
+        var match = profiles.find { (it.profileId == nextHop || it.name == nextHop) && isProfileEligible(it) }
         if (match == null) {
             // Check if profile ID matches node prefix correctly
             val nextHopNode =
@@ -908,13 +984,13 @@ class DtnEngineService : Service() {
                 } else {
                     nextHop
                 }
-            match = profiles.find { (it.profileId == nextHopNode || it.name == nextHopNode) && !it.isPaused }
+            match = profiles.find { (it.profileId == nextHopNode || it.name == nextHopNode) && isProfileEligible(it) }
         }
         return match
     }
 
     private suspend fun cleanupExpiredBundles() {
-        val now = System.currentTimeMillis()
+        val now = timeProvider.currentTimeMillis()
         val expired = bundleRecordDao.getExpired(now)
         if (expired.isNotEmpty()) {
             log("INFO", "Eviction task: cleaning up ${expired.size} expired bundle(s)")

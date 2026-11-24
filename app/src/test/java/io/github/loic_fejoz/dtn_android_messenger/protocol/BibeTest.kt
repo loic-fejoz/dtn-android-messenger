@@ -303,4 +303,27 @@ class BibeTest {
             )
         assertArrayEquals(rxBib.signature, verifiedSig)
     }
+
+    @Test
+    fun testLongestPrefixRoutingSelection() {
+        val rules =
+            listOf(
+                io.github.loic_fejoz.dtn_android_messenger.data.model.RoutingRule("dtn://*", "dtn://default-gw"),
+                io.github.loic_fejoz.dtn_android_messenger.data.model.RoutingRule("dtn://node-b/*", "dtn://node-b-gw"),
+                io.github.loic_fejoz.dtn_android_messenger.data.model.RoutingRule("dtn://node-b/chat", "dtn://direct-chat"),
+            )
+
+        assertEquals(
+            "dtn://direct-chat",
+            io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService.selectNextHop("dtn://node-b/chat", rules),
+        )
+        assertEquals(
+            "dtn://node-b-gw",
+            io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService.selectNextHop("dtn://node-b/files", rules),
+        )
+        assertEquals(
+            "dtn://default-gw",
+            io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService.selectNextHop("dtn://other/chat", rules),
+        )
+    }
 }
