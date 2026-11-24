@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.navigation.NavController
+import androidx.room.withTransaction
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BpsecKeyDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.ConvergenceProfileDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.LocalServiceDao
@@ -63,18 +64,17 @@ private fun getAvailableWifiSsids(context: Context): List<String> {
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
 
         // Modern connected SSID resolution for API 31+
-        var currentSsid: String? = null
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val activeNetwork = cm.activeNetwork
-            val capabilities = cm.getNetworkCapabilities(activeNetwork)
-            val wifiInfo = capabilities?.transportInfo as? WifiInfo
-            currentSsid = wifiInfo?.ssid
-        } else {
-            @Suppress("DEPRECATION")
-            val info = wifiManager.connectionInfo
-            currentSsid = info?.ssid
-        }
+        val currentSsid: String? =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                val activeNetwork = cm.activeNetwork
+                val capabilities = cm.getNetworkCapabilities(activeNetwork)
+                val wifiInfo = capabilities?.transportInfo as? WifiInfo
+                wifiInfo?.ssid
+            } else {
+                @Suppress("DEPRECATION")
+                wifiManager.connectionInfo?.ssid
+            }
 
         if (currentSsid != null && currentSsid != "<unknown ssid>") {
             val clean = currentSsid.trim('"')
@@ -1131,11 +1131,17 @@ fun BackupConfigTab(
     scope: CoroutineScope,
 ) {
     val context = LocalContext.current
+    val database = org.koin.compose.koinInject<io.github.loic_fejoz.dtn_android_messenger.data.db.AppDatabase>()
     val scrollState = rememberScrollState()
     var clearExistingBeforeImport by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
+    var backupPassphrase by remember { mutableStateOf("") }
+    var showPlaintextWarningForExport by remember { mutableStateOf(false) }
+    var showPlaintextWarningForShare by remember { mutableStateOf(false) }
+    var pendingEncryptedImportJson by remember { mutableStateOf<String?>(null) }
+    var importPassphraseInput by remember { mutableStateOf("") }
 
     val exportLauncher =
         rememberLauncherForActivityResult(
@@ -1153,6 +1159,7 @@ fun BackupConfigTab(
                                 routingRuleDao,
                                 bpsecKeyDao,
                                 senmlEntryDao,
+                                passphrase = backupPassphrase.ifEmpty { null },
                             )
                         }
                         statusMessage = "Configuration exported successfully to file!"
@@ -1174,10 +1181,17 @@ fun BackupConfigTab(
             if (uri != null) {
                 scope.launch {
                     try {
-                        val result =
+                        val jsonText =
                             context.contentResolver.openInputStream(uri)?.use { stream ->
-                                ConfigBackupManager.importFromStream(
-                                    stream,
+                                stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                            } ?: throw IllegalStateException("Unable to open input stream")
+                        if (ConfigBackupManager.isEncryptedBackup(jsonText)) {
+                            pendingEncryptedImportJson = jsonText
+                            importPassphraseInput = ""
+                        } else {
+                            val result =
+                                ConfigBackupManager.importConfigJson(
+                                    jsonText,
                                     context,
                                     localServiceDao,
                                     convergenceProfileDao,
@@ -1185,11 +1199,12 @@ fun BackupConfigTab(
                                     bpsecKeyDao,
                                     senmlEntryDao,
                                     clearExisting = clearExistingBeforeImport,
+                                    runInTransaction = { block -> database.withTransaction { block() } },
                                 )
-                            } ?: throw IllegalStateException("Unable to open input stream")
-                        statusMessage = result.summary
-                        isError = false
-                        Toast.makeText(context, result.summary, Toast.LENGTH_LONG).show()
+                            statusMessage = result.summary
+                            isError = false
+                            Toast.makeText(context, result.summary, Toast.LENGTH_LONG).show()
+                        }
                     } catch (e: Exception) {
                         statusMessage = "Import failed: ${e.message}"
                         isError = true
@@ -1266,14 +1281,25 @@ fun BackupConfigTab(
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("EXPORT CONFIGURATION", fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
                 Text(
-                    "Save a JSON backup file to external storage, cloud drive, or share it with other apps.",
+                    "Save a JSON backup file to external storage, cloud drive, or share it with other apps. Set an optional passphrase to encrypt BPSec secret keys.",
                     color = TextGray,
                     fontSize = 12.sp,
                 )
+                OutlinedTextField(
+                    value = backupPassphrase,
+                    onValueChange = { backupPassphrase = it },
+                    label = { Text("Optional Backup Passphrase (AES-256-GCM)", color = TextGray) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Button(
                     onClick = {
-                        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                        exportLauncher.launch("dtn_backup_$timestamp.json")
+                        if (backupPassphrase.isEmpty()) {
+                            showPlaintextWarningForExport = true
+                        } else {
+                            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                            exportLauncher.launch("dtn_backup_$timestamp.json")
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black),
@@ -1285,27 +1311,32 @@ fun BackupConfigTab(
 
                 OutlinedButton(
                     onClick = {
-                        scope.launch {
-                            try {
-                                val json =
-                                    ConfigBackupManager.exportConfigJson(
-                                        context,
-                                        localServiceDao,
-                                        convergenceProfileDao,
-                                        routingRuleDao,
-                                        bpsecKeyDao,
-                                        senmlEntryDao,
-                                    )
-                                val sendIntent =
-                                    Intent(Intent.ACTION_SEND).apply {
-                                        type = "application/json"
-                                        putExtra(Intent.EXTRA_SUBJECT, "DTN Android Messenger Backup")
-                                        putExtra(Intent.EXTRA_TEXT, json)
-                                    }
-                                val shareIntent = Intent.createChooser(sendIntent, "Share Backup JSON")
-                                context.startActivity(shareIntent)
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Share failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        if (backupPassphrase.isEmpty()) {
+                            showPlaintextWarningForShare = true
+                        } else {
+                            scope.launch {
+                                try {
+                                    val json =
+                                        ConfigBackupManager.exportConfigJson(
+                                            context,
+                                            localServiceDao,
+                                            convergenceProfileDao,
+                                            routingRuleDao,
+                                            bpsecKeyDao,
+                                            senmlEntryDao,
+                                            passphrase = backupPassphrase,
+                                        )
+                                    val sendIntent =
+                                        Intent(Intent.ACTION_SEND).apply {
+                                            type = "application/json"
+                                            putExtra(Intent.EXTRA_SUBJECT, "DTN Android Messenger Backup")
+                                            putExtra(Intent.EXTRA_TEXT, json)
+                                        }
+                                    val shareIntent = Intent.createChooser(sendIntent, "Share Backup JSON")
+                                    context.startActivity(shareIntent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Share failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }
                     },
@@ -1400,6 +1431,130 @@ fun BackupConfigTab(
                 }
             }
         }
+    }
+
+    if (showPlaintextWarningForExport || showPlaintextWarningForShare) {
+        val isShare = showPlaintextWarningForShare
+        AlertDialog(
+            onDismissRequest = {
+                showPlaintextWarningForExport = false
+                showPlaintextWarningForShare = false
+            },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = GlowRed) },
+            title = { Text("Export Unencrypted Secrets?", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "No passphrase is set. Your BPSec HMAC secret keys will be exported in plaintext JSON. Anyone with this file can forge bundle signatures.",
+                    color = TextGray,
+                    fontSize = 13.sp,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPlaintextWarningForExport = false
+                        showPlaintextWarningForShare = false
+                        if (isShare) {
+                            scope.launch {
+                                try {
+                                    val json =
+                                        ConfigBackupManager.exportConfigJson(
+                                            context,
+                                            localServiceDao,
+                                            convergenceProfileDao,
+                                            routingRuleDao,
+                                            bpsecKeyDao,
+                                            senmlEntryDao,
+                                        )
+                                    val sendIntent =
+                                        Intent(Intent.ACTION_SEND).apply {
+                                            type = "application/json"
+                                            putExtra(Intent.EXTRA_SUBJECT, "DTN Android Messenger Backup")
+                                            putExtra(Intent.EXTRA_TEXT, json)
+                                        }
+                                    context.startActivity(Intent.createChooser(sendIntent, "Share Backup JSON"))
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Share failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        } else {
+                            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                            exportLauncher.launch("dtn_backup_$timestamp.json")
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GlowRed, contentColor = Color.White),
+                ) {
+                    Text("EXPORT PLAINTEXT", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showPlaintextWarningForExport = false
+                    showPlaintextWarningForShare = false
+                }) {
+                    Text("CANCEL", color = TextGray)
+                }
+            },
+            containerColor = CharcoalBg,
+        )
+    }
+
+    if (pendingEncryptedImportJson != null) {
+        AlertDialog(
+            onDismissRequest = { pendingEncryptedImportJson = null },
+            title = { Text("Encrypted Backup", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = importPassphraseInput,
+                    onValueChange = { importPassphraseInput = it },
+                    label = { Text("Enter Backup Passphrase", color = TextGray) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val jsonText = pendingEncryptedImportJson ?: return@Button
+                        val pass = importPassphraseInput
+                        pendingEncryptedImportJson = null
+                        scope.launch {
+                            try {
+                                val result =
+                                    ConfigBackupManager.importConfigJson(
+                                        jsonText,
+                                        context,
+                                        localServiceDao,
+                                        convergenceProfileDao,
+                                        routingRuleDao,
+                                        bpsecKeyDao,
+                                        senmlEntryDao,
+                                        clearExisting = clearExistingBeforeImport,
+                                        passphrase = pass,
+                                        runInTransaction = { block -> database.withTransaction { block() } },
+                                    )
+                                statusMessage = result.summary
+                                isError = false
+                                Toast.makeText(context, result.summary, Toast.LENGTH_LONG).show()
+                            } catch (e: Exception) {
+                                statusMessage = "Import failed: ${e.message}"
+                                isError = true
+                                Toast.makeText(context, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black),
+                ) {
+                    Text("DECRYPT & IMPORT", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingEncryptedImportJson = null }) {
+                    Text("CANCEL", color = TextGray)
+                }
+            },
+            containerColor = CharcoalBg,
+        )
     }
 
     if (showResetDialog) {

@@ -442,4 +442,142 @@ class ConfigBackupManagerTest {
         assertNotNull(fakeServiceDao.getById("dtn://new/chat"))
         assertEquals(0, profilesList.size)
     }
+
+    @Test
+    fun testMalformedBackupDoesNotWipeExistingData() = runBlocking {
+        fakeServiceDao.insert(
+            LocalService(
+                serviceEid = "dtn://existing/chat",
+                displayName = "Existing Chat",
+                viewerType = ViewerType.CHAT,
+            )
+        )
+
+        val malformedBackupJson = """
+            {
+                "version": 1,
+                "localServices": [
+                    { "serviceEid": "dtn://new/chat", "displayName": "New", "viewerType": "CHAT" }
+                ],
+                "bpsecKeys": [
+                    { "nodeEid": "dtn://peer", "secretKeyHex": "not-valid-hex!" }
+                ]
+            }
+        """.trimIndent()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking {
+                ConfigBackupManager.importConfigJson(
+                    jsonString = malformedBackupJson,
+                    context = fakeContext,
+                    localServiceDao = fakeServiceDao,
+                    convergenceProfileDao = fakeProfileDao,
+                    routingRuleDao = fakeRuleDao,
+                    bpsecKeyDao = fakeKeyDao,
+                    senmlEntryDao = fakeSenmlDao,
+                    prefs = fakePrefs,
+                    clearExisting = true,
+                )
+            }
+        }
+
+        // Existing service must remain intact
+        assertNotNull(fakeServiceDao.getById("dtn://existing/chat"))
+        assertNull(fakeServiceDao.getById("dtn://new/chat"))
+    }
+
+    @Test
+    fun testExportThrowsOnDecryptFailure() = runBlocking {
+        fakeKeyDao.insert(
+            BpsecKey(
+                nodeEid = "dtn://peer",
+                secretKey = byteArrayOf(0x01, 0x02),
+            )
+        )
+        CryptoManager.decryptOverride = { throw RuntimeException("KeyStore failure") }
+
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking {
+                ConfigBackupManager.exportConfigJson(
+                    context = fakeContext,
+                    localServiceDao = fakeServiceDao,
+                    convergenceProfileDao = fakeProfileDao,
+                    routingRuleDao = fakeRuleDao,
+                    bpsecKeyDao = fakeKeyDao,
+                    senmlEntryDao = fakeSenmlDao,
+                    prefs = fakePrefs,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testEncryptedBackupRoundtripAndWrongPassphrase() = runBlocking {
+        val rawKey = byteArrayOf(0xDE.toByte(), 0xAD.toByte(), 0xBE.toByte(), 0xEF.toByte())
+        fakeKeyDao.insert(
+            BpsecKey(
+                nodeEid = "dtn://peer",
+                secretKey = CryptoManager.encrypt(rawKey),
+            )
+        )
+        fakeServiceDao.insert(
+            LocalService(
+                serviceEid = "dtn://node/chat",
+                displayName = "Chat",
+                viewerType = ViewerType.CHAT,
+            )
+        )
+
+        val encryptedJson = ConfigBackupManager.exportConfigJson(
+            context = fakeContext,
+            localServiceDao = fakeServiceDao,
+            convergenceProfileDao = fakeProfileDao,
+            routingRuleDao = fakeRuleDao,
+            bpsecKeyDao = fakeKeyDao,
+            senmlEntryDao = fakeSenmlDao,
+            prefs = fakePrefs,
+            passphrase = "correct-horse-battery-staple",
+        )
+
+        assertTrue(ConfigBackupManager.isEncryptedBackup(encryptedJson))
+        val envelope = JSONObject(encryptedJson)
+        assertEquals(ConfigBackupManager.ENCRYPTED_BACKUP_VERSION, envelope.getInt("version"))
+        assertFalse(encryptedJson.contains("deadbeef"))
+
+        fakeServiceDao.deleteAll()
+        fakeKeyDao.deleteAll()
+
+        // Missing or wrong passphrase must fail
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking {
+                ConfigBackupManager.importConfigJson(
+                    jsonString = encryptedJson,
+                    context = fakeContext,
+                    localServiceDao = fakeServiceDao,
+                    convergenceProfileDao = fakeProfileDao,
+                    routingRuleDao = fakeRuleDao,
+                    bpsecKeyDao = fakeKeyDao,
+                    senmlEntryDao = fakeSenmlDao,
+                    prefs = fakePrefs,
+                    passphrase = "wrong-passphrase",
+                )
+            }
+        }
+
+        // Right passphrase restores everything
+        val res = ConfigBackupManager.importConfigJson(
+            jsonString = encryptedJson,
+            context = fakeContext,
+            localServiceDao = fakeServiceDao,
+            convergenceProfileDao = fakeProfileDao,
+            routingRuleDao = fakeRuleDao,
+            bpsecKeyDao = fakeKeyDao,
+            senmlEntryDao = fakeSenmlDao,
+            prefs = fakePrefs,
+            passphrase = "correct-horse-battery-staple",
+        )
+        assertEquals(1, res.servicesCount)
+        assertEquals(1, res.keysCount)
+        assertArrayEquals(rawKey, CryptoManager.decrypt(fakeKeyDao.getByKeyId("dtn://peer")!!.secretKey))
+    }
 }
