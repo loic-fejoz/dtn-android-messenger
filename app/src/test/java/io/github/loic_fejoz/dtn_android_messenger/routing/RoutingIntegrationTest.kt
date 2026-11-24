@@ -237,9 +237,9 @@ class RoutingIntegrationTest {
 
         val success = adapter.sendBundles(listOf(item), profile.targetAddress)
 
-        assertTrue(latch.await(15, TimeUnit.SECONDS))
-        assertTrue(success)
-        assertTrue(acked)
+        assertTrue(latch.await(15, TimeUnit.SECONDS), "Mock server did not receive bundle within 15s (sc1)")
+        assertTrue(success, "sendBundles() must return true on XFER_ACK (sc1)")
+        assertTrue(acked, "onAcknowledged callback must complete before sendBundles() returns (sc1)")
         assertEquals(1, receivedBundles.size)
 
         val receivedBundle = Bpv7Parser.deserialize(receivedBundles[0])
@@ -351,9 +351,9 @@ class RoutingIntegrationTest {
 
         val success = adapter.sendBundles(listOf(item), profileNodeC.targetAddress)
 
-        assertTrue(latch.await(15, TimeUnit.SECONDS))
-        assertTrue(success)
-        assertTrue(acked)
+        assertTrue(latch.await(15, TimeUnit.SECONDS), "Mock server did not receive bundle within 15s (sc3)")
+        assertTrue(success, "sendBundles() must return true on XFER_ACK (sc3)")
+        assertTrue(acked, "onAcknowledged callback must complete before sendBundles() returns (sc3)")
         assertEquals(1, receivedBundles.size)
 
         val receivedBundle = Bpv7Parser.deserialize(receivedBundles[0])
@@ -409,9 +409,9 @@ class RoutingIntegrationTest {
 
         val success = adapter.sendBundles(listOf(item), "127.0.0.1:$port")
 
-        assertTrue(latch.await(15, TimeUnit.SECONDS))
-        assertTrue(success)
-        assertTrue(acked)
+        assertTrue(latch.await(15, TimeUnit.SECONDS), "Mock server did not receive bundle within 15s (sc4)")
+        assertTrue(success, "sendBundles() must return true on XFER_ACK (sc4)")
+        assertTrue(acked, "onAcknowledged callback must complete before sendBundles() returns (sc4)")
         assertEquals(1, receivedBundles.size)
 
         val receivedBundle = Bpv7Parser.deserialize(receivedBundles[0])
