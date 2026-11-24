@@ -53,6 +53,15 @@ private const val MSG_KEEPALIVE = 4
 private const val MSG_SESS_TERM = 5
 private const val MSG_SESS_INIT = 7
 
+// RFC 9174 Section 5.2.2 Table 9 - XFER_SEGMENT / XFER_ACK Flags
+internal const val XFER_FLAG_END = 0x01
+internal const val XFER_FLAG_START = 0x02
+
+// RFC 9174 Section 5.2.4 Table 11 - XFER_REFUSE Reason Codes
+private const val REFUSE_REASON_UNKNOWN: Byte = 0x00
+private const val REFUSE_REASON_NOT_ACCEPTABLE: Byte = 0x01
+private const val REFUSE_REASON_NOT_SUPPORTED: Byte = 0x02
+
 // RFC 9174 Section 8.7 Table 16 - SESS_TERM Reason Codes
 private const val REASON_UNKNOWN: Byte = 0x00
 private const val REASON_IDLE_TIMEOUT: Byte = 0x01
@@ -61,6 +70,156 @@ private const val REASON_BUSY: Byte = 0x03
 private const val REASON_CONTACT_FAILURE: Byte = 0x04
 private const val REASON_RESOURCE_EXHAUSTION: Byte = 0x05
 
+private suspend fun readSessInitPayload(input: ByteReadChannel) {
+    val staticBody = ByteArray(20)
+    input.readFully(staticBody, 0, 20)
+    val nodeIdLen = ByteBuffer.wrap(staticBody, 18, 2).short.toInt() and 0xFFFF
+    if (nodeIdLen > 0) {
+        val nodeIdBytes = ByteArray(nodeIdLen)
+        input.readFully(nodeIdBytes, 0, nodeIdLen)
+    }
+    val extLenBytes = ByteArray(4)
+    input.readFully(extLenBytes, 0, 4)
+    val extLen = ByteBuffer.wrap(extLenBytes).int
+    if (extLen < 0 || extLen > MAX_EXTENSION_LENGTH) {
+        throw IllegalArgumentException("Invalid SESS_INIT extension length: $extLen (exceeds max $MAX_EXTENSION_LENGTH)")
+    }
+    if (extLen > 0) {
+        val extBytes = ByteArray(extLen)
+        input.readFully(extBytes, 0, extLen)
+    }
+}
+
+private suspend fun writeXferAck(
+    output: ByteWriteChannel,
+    flags: Int,
+    transferId: Long,
+    acknowledgedLength: Long,
+) {
+    val ackMsg = ByteArray(18)
+    ackMsg[0] = MSG_XFER_ACK.toByte()
+    ackMsg[1] = flags.toByte()
+    ByteBuffer.wrap(ackMsg, 2, 8).putLong(transferId)
+    ByteBuffer.wrap(ackMsg, 10, 8).putLong(acknowledgedLength)
+    output.writeFully(ackMsg, 0, 18)
+}
+
+private suspend fun writeXferRefuse(
+    output: ByteWriteChannel,
+    reasonCode: Byte,
+    transferId: Long,
+) {
+    val refuseMsg = ByteArray(10)
+    refuseMsg[0] = MSG_XFER_REFUSE.toByte()
+    refuseMsg[1] = reasonCode
+    ByteBuffer.wrap(refuseMsg, 2, 8).putLong(transferId)
+    output.writeFully(refuseMsg, 0, 10)
+}
+
+private suspend fun readXferSegmentAndHandle(
+    input: ByteReadChannel,
+    maxSizeBytes: Long,
+    inFlightTransfers: MutableMap<Long, java.io.ByteArrayOutputStream>,
+    listener: (suspend (ByteArray) -> Boolean)?,
+    log: (String, String) -> Unit,
+    sendAck: suspend (flags: Int, transferId: Long, ackLen: Long) -> Unit,
+    sendRefuse: suspend (reason: Byte, transferId: Long) -> Unit,
+) {
+    val flags = input.readByte().toInt() and 0xFF
+    val transferId = input.readLong()
+
+    // RFC 9174 §5.2.2: Transfer Extension Items length is present ONLY when START (bit 1 = 0x02) is set
+    if ((flags and XFER_FLAG_START) != 0) {
+        val extByteLen = input.readInt()
+        if (extByteLen < 0 || extByteLen > MAX_EXTENSION_LENGTH) {
+            throw IllegalArgumentException("Invalid XFER_SEGMENT extension length: $extByteLen (exceeds max $MAX_EXTENSION_LENGTH)")
+        }
+        if (extByteLen > 0) {
+            val extBytes = ByteArray(extByteLen)
+            input.readFully(extBytes, 0, extByteLen)
+        }
+    }
+
+    // Validate 64-bit length before narrowing to Int to prevent truncation bypass
+    val rawLength = input.readLong()
+    if (rawLength <= 0L || rawLength > maxSizeBytes) {
+        throw IllegalArgumentException("Invalid segment length: $rawLength (exceeds max $maxSizeBytes bytes)")
+    }
+    val length = rawLength.toInt()
+    val segmentBytes =
+        try {
+            ByteArray(length)
+        } catch (e: OutOfMemoryError) {
+            throw IllegalStateException("Memory allocation failed for segment of size $length bytes", e)
+        }
+    input.readFully(segmentBytes, 0, length)
+
+    val isStart = (flags and XFER_FLAG_START) != 0
+    val isEnd = (flags and XFER_FLAG_END) != 0
+
+    if (isStart && isEnd) {
+        // Single-segment transfer fast path
+        log("INFO", "Received bundle ($length bytes)")
+        val accepted =
+            try {
+                listener?.invoke(segmentBytes) ?: false
+            } catch (e: Exception) {
+                log("ERROR", "Error ingesting received bundle: ${e.message}")
+                false
+            }
+        if (accepted) {
+            sendAck(flags, transferId, length.toLong())
+        } else {
+            log("WARN", "Bundle ingestion failed or rejected; sending XFER_REFUSE for transfer $transferId")
+            sendRefuse(REFUSE_REASON_UNKNOWN, transferId)
+        }
+        return
+    }
+
+    // Multi-segment transfer reassembly
+    if (isStart) {
+        inFlightTransfers[transferId] = java.io.ByteArrayOutputStream()
+    }
+    val buffer = inFlightTransfers[transferId]
+    if (buffer == null) {
+        log("WARN", "Received non-START segment for unknown transfer $transferId; sending XFER_REFUSE")
+        sendRefuse(REFUSE_REASON_NOT_ACCEPTABLE, transferId)
+        return
+    }
+
+    if (buffer.size().toLong() + length.toLong() > maxSizeBytes) {
+        inFlightTransfers.remove(transferId)
+        log("WARN", "Reassembled transfer $transferId exceeds max bundle size ($maxSizeBytes bytes); sending XFER_REFUSE")
+        sendRefuse(REFUSE_REASON_NOT_ACCEPTABLE, transferId)
+        throw IllegalArgumentException("Reassembled transfer $transferId exceeds max $maxSizeBytes bytes")
+    }
+
+    buffer.write(segmentBytes)
+    val cumulativeLen = buffer.size().toLong()
+
+    if (isEnd) {
+        inFlightTransfers.remove(transferId)
+        val fullBundle = buffer.toByteArray()
+        log("INFO", "Received multi-segment bundle (${fullBundle.size} bytes, transfer $transferId)")
+        val accepted =
+            try {
+                listener?.invoke(fullBundle) ?: false
+            } catch (e: Exception) {
+                log("ERROR", "Error ingesting received bundle: ${e.message}")
+                false
+            }
+        if (accepted) {
+            sendAck(flags, transferId, cumulativeLen)
+        } else {
+            log("WARN", "Bundle ingestion failed or rejected; sending XFER_REFUSE for transfer $transferId")
+            sendRefuse(REFUSE_REASON_UNKNOWN, transferId)
+        }
+    } else {
+        // Intermediate segment ACK with cumulative acknowledged length
+        sendAck(flags, transferId, cumulativeLen)
+    }
+}
+
 class TcpClAdapter(
     private val context: Context,
     private val port: Int = 5051,
@@ -68,12 +227,18 @@ class TcpClAdapter(
 ) : ConvergenceLayerAdapter {
     override val name = "TCPCLv4"
     private var serverJob: Job? = null
+    private val selectorLock = Any()
     private var selectorManager: ActorSelectorManager? = null
     private var serverSocket: ServerSocket? = null
     private var listener: (suspend (ByteArray) -> Boolean)? = null
 
     private var adapterScope: CoroutineScope? = null
     private val peerLocks = HashMap<String, Mutex>()
+
+    private fun getOrCreateSelector(): ActorSelectorManager =
+        synchronized(selectorLock) {
+            selectorManager ?: ActorSelectorManager(Dispatchers.IO).also { selectorManager = it }
+        }
 
     private fun getPeerLock(targetAddress: String): Mutex {
         synchronized(peerLocks) {
@@ -144,11 +309,11 @@ class TcpClAdapter(
     ) {
         this.adapterScope = scope
         this.listener = listener
-        selectorManager = ActorSelectorManager(Dispatchers.IO)
+        val sel = getOrCreateSelector()
         serverJob =
             scope.launch(Dispatchers.IO) {
                 try {
-                    serverSocket = aSocket(selectorManager!!).tcp().bind("0.0.0.0", port)
+                    serverSocket = aSocket(sel).tcp().bind("0.0.0.0", port)
                     log("INFO", "Server listening on port $port")
                     while (isActive) {
                         val socket = serverSocket!!.accept()
@@ -164,6 +329,7 @@ class TcpClAdapter(
         log("INFO", "Accepted connection from ${socket.remoteAddress}")
         val input = socket.openReadChannel()
         val output = socket.openWriteChannel(autoFlush = true)
+        val inFlightTransfers = HashMap<Long, java.io.ByteArrayOutputStream>()
         try {
             // Handshake phase with 10s timeout
             withTimeout(10000) {
@@ -193,23 +359,7 @@ class TcpClAdapter(
                 if (sessInitType != MSG_SESS_INIT) {
                     throw Exception("Expected SESS_INIT from client, got type $sessInitType")
                 }
-                val staticBody = ByteArray(20)
-                input.readFully(staticBody, 0, 20)
-                val nodeIdLen = java.nio.ByteBuffer.wrap(staticBody, 18, 2).short.toInt() and 0xFFFF
-                if (nodeIdLen > 0) {
-                    val nodeIdBytes = ByteArray(nodeIdLen)
-                    input.readFully(nodeIdBytes, 0, nodeIdLen)
-                }
-                val extLenBytes = ByteArray(4)
-                input.readFully(extLenBytes, 0, 4)
-                val extLen = java.nio.ByteBuffer.wrap(extLenBytes).int
-                if (extLen < 0 || extLen > MAX_EXTENSION_LENGTH) {
-                    throw Exception("Invalid SESS_INIT extension length: $extLen (exceeds max $MAX_EXTENSION_LENGTH)")
-                }
-                if (extLen > 0) {
-                    val extBytes = ByteArray(extLen)
-                    input.readFully(extBytes, 0, extLen)
-                }
+                readSessInitPayload(input)
 
                 // Send SESS_INIT back
                 val serverSessInit = buildSessInit(getLocalNodeName())
@@ -222,60 +372,16 @@ class TcpClAdapter(
                 when (msgType) {
                     MSG_XFER_SEGMENT -> {
                         withTimeout(15000) {
-                            val flags = input.readByte().toInt()
-                            val transferId = input.readLong()
-
-                            // Parse extension length if START is set (bit 0)
-                            if ((flags and 1) != 0) {
-                                val extByteLen = input.readInt()
-                                if (extByteLen < 0 || extByteLen > MAX_EXTENSION_LENGTH) {
-                                    throw Exception("Invalid XFER_SEGMENT extension length: $extByteLen (exceeds max $MAX_EXTENSION_LENGTH)")
-                                }
-                                if (extByteLen > 0) {
-                                    val extBytes = ByteArray(extByteLen)
-                                    input.readFully(extBytes, 0, extByteLen)
-                                }
-                            }
-
-                            val length = input.readLong().toInt()
                             val maxSizeBytes = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getMaxBundleSizeBytes(context)
-                            if (length <= 0 || length > maxSizeBytes) {
-                                throw Exception("Invalid segment length: $length (exceeds max $maxSizeBytes bytes)")
-                            }
-                            val bundleBytes =
-                                try {
-                                    ByteArray(length)
-                                } catch (e: OutOfMemoryError) {
-                                    throw Exception("Memory allocation failed for segment of size $length bytes")
-                                }
-                            input.readFully(bundleBytes, 0, length)
-                            log("INFO", "Received bundle ($length bytes)")
-
-                            // Responsibility transfer: only acknowledge if bundle was successfully ingested and stored
-                            val accepted =
-                                try {
-                                    listener?.invoke(bundleBytes) ?: false
-                                } catch (e: Exception) {
-                                    log("ERROR", "Error ingesting received bundle: ${e.message}")
-                                    false
-                                }
-
-                            if (accepted) {
-                                // Send XFER_ACK (type 2)
-                                val ackMsg = ByteArray(18)
-                                ackMsg[0] = MSG_XFER_ACK.toByte() // 2
-                                ackMsg[1] = flags.toByte()
-                                java.nio.ByteBuffer.wrap(ackMsg, 2, 8).putLong(transferId)
-                                java.nio.ByteBuffer.wrap(ackMsg, 10, 8).putLong(length.toLong())
-                                output.writeFully(ackMsg, 0, 18)
-                            } else {
-                                log("WARN", "Bundle ingestion failed or rejected; sending XFER_REFUSE for transfer $transferId")
-                                val refuseMsg = ByteArray(10)
-                                refuseMsg[0] = MSG_XFER_REFUSE.toByte() // 3
-                                refuseMsg[1] = 0 // Reason: Unknown / Not Acceptable
-                                java.nio.ByteBuffer.wrap(refuseMsg, 2, 8).putLong(transferId)
-                                output.writeFully(refuseMsg, 0, 10)
-                            }
+                            readXferSegmentAndHandle(
+                                input = input,
+                                maxSizeBytes = maxSizeBytes,
+                                inFlightTransfers = inFlightTransfers,
+                                listener = listener,
+                                log = { lvl, msg -> log(lvl, msg) },
+                                sendAck = { flags, transferId, ackLen -> writeXferAck(output, flags, transferId, ackLen) },
+                                sendRefuse = { reason, transferId -> writeXferRefuse(output, reason, transferId) },
+                            )
                         }
                     }
                     MSG_KEEPALIVE -> {
@@ -306,6 +412,7 @@ class TcpClAdapter(
         } catch (e: Exception) {
             log("WARN", "Incoming connection error: ${e.message}")
         } finally {
+            inFlightTransfers.clear()
             socket.close()
         }
     }
@@ -314,6 +421,8 @@ class TcpClAdapter(
 
     override fun stop() {
         serverJob?.cancel()
+        runCatching { serverSocket?.close() }
+        serverSocket = null
         synchronized(activeSessions) {
             for (session in activeSessions.values) {
                 try {
@@ -323,9 +432,12 @@ class TcpClAdapter(
             }
             activeSessions.clear()
         }
-        try {
-            selectorManager?.close()
-        } catch (e: Exception) {
+        synchronized(selectorLock) {
+            try {
+                selectorManager?.close()
+            } catch (e: Exception) {
+            }
+            selectorManager = null
         }
     }
 
@@ -391,6 +503,7 @@ class TcpClAdapter(
                 return@withContext true
             }
 
+            var socket: Socket? = null
             try {
                 // Check once more under the lock
                 existingSession = synchronized(activeSessions) { activeSessions[targetAddress] }
@@ -406,14 +519,15 @@ class TcpClAdapter(
                 }
 
                 log("INFO", "Connecting to $host:$destPort")
-                val sel = ActorSelectorManager(Dispatchers.IO)
-                val socket =
+                val sel = getOrCreateSelector()
+                val connectedSocket =
                     withTimeout(10000) {
                         aSocket(sel).tcp().connect(host, destPort)
                     }
+                socket = connectedSocket
 
-                val input = socket.openReadChannel()
-                val output = socket.openWriteChannel(autoFlush = true)
+                val input = connectedSocket.openReadChannel()
+                val output = connectedSocket.openWriteChannel(autoFlush = true)
 
                 // Handshake phase
                 withTimeout(15000) {
@@ -444,23 +558,7 @@ class TcpClAdapter(
                     if (sessInitType != MSG_SESS_INIT) {
                         throw Exception("Expected SESS_INIT from server, got type $sessInitType")
                     }
-                    val staticBody = ByteArray(20)
-                    input.readFully(staticBody, 0, 20)
-                    val nodeIdLen = java.nio.ByteBuffer.wrap(staticBody, 18, 2).short.toInt() and 0xFFFF
-                    if (nodeIdLen > 0) {
-                        val nodeIdBytes = ByteArray(nodeIdLen)
-                        input.readFully(nodeIdBytes, 0, nodeIdLen)
-                    }
-                    val extLenBytes = ByteArray(4)
-                    input.readFully(extLenBytes, 0, 4)
-                    val extLen = java.nio.ByteBuffer.wrap(extLenBytes).int
-                    if (extLen < 0 || extLen > MAX_EXTENSION_LENGTH) {
-                        throw Exception("Invalid SESS_INIT extension length: $extLen (exceeds max $MAX_EXTENSION_LENGTH)")
-                    }
-                    if (extLen > 0) {
-                        val extBytes = ByteArray(extLen)
-                        input.readFully(extBytes, 0, extLen)
-                    }
+                    readSessInitPayload(input)
                 }
 
                 val maxSizeBytes = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getMaxBundleSizeBytes(context)
@@ -469,7 +567,7 @@ class TcpClAdapter(
                 newSession =
                     ActiveTcpclSession(
                         targetAddress = targetAddress,
-                        socket = socket,
+                        socket = connectedSocket,
                         input = input,
                         output = output,
                         sessionScope = sessionScope,
@@ -489,6 +587,7 @@ class TcpClAdapter(
                     activeSessions[targetAddress] = newSession
                 }
                 newSession.start()
+                socket = null // Ownership transferred to ActiveTcpclSession
 
                 var allOk = true
                 for ((bytes, onAck) in bundles) {
@@ -499,6 +598,7 @@ class TcpClAdapter(
                 }
                 return@withContext allOk
             } catch (e: Exception) {
+                runCatching { socket?.close() }
                 log("ERROR", "Failed to communicate with $targetAddress: ${e.message}")
                 return@withContext false
             } finally {
@@ -626,6 +726,7 @@ private class ActiveTcpclSession(
     }
 
     private suspend fun readLoop() {
+        val inFlightTransfers = HashMap<Long, java.io.ByteArrayOutputStream>()
         try {
             while (socket.isActive && !isClosing) {
                 val msgType =
@@ -670,58 +771,23 @@ private class ActiveTcpclSession(
                     }
                     MSG_XFER_SEGMENT -> {
                         withTimeout(15000) {
-                            val flags = input.readByte().toInt()
-                            val transferId = input.readLong()
-                            if ((flags and 1) != 0) { // START
-                                val extByteLen = input.readInt()
-                                if (extByteLen < 0 || extByteLen > MAX_EXTENSION_LENGTH) {
-                                    throw Exception("Invalid XFER_SEGMENT extension length: $extByteLen")
-                                }
-                                if (extByteLen > 0) {
-                                    val extBytes = ByteArray(extByteLen)
-                                    input.readFully(extBytes, 0, extByteLen)
-                                }
-                            }
-                            val length = input.readLong().toInt()
-                            if (length <= 0 || length > maxSizeBytes) {
-                                throw Exception("Invalid segment length from server: $length (max $maxSizeBytes bytes)")
-                            }
-                            val rxBundle =
-                                try {
-                                    ByteArray(length)
-                                } catch (e: OutOfMemoryError) {
-                                    throw Exception("Memory allocation failed for segment of size $length bytes")
-                                }
-                            input.readFully(rxBundle, 0, length)
-                            log("INFO", "Received bundle from server ($length bytes), resetting idle timer")
-
-                            val accepted =
-                                try {
-                                    listener?.invoke(rxBundle) ?: false
-                                } catch (e: Exception) {
-                                    log("ERROR", "Error ingesting received bundle from server: ${e.message}")
-                                    false
-                                }
-
-                            if (accepted) {
-                                val ackMsg = ByteArray(18)
-                                ackMsg[0] = MSG_XFER_ACK.toByte()
-                                ackMsg[1] = flags.toByte()
-                                java.nio.ByteBuffer.wrap(ackMsg, 2, 8).putLong(transferId)
-                                java.nio.ByteBuffer.wrap(ackMsg, 10, 8).putLong(length.toLong())
-                                writeLock.withLock {
-                                    output.writeFully(ackMsg, 0, 18)
-                                }
-                            } else {
-                                log("WARN", "Bundle ingestion failed or rejected; sending XFER_REFUSE for transfer $transferId")
-                                val refuseMsg = ByteArray(10)
-                                refuseMsg[0] = MSG_XFER_REFUSE.toByte()
-                                refuseMsg[1] = 0 // Reason: Unknown / Not Acceptable
-                                java.nio.ByteBuffer.wrap(refuseMsg, 2, 8).putLong(transferId)
-                                writeLock.withLock {
-                                    output.writeFully(refuseMsg, 0, 10)
-                                }
-                            }
+                            readXferSegmentAndHandle(
+                                input = input,
+                                maxSizeBytes = maxSizeBytes,
+                                inFlightTransfers = inFlightTransfers,
+                                listener = listener,
+                                log = log,
+                                sendAck = { flags, transferId, ackLen ->
+                                    writeLock.withLock {
+                                        writeXferAck(output, flags, transferId, ackLen)
+                                    }
+                                },
+                                sendRefuse = { reason, transferId ->
+                                    writeLock.withLock {
+                                        writeXferRefuse(output, reason, transferId)
+                                    }
+                                },
+                            )
                         }
                     }
                     MSG_KEEPALIVE -> {

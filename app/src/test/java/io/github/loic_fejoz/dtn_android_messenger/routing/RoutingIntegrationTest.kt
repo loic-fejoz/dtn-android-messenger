@@ -142,7 +142,7 @@ class RoutingIntegrationTest {
                         if (msgType == 1.toByte()) { // XFER_SEG
                             val flags = dis.readByte().toInt()
                             val transferId = dis.readLong()
-                            if ((flags and 1) != 0) { // START flag present
+                            if ((flags and 2) != 0) { // START flag present (RFC 9174 bit 1 = 0x02)
                                 val segExtLen = dis.readInt()
                                 if (segExtLen > 0) {
                                     val segExtBytes = ByteArray(segExtLen)
