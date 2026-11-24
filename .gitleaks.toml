@@ -1,0 +1,12 @@
+title = "DTN Android Messenger Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowlist binary test fixtures, Gradle wrapper, and Room schema snapshots"
+paths = [
+  '''^app/src/test/resources/fixtures/.*\.bundle$''',
+  '''^app/schemas/.*\.json$''',
+  '''^gradle/wrapper/gradle-wrapper\.jar$''',
+]

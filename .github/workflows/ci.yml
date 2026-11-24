@@ -21,7 +21,6 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true # Do not fail the build if Gitleaks is not configured yet in GitHub secrets
 
       - name: Run MobSF Static Scan
         uses: MobSF/mobsfscan@main
