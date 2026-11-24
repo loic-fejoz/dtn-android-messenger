@@ -168,6 +168,7 @@ fun ChatScreen(
                     )
                 }
             }
+            val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
             LazyColumn(
                 modifier =
                     Modifier
@@ -176,7 +177,7 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 reverseLayout = true,
             ) {
-                items(messages) { msg ->
+                items(messages, key = { it.bundleId }) { msg ->
                     // Mark as read
                     LaunchedEffect(msg.bundleId) {
                         if (!msg.isRead && msg.destinationEid == serviceEid) {
@@ -189,25 +190,28 @@ fun ChatScreen(
                     val bubbleColor = if (isMe) NeonPurple.copy(alpha = 0.4f) else GlassCardColor
                     val outlineColor = if (isMe) NeonPurple else Color(0x33FFFFFF)
 
-                    val isAudio =
-                        remember(msg.payloadFilePath) {
-                            io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isAudioPayload(msg.payloadFilePath)
-                        }
-                    val text by produceState(initialValue = "Loading...", msg.payloadFilePath) {
+                    val msgContent by produceState(
+                        initialValue = Pair(false, "Loading..."),
+                        key1 = msg.bundleId,
+                        key2 = msg.payloadFilePath,
+                    ) {
                         value =
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            withContext(Dispatchers.IO) {
                                 try {
-                                    if (isAudio) {
-                                        "Audio message"
+                                    val audio = io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isAudioPayload(msg.payloadFilePath)
+                                    if (audio) {
+                                        Pair(true, "Audio message")
                                     } else {
                                         val file = File(msg.payloadFilePath)
-                                        if (file.exists()) String(file.readBytes(), Charsets.UTF_8) else "No content"
+                                        if (file.exists()) Pair(false, String(file.readBytes(), Charsets.UTF_8)) else Pair(false, "No content")
                                     }
                                 } catch (e: Exception) {
-                                    "Binary data"
+                                    Pair(false, "Binary data")
                                 }
                             }
                     }
+                    val isAudio = msgContent.first
+                    val text = msgContent.second
 
                     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
                         Card(
@@ -254,7 +258,7 @@ fun ChatScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 ) {
                                     Text(
-                                        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(msg.creationTimestamp)),
+                                        timeFormat.format(Date(msg.creationTimestamp)),
                                         fontSize = 10.sp,
                                         color = TextGray,
                                     )

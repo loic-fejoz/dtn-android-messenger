@@ -3,9 +3,12 @@ package io.github.loic_fejoz.dtn_android_messenger.ui
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -53,8 +56,8 @@ fun BundleListScreen(
     bundleRecordDao: BundleRecordDao,
 ) {
     var service by remember { mutableStateOf<LocalService?>(null) }
-    val allBundles by bundleRecordDao.getAll().collectAsState(initial = emptyList())
-    val messages = allBundles.filter { it.destinationEid == serviceEid }
+    val messages by bundleRecordDao.getByDestination(serviceEid).collectAsState(initial = emptyList())
+    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
     var selectedBundle by remember { mutableStateOf<BundleRecord?>(null) }
     val scope = rememberCoroutineScope()
@@ -109,7 +112,7 @@ fun BundleListScreen(
                         }
                     }
                 } else {
-                    items(messages) { bundle ->
+                    items(messages, key = { it.bundleId }) { bundle ->
                         GlassCard(
                             onClick = {
                                 selectedBundle = bundle
@@ -151,19 +154,14 @@ fun BundleListScreen(
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
-                                val size =
-                                    remember(bundle.payloadFilePath) {
-                                        try {
-                                            File(bundle.payloadFilePath).length()
-                                        } catch (e: Exception) {
-                                            0L
+                                val size by produceState(initialValue = 0L, bundle.payloadFilePath) {
+                                    value =
+                                        withContext(Dispatchers.IO) {
+                                            runCatching { File(bundle.payloadFilePath).length() }.getOrDefault(0L)
                                         }
-                                    }
+                                }
                                 Text(
-                                    "Date: ${SimpleDateFormat(
-                                        "yyyy-MM-dd HH:mm",
-                                        Locale.getDefault(),
-                                    ).format(Date(bundle.creationTimestamp))} | Size: $size bytes",
+                                    "Date: ${dateFormat.format(Date(bundle.creationTimestamp))} | Size: $size bytes",
                                     color = TextGray,
                                     fontSize = 12.sp,
                                 )
@@ -216,50 +214,68 @@ fun BundleListScreen(
     }
 }
 
-private fun downloadBundlePayload(
+private enum class PayloadViewerKind {
+    LOADING,
+    IMAGE,
+    AUDIO,
+    TEXT,
+}
+
+private data class BundlePayloadPreview(
+    val kind: PayloadViewerKind,
+    val text: String = "",
+)
+
+private const val MAX_TEXT_PREVIEW_BYTES = 256 * 1024
+
+private suspend fun downloadBundlePayloadToDownloads(
     context: Context,
     bundle: BundleRecord,
 ) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
     try {
-        val sourceFile = File(bundle.payloadFilePath)
-        if (!sourceFile.exists()) {
-            Toast.makeText(context, "Error: Payload file not found", Toast.LENGTH_SHORT).show()
-            return
-        }
+        val resultMsg =
+            withContext(Dispatchers.IO) {
+                val sourceFile = File(bundle.payloadFilePath)
+                if (!sourceFile.exists()) {
+                    return@withContext "Error: Payload file not found"
+                }
 
-        val extension = io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.getPayloadFileExtension(bundle.payloadFilePath)
-        val displayName = "dtn_payload_${bundle.bundleId}.$extension"
+                val extension = io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.getPayloadFileExtension(bundle.payloadFilePath)
+                val displayName = "dtn_payload_${bundle.bundleId}.$extension"
 
-        val resolver = context.contentResolver
-        val contentValues =
-            ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
-                val mime =
-                    when (extension) {
-                        "png" -> "image/png"
-                        "jpg", "jpeg" -> "image/jpeg"
-                        "gif" -> "image/gif"
-                        "webp" -> "image/webp"
-                        "bmp" -> "image/bmp"
-                        "txt" -> "text/plain"
-                        "md" -> "text/markdown"
-                        "html", "htm" -> "text/html"
-                        else -> "application/octet-stream"
+                val resolver = context.contentResolver
+                val contentValues =
+                    ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                        val mime =
+                            when (extension) {
+                                "png" -> "image/png"
+                                "jpg", "jpeg" -> "image/jpeg"
+                                "gif" -> "image/gif"
+                                "webp" -> "image/webp"
+                                "bmp" -> "image/bmp"
+                                "txt" -> "text/plain"
+                                "md" -> "text/markdown"
+                                "html", "htm" -> "text/html"
+                                else -> "application/octet-stream"
+                            }
+                        put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                     }
-                put(MediaStore.MediaColumns.MIME_TYPE, mime)
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-            }
-        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
-        if (uri != null) {
-            resolver.openOutputStream(uri).use { output ->
-                sourceFile.inputStream().use { input ->
-                    input.copyTo(output!!)
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { output ->
+                        sourceFile.inputStream().use { input ->
+                            input.copyTo(output)
+                        }
+                    } ?: return@withContext "Failed to open output stream"
+                    "Downloaded to Downloads/$displayName"
+                } else {
+                    "Failed to save file"
                 }
             }
-            Toast.makeText(context, "Downloaded to Downloads/$displayName", Toast.LENGTH_LONG).show()
-        } else {
-            Toast.makeText(context, "Failed to save file", Toast.LENGTH_SHORT).show()
-        }
+        Toast.makeText(context, resultMsg, Toast.LENGTH_LONG).show()
     } catch (e: Exception) {
         Toast.makeText(context, "Error saving file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
     }
@@ -274,14 +290,73 @@ fun BundleDetailPane(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val payloadText by produceState(initialValue = "Loading payload...", key1 = bundle.bundleId) {
+    val detailDateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
+
+    val saveDocumentLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument("*/*"),
+        ) { uri: Uri? ->
+            if (uri != null) {
+                scope.launch {
+                    try {
+                        val msg =
+                            withContext(Dispatchers.IO) {
+                                val sourceFile = File(bundle.payloadFilePath)
+                                if (!sourceFile.exists()) return@withContext "Error: Payload file not found"
+                                context.contentResolver.openOutputStream(uri)?.use { output ->
+                                    sourceFile.inputStream().use { input ->
+                                        input.copyTo(output)
+                                    }
+                                } ?: return@withContext "Failed to open output stream"
+                                "File saved successfully"
+                            }
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Error saving file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+
+    val preview by produceState(
+        initialValue = BundlePayloadPreview(PayloadViewerKind.LOADING, "Loading payload..."),
+        key1 = bundle.bundleId,
+        key2 = bundle.payloadFilePath,
+    ) {
         value =
             withContext(Dispatchers.IO) {
                 try {
                     val file = File(bundle.payloadFilePath)
-                    if (file.exists()) String(file.readBytes(), Charsets.UTF_8) else "No payload content"
+                    if (!file.exists()) {
+                        return@withContext BundlePayloadPreview(PayloadViewerKind.TEXT, "No payload content")
+                    }
+                    if (io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isImagePayload(bundle.payloadFilePath)) {
+                        return@withContext BundlePayloadPreview(PayloadViewerKind.IMAGE)
+                    }
+                    if (io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isAudioPayload(bundle.payloadFilePath)) {
+                        return@withContext BundlePayloadPreview(PayloadViewerKind.AUDIO)
+                    }
+                    val fileSize = file.length()
+                    val toRead = fileSize.coerceAtMost(MAX_TEXT_PREVIEW_BYTES.toLong()).toInt()
+                    val buffer = ByteArray(toRead)
+                    var offset = 0
+                    file.inputStream().use { input ->
+                        while (offset < toRead) {
+                            val r = input.read(buffer, offset, toRead - offset)
+                            if (r == -1) break
+                            offset += r
+                        }
+                    }
+                    val textContent = String(buffer, 0, offset, Charsets.UTF_8)
+                    val finalText =
+                        if (fileSize > MAX_TEXT_PREVIEW_BYTES) {
+                            "$textContent\n\n[Truncated at 256 KB — download file to view full content]"
+                        } else {
+                            textContent
+                        }
+                    BundlePayloadPreview(PayloadViewerKind.TEXT, finalText)
                 } catch (e: Exception) {
-                    "Unable to parse payload as UTF-8 string."
+                    BundlePayloadPreview(PayloadViewerKind.TEXT, "Unable to parse payload as UTF-8 string.")
                 }
             }
     }
@@ -315,7 +390,17 @@ fun BundleDetailPane(
                 // 2. Download / Save
                 IconButton(
                     onClick = {
-                        downloadBundlePayload(context, bundle)
+                        scope.launch {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                downloadBundlePayloadToDownloads(context, bundle)
+                            } else {
+                                val ext =
+                                    withContext(Dispatchers.IO) {
+                                        io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.getPayloadFileExtension(bundle.payloadFilePath)
+                                    }
+                                saveDocumentLauncher.launch("dtn_payload_${bundle.bundleId}.$ext")
+                            }
+                        }
                     },
                 ) {
                     Icon(Icons.Default.Download, contentDescription = "Download to Phone", tint = NeonCyan)
@@ -350,7 +435,7 @@ fun BundleDetailPane(
                 HeaderItem("Destination", bundle.destinationEid)
                 HeaderItem(
                     "Creation Time",
-                    SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(bundle.creationTimestamp)),
+                    detailDateFormat.format(Date(bundle.creationTimestamp)),
                 )
                 HeaderItem("Sequence No", bundle.sequenceNumber.toString())
                 HeaderItem("Lifetime", "${bundle.lifetimeMs} ms")
@@ -363,22 +448,25 @@ fun BundleDetailPane(
                 HorizontalDivider(color = Color(0x33FFFFFF), modifier = Modifier.padding(vertical = 8.dp))
             }
             item {
-                val isImage = io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isImagePayload(bundle.payloadFilePath)
-                val isAudio = io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isAudioPayload(bundle.payloadFilePath)
-                if (isImage) {
-                    AsyncImage(
-                        model = File(bundle.payloadFilePath),
-                        contentDescription = "Payload Image",
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .height(180.dp)
-                                .background(Color.Black, RoundedCornerShape(8.dp)),
-                    )
-                } else if (isAudio) {
-                    AudioPlayerCard(filePath = bundle.payloadFilePath)
-                } else {
-                    MarkdownText(payloadText)
+                when (preview.kind) {
+                    PayloadViewerKind.LOADING -> Text("Loading payload...", color = TextGray, fontSize = 13.sp)
+                    PayloadViewerKind.IMAGE -> {
+                        AsyncImage(
+                            model = File(bundle.payloadFilePath),
+                            contentDescription = "Payload Image",
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp)
+                                    .background(Color.Black, RoundedCornerShape(8.dp)),
+                        )
+                    }
+                    PayloadViewerKind.AUDIO -> {
+                        AudioPlayerCard(filePath = bundle.payloadFilePath)
+                    }
+                    PayloadViewerKind.TEXT -> {
+                        MarkdownText(preview.text)
+                    }
                 }
             }
         }

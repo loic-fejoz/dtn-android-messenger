@@ -113,7 +113,7 @@ fun RegistryScreen(
                     )
                 }
             } else {
-                items(services) { service ->
+                items(services, key = { it.serviceEid }) { service ->
                     val unreadCount by bundleRecordDao.getUnreadCount(service.serviceEid).collectAsState(initial = 0)
 
                     GlassCard(onClick = {

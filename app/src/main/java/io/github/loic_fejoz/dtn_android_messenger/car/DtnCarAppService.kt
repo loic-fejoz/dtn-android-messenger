@@ -52,6 +52,7 @@ class DtnCarSession : Session() {
 class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
     private val bundleRecordDao: BundleRecordDao by inject()
     private var lastBundle: BundleRecord? = null
+    private var lastPayloadText: String = "Contenu Binaire"
     private var isLoading = true
     private var dbJob: Job? = null
 
@@ -61,9 +62,31 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
                 override fun onStart(owner: LifecycleOwner) {
                     dbJob =
                         CoroutineScope(Dispatchers.Main).launch {
-                            bundleRecordDao.getAll().collectLatest { list ->
-                                // Get only the single most recently received bundle
-                                lastBundle = list.firstOrNull { it.state.name == "RECEIVED" }
+                            bundleRecordDao.getLatestReceived().collectLatest { bundle ->
+                                lastBundle = bundle
+                                lastPayloadText =
+                                    if (bundle == null) {
+                                        ""
+                                    } else {
+                                        withContext(Dispatchers.IO) {
+                                            try {
+                                                val file = File(bundle.payloadFilePath)
+                                                if (file.exists()) {
+                                                    val header = ByteArray(512)
+                                                    val bytesRead = file.inputStream().use { it.read(header) }
+                                                    if (bytesRead > 0) {
+                                                        String(header, 0, bytesRead, StandardCharsets.UTF_8).take(120)
+                                                    } else {
+                                                        "Contenu Vide"
+                                                    }
+                                                } else {
+                                                    "Contenu Binaire"
+                                                }
+                                            } catch (e: Exception) {
+                                                "Contenu Binaire"
+                                            }
+                                        }
+                                    }
                                 isLoading = false
                                 invalidate()
                             }
@@ -100,23 +123,7 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
                     .build(),
             )
         } else {
-            val payloadText =
-                try {
-                    val file = File(bundle.payloadFilePath)
-                    if (file.exists()) {
-                        val header = ByteArray(512)
-                        val bytesRead = file.inputStream().use { it.read(header) }
-                        if (bytesRead > 0) {
-                            String(header, 0, bytesRead, StandardCharsets.UTF_8).take(120)
-                        } else {
-                            "Contenu Vide"
-                        }
-                    } else {
-                        "Contenu Binaire"
-                    }
-                } catch (e: Exception) {
-                    "Contenu Binaire"
-                }
+            val payloadText = lastPayloadText
 
             paneBuilder.addRow(
                 Row.Builder()

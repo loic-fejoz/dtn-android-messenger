@@ -30,7 +30,8 @@ fun SystemLogScreen(
     logDao: SystemLogDao,
 ) {
     val scope = rememberCoroutineScope()
-    val logs by logDao.getAll().collectAsState(initial = emptyList())
+    val logs by logDao.getRecent(500).collectAsState(initial = emptyList())
+    val logDateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()) }
 
     Scaffold(
         topBar = {
@@ -71,7 +72,7 @@ fun SystemLogScreen(
                     }
                 }
             } else {
-                items(logs) { log ->
+                items(logs, key = { it.id }) { log ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp),
@@ -96,7 +97,7 @@ fun SystemLogScreen(
                                         },
                                 )
                                 Text(
-                                    SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date(log.timestamp)),
+                                    logDateFormat.format(Date(log.timestamp)),
                                     color = TextGray,
                                     fontSize = 10.sp,
                                 )

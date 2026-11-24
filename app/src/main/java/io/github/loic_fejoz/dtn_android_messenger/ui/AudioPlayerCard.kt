@@ -6,6 +6,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,34 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-// Define custom Pause icon vector to avoid dependency on extended icons pack
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
-
-val PauseIcon: ImageVector
-    get() =
-        ImageVector.Builder(
-            name = "Pause",
-            defaultWidth = 24.dp,
-            defaultHeight = 24.dp,
-            viewportWidth = 24f,
-            viewportHeight = 24f,
-        ).apply {
-            path(fill = androidx.compose.ui.graphics.SolidColor(Color.White)) {
-                moveTo(6f, 19f)
-                horizontalLineTo(10f)
-                verticalLineTo(5f)
-                horizontalLineTo(6f)
-                verticalLineTo(19f)
-                close()
-                moveTo(14f, 5f)
-                verticalLineTo(19f)
-                horizontalLineTo(18f)
-                verticalLineTo(5f)
-                horizontalLineTo(14f)
-                close()
-            }
-        }.build()
+import java.util.Locale
 
 @Composable
 fun AudioPlayerCard(
@@ -53,12 +27,14 @@ fun AudioPlayerCard(
 ) {
     val context = LocalContext.current
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var isPrepared by remember(filePath) { mutableStateOf(false) }
     var isPlaying by remember { mutableStateOf(false) }
     var duration by remember { mutableStateOf(0) }
     var currentPosition by remember { mutableStateOf(0) }
 
     // Initialize MediaPlayer
     DisposableEffect(filePath) {
+        isPrepared = false
         val player =
             MediaPlayer().apply {
                 try {
@@ -72,9 +48,12 @@ fun AudioPlayerCard(
                     }
                     setOnPreparedListener { mp ->
                         duration = mp.duration
+                        isPrepared = true
                     }
                     setOnErrorListener { _, what, extra ->
                         android.util.Log.e("AudioPlayerCard", "MediaPlayer error: what=$what, extra=$extra for $filePath")
+                        isPrepared = false
+                        isPlaying = false
                         true
                     }
                     prepareAsync()
@@ -87,13 +66,17 @@ fun AudioPlayerCard(
         player.setOnCompletionListener {
             isPlaying = false
             currentPosition = 0
-            try {
-                player.seekTo(0)
-            } catch (e: Exception) {
+            if (isPrepared) {
+                try {
+                    player.seekTo(0)
+                } catch (e: Exception) {
+                }
             }
         }
 
         onDispose {
+            isPrepared = false
+            isPlaying = false
             try {
                 player.stop()
             } catch (e: Exception) {
@@ -133,6 +116,7 @@ fun AudioPlayerCard(
             IconButton(
                 onClick = {
                     val player = mediaPlayer ?: return@IconButton
+                    if (!isPrepared) return@IconButton
                     if (isPlaying) {
                         player.pause()
                         isPlaying = false
@@ -144,7 +128,7 @@ fun AudioPlayerCard(
                 modifier = Modifier.size(40.dp),
             ) {
                 Icon(
-                    imageVector = if (isPlaying) PauseIcon else Icons.Default.PlayArrow,
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
                     tint = NeonCyan,
                     modifier = Modifier.size(28.dp),
@@ -155,6 +139,7 @@ fun AudioPlayerCard(
                 Slider(
                     value = currentPosition.toFloat(),
                     onValueChange = { value ->
+                        if (!isPrepared) return@Slider
                         currentPosition = value.toInt()
                         mediaPlayer?.seekTo(currentPosition)
                     },
@@ -196,5 +181,5 @@ private fun formatMs(ms: Int): String {
     val totalSecs = ms / 1000
     val mins = totalSecs / 60
     val secs = totalSecs % 60
-    return String.format("%02d:%02d", mins, secs)
+    return String.format(Locale.US, "%02d:%02d", mins, secs)
 }

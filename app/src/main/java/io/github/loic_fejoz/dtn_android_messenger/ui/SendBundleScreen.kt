@@ -27,14 +27,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
@@ -46,7 +45,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
-import io.github.loic_fejoz.dtn_android_messenger.data.dao.BundleRecordDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.LocalServiceDao
 import io.github.loic_fejoz.dtn_android_messenger.data.repository.BundleOutboxRepository
 import kotlinx.coroutines.Dispatchers
@@ -54,39 +52,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Locale
 import java.util.UUID
-
-val MicIcon: ImageVector
-    get() =
-        ImageVector.Builder(
-            name = "Mic",
-            defaultWidth = 24.dp,
-            defaultHeight = 24.dp,
-            viewportWidth = 24f,
-            viewportHeight = 24f,
-        ).apply {
-            path(fill = androidx.compose.ui.graphics.SolidColor(Color.White)) {
-                moveTo(12f, 14f)
-                curveTo(13.66f, 14f, 15f, 12.66f, 15f, 11f)
-                verticalLineTo(5f)
-                curveTo(15f, 3.34f, 13.66f, 2f, 12f, 2f)
-                curveTo(10.34f, 2f, 9f, 3.34f, 9f, 5f)
-                verticalLineTo(11f)
-                curveTo(9f, 12.66f, 10.34f, 14f, 12f, 14f)
-                close()
-                moveTo(17.3f, 11f)
-                curveTo(17.3f, 14f, 14.76f, 16.1f, 12f, 16.1f)
-                curveTo(9.24f, 16.1f, 6.7f, 14f, 6.7f, 11f)
-                horizontalLineTo(5f)
-                curveTo(5f, 14.42f, 7.72f, 17.23f, 11f, 17.72f)
-                verticalLineTo(21f)
-                horizontalLineTo(13f)
-                verticalLineTo(17.72f)
-                curveTo(16.28f, 17.23f, 19f, 14.42f, 19f, 11f)
-                horizontalLineTo(17.3f)
-                close()
-            }
-        }.build()
 
 private fun getFileNameFromUri(
     context: Context,
@@ -111,7 +78,6 @@ private fun getFileNameFromUri(
 @Composable
 fun SendBundleScreen(
     navController: NavController,
-    bundleRecordDao: BundleRecordDao,
     localServiceDao: LocalServiceDao,
     preFilledDest: String = "",
     preFilledSourceService: String = "",
@@ -220,16 +186,19 @@ fun SendBundleScreen(
         if (save && !recordingCancelled) {
             val file = recordingFile
             if (file != null && file.exists() && file.length() > 0) {
-                // Post-process the Ogg container to fix Stagefright non-conformities (EOS flag, granulepos, preskip)
-                if (file.extension.equals("ogg", ignoreCase = true) || file.extension.equals("opus", ignoreCase = true)) {
-                    OggOpusFixer.fixOggOpusFile(file)
+                scope.launch {
+                    // Post-process the Ogg container on IO thread to fix Stagefright non-conformities
+                    if (file.extension.equals("ogg", ignoreCase = true) || file.extension.equals("opus", ignoreCase = true)) {
+                        withContext(Dispatchers.IO) {
+                            OggOpusFixer.fixOggOpusFile(file)
+                        }
+                    }
+                    selectedFileUri = Uri.fromFile(file)
+                    selectedFileName = file.name
+                    selectedFileSize = file.length()
+                    isFileMode = true
+                    Toast.makeText(context, "Voice message recorded!", Toast.LENGTH_SHORT).show()
                 }
-
-                selectedFileUri = Uri.fromFile(file)
-                selectedFileName = file.name
-                selectedFileSize = file.length()
-                isFileMode = true
-                Toast.makeText(context, "Voice message recorded!", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, "Recording failed or too short", Toast.LENGTH_SHORT).show()
             }
@@ -237,6 +206,17 @@ fun SendBundleScreen(
             recordingFile?.delete()
         }
         recordingFile = null
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            val rec = mediaRecorder
+            if (rec != null) {
+                runCatching { rec.stop() }
+                runCatching { rec.release() }
+                mediaRecorder = null
+            }
+        }
     }
 
     LaunchedEffect(isRecording) {
@@ -631,7 +611,7 @@ fun SendBundleScreen(
                                             .alpha(flashAlpha),
                                 )
                                 Text(
-                                    text = String.format("Recording: %02d:%02d", recordingDuration / 60, recordingDuration % 60),
+                                    text = String.format(Locale.US, "Recording: %02d:%02d", recordingDuration / 60, recordingDuration % 60),
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
@@ -645,7 +625,7 @@ fun SendBundleScreen(
                             )
                         } else {
                             Icon(
-                                imageVector = MicIcon,
+                                imageVector = Icons.Default.Mic,
                                 contentDescription = "Record Voice Message",
                                 tint = NeonCyan,
                                 modifier = Modifier.size(32.dp),

@@ -7,12 +7,21 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -146,41 +155,70 @@ class MainActivity : ComponentActivity() {
                         arguments = listOf(navArgument("serviceEid") { type = NavType.StringType }),
                     ) { backStackEntry ->
                         val serviceEid = backStackEntry.arguments?.getString("serviceEid") ?: ""
-                        var viewerType by remember { mutableStateOf<ViewerType?>(null) }
+                        var viewerType by remember(serviceEid) { mutableStateOf<ViewerType?>(null) }
+                        var isLoaded by remember(serviceEid) { mutableStateOf(false) }
 
                         LaunchedEffect(serviceEid) {
                             viewerType = localServiceDao.getById(serviceEid)?.viewerType
+                            isLoaded = true
                         }
 
-                        when (viewerType) {
-                            ViewerType.CHAT -> {
-                                ChatScreen(
-                                    navController = navController,
-                                    serviceEid = serviceEid,
-                                    localServiceDao = localServiceDao,
-                                    bundleRecordDao = bundleRecordDao,
-                                )
+                        if (!isLoaded) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(color = NeonCyan)
                             }
-                            ViewerType.BUNDLE_LIST -> {
-                                BundleListScreen(
-                                    navController = navController,
-                                    serviceEid = serviceEid,
-                                    localServiceDao = localServiceDao,
-                                    bundleRecordDao = bundleRecordDao,
-                                )
-                            }
-                            ViewerType.SENML_LAST -> {
-                                SenmlLastScreen(
-                                    serviceEid = serviceEid,
-                                    onBack = { navController.popBackStack() },
-                                )
-                            }
-                            else -> {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(color = NeonCyan)
+                        } else {
+                            when (viewerType) {
+                                ViewerType.CHAT -> {
+                                    ChatScreen(
+                                        navController = navController,
+                                        serviceEid = serviceEid,
+                                        localServiceDao = localServiceDao,
+                                        bundleRecordDao = bundleRecordDao,
+                                    )
+                                }
+                                ViewerType.BUNDLE_LIST -> {
+                                    BundleListScreen(
+                                        navController = navController,
+                                        serviceEid = serviceEid,
+                                        localServiceDao = localServiceDao,
+                                        bundleRecordDao = bundleRecordDao,
+                                    )
+                                }
+                                ViewerType.SENML_LAST -> {
+                                    SenmlLastScreen(
+                                        serviceEid = serviceEid,
+                                        onBack = { navController.popBackStack() },
+                                    )
+                                }
+                                else -> {
+                                    Scaffold(
+                                        containerColor = CharcoalBg,
+                                    ) { innerPadding ->
+                                        Column(
+                                            modifier =
+                                                Modifier
+                                                    .fillMaxSize()
+                                                    .padding(innerPadding)
+                                                    .padding(24.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center,
+                                        ) {
+                                            Text(
+                                                text = "This viewer type is not supported or the service was removed.",
+                                                color = TextGray,
+                                            )
+                                            Spacer(modifier = Modifier.height(16.dp))
+                                            Button(
+                                                onClick = { navController.popBackStack() },
+                                            ) {
+                                                Text("Back")
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -214,7 +252,6 @@ class MainActivity : ComponentActivity() {
                         val sharedFileUri = backStackEntry.arguments?.getString("sharedFileUri") ?: ""
                         SendBundleScreen(
                             navController = navController,
-                            bundleRecordDao = bundleRecordDao,
                             localServiceDao = localServiceDao,
                             preFilledDest = dest,
                             preFilledSourceService = sourceService,

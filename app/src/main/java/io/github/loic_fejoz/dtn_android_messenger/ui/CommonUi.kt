@@ -94,11 +94,58 @@ fun parseMarkdownInline(text: String): AnnotatedString {
     }
 }
 
+private sealed class MarkdownBlock {
+    data class CodeBlock(val content: String) : MarkdownBlock()
+    data object Divider : MarkdownBlock()
+    data class Heading(val level: Int, val text: String) : MarkdownBlock()
+    data class BulletItem(val content: String) : MarkdownBlock()
+    data class Paragraph(val line: String) : MarkdownBlock()
+    data object BlankLine : MarkdownBlock()
+}
+
+private fun parseMarkdownBlocks(text: String): List<MarkdownBlock> {
+    val lines = text.split("\n")
+    val blocks = mutableListOf<MarkdownBlock>()
+    var inCodeBlock = false
+    val codeBuffer = StringBuilder()
+
+    for (line in lines) {
+        val trimmed = line.trim()
+        if (trimmed.startsWith("```")) {
+            if (inCodeBlock) {
+                blocks.add(MarkdownBlock.CodeBlock(codeBuffer.toString()))
+                codeBuffer.clear()
+                inCodeBlock = false
+            } else {
+                inCodeBlock = true
+            }
+        } else if (inCodeBlock) {
+            if (codeBuffer.isNotEmpty()) codeBuffer.append('\n')
+            codeBuffer.append(line)
+        } else {
+            when {
+                trimmed == "---" -> blocks.add(MarkdownBlock.Divider)
+                trimmed.startsWith("# ") -> blocks.add(MarkdownBlock.Heading(1, trimmed.substring(2)))
+                trimmed.startsWith("## ") -> blocks.add(MarkdownBlock.Heading(2, trimmed.substring(3)))
+                trimmed.startsWith("### ") -> blocks.add(MarkdownBlock.Heading(3, trimmed.substring(4)))
+                trimmed.startsWith("- ") || trimmed.startsWith("* ") || trimmed.startsWith("+ ") -> {
+                    blocks.add(MarkdownBlock.BulletItem(line.substring(line.indexOf(' ') + 1)))
+                }
+                line.isNotEmpty() -> blocks.add(MarkdownBlock.Paragraph(line))
+                else -> blocks.add(MarkdownBlock.BlankLine)
+            }
+        }
+    }
+
+    if (inCodeBlock && codeBuffer.isNotEmpty()) {
+        blocks.add(MarkdownBlock.CodeBlock(codeBuffer.toString()))
+    }
+    return blocks
+}
+
 @Composable
 fun MarkdownText(text: String) {
-    val lines = text.split("\n")
-    var inCodeBlock = false
-    val codeBlockContent = remember { mutableStateListOf<String>() }
+    val blocks = remember(text) { parseMarkdownBlocks(text) }
 
     Column(
         modifier =
@@ -108,17 +155,11 @@ fun MarkdownText(text: String) {
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        var i = 0
-        while (i < lines.size) {
-            val line = lines[i]
-            val trimmed = line.trim()
-
-            if (trimmed.startsWith("```")) {
-                if (inCodeBlock) {
-                    // End code block
-                    val blockText = codeBlockContent.joinToString("\n")
+        for (block in blocks) {
+            when (block) {
+                is MarkdownBlock.CodeBlock -> {
                     Text(
-                        blockText,
+                        block.content,
                         color = NeonCyan,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
@@ -128,80 +169,55 @@ fun MarkdownText(text: String) {
                                 .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
                                 .padding(8.dp),
                     )
-                    codeBlockContent.clear()
-                    inCodeBlock = false
-                } else {
-                    // Start code block
-                    inCodeBlock = true
                 }
-            } else if (inCodeBlock) {
-                codeBlockContent.add(line)
-            } else {
-                if (trimmed == "---") {
+                MarkdownBlock.Divider -> {
                     HorizontalDivider(color = Color(0x33FFFFFF), modifier = Modifier.padding(vertical = 4.dp))
-                } else if (trimmed.startsWith("# ")) {
-                    Text(
-                        text = parseMarkdownInline(trimmed.substring(2)),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyan,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-                    )
-                } else if (trimmed.startsWith("## ")) {
-                    Text(
-                        text = parseMarkdownInline(trimmed.substring(3)),
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = NeonPurple,
-                        modifier = Modifier.padding(top = 6.dp, bottom = 3.dp),
-                    )
-                } else if (trimmed.startsWith("### ")) {
-                    Text(
-                        text = parseMarkdownInline(trimmed.substring(4)),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
-                    )
-                } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || trimmed.startsWith("+ ")) {
+                }
+                is MarkdownBlock.Heading -> {
+                    when (block.level) {
+                        1 -> Text(
+                            text = parseMarkdownInline(block.text),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = NeonCyan,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                        )
+                        2 -> Text(
+                            text = parseMarkdownInline(block.text),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonPurple,
+                            modifier = Modifier.padding(top = 6.dp, bottom = 3.dp),
+                        )
+                        else -> Text(
+                            text = parseMarkdownInline(block.text),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+                        )
+                    }
+                }
+                is MarkdownBlock.BulletItem -> {
                     Row(
                         modifier = Modifier.padding(start = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text("•", color = NeonCyan, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        val lineContent = line.substring(line.indexOf(' ') + 1)
-                        val elements = MarkdownImageParser.parseLineElements(lineContent)
+                        val elements = MarkdownImageParser.parseLineElements(block.content)
                         Box(modifier = Modifier.weight(1f)) {
                             RenderLineContent(elements = elements, fontSize = 14.sp, color = Color.White)
                         }
                     }
-                } else {
-                    if (line.isNotEmpty()) {
-                        val elements = MarkdownImageParser.parseLineElements(line)
-                        RenderLineContent(elements = elements, fontSize = 14.sp, color = Color.White)
-                    } else {
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
+                }
+                is MarkdownBlock.Paragraph -> {
+                    val elements = MarkdownImageParser.parseLineElements(block.line)
+                    RenderLineContent(elements = elements, fontSize = 14.sp, color = Color.White)
+                }
+                MarkdownBlock.BlankLine -> {
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
             }
-            i++
-        }
-
-        // In case code block didn't close
-        if (inCodeBlock && codeBlockContent.isNotEmpty()) {
-            val blockText = codeBlockContent.joinToString("\n")
-            Text(
-                blockText,
-                color = NeonCyan,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                        .padding(8.dp),
-            )
-            codeBlockContent.clear()
         }
     }
 }

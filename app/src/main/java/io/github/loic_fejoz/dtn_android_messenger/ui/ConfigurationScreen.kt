@@ -941,7 +941,7 @@ fun ServicesConfigTab(
                         },
                     )
                     DropdownMenu(expanded = viewerExpanded, onDismissRequest = { viewerExpanded = false }) {
-                        ViewerType.values().forEach { v ->
+                        listOf(ViewerType.CHAT, ViewerType.BUNDLE_LIST, ViewerType.SENML_LAST).forEach { v ->
                             DropdownMenuItem(
                                 text = { Text(v.name) },
                                 onClick = {
@@ -1603,10 +1603,11 @@ fun BackupConfigTab(
 
 @Composable
 fun <T> LiveData<T>.observeAsState(initial: T): State<T> {
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     val state = remember { mutableStateOf(initial) }
-    DisposableEffect(this) {
+    DisposableEffect(this, lifecycleOwner) {
         val observer = Observer<T> { state.value = it }
-        observeForever(observer)
+        observe(lifecycleOwner, observer)
         onDispose {
             removeObserver(observer)
         }
