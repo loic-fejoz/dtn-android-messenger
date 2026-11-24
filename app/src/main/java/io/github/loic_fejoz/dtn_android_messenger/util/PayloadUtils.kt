@@ -1,6 +1,8 @@
 package io.github.loic_fejoz.dtn_android_messenger.util
 
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 
 object PayloadUtils {
@@ -65,7 +67,28 @@ object PayloadUtils {
             val headerBytes = ByteArray(4096)
             val bytesRead = file.inputStream().use { it.read(headerBytes) }
             if (bytesRead > 0) {
-                val text = String(headerBytes, 0, bytesRead, StandardCharsets.UTF_8)
+                var textLen = bytesRead
+                // If buffer is full, trim any trailing incomplete UTF-8 multi-byte sequence
+                if (bytesRead == headerBytes.size) {
+                    var i = bytesRead - 1
+                    while (i >= 0 && (headerBytes[i].toInt() and 0xC0) == 0x80) {
+                        i--
+                    }
+                    if (i >= 0 && (headerBytes[i].toInt() and 0x80) != 0) {
+                        textLen = i
+                    }
+                }
+                for (i in 0 until textLen) {
+                    val b = headerBytes[i].toInt() and 0xFF
+                    if (b == 0 || (b < 0x09) || (b in 0x0E..0x1F)) {
+                        return "bin"
+                    }
+                }
+                val decoder =
+                    StandardCharsets.UTF_8.newDecoder()
+                        .onMalformedInput(CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(CodingErrorAction.REPORT)
+                val text = decoder.decode(ByteBuffer.wrap(headerBytes, 0, textLen)).toString()
                 val cleanText = text.replace("\uFEFF", "").trim()
                 if (cleanText.startsWith("<!DOCTYPE html", ignoreCase = true) ||
                     cleanText.startsWith("<html", ignoreCase = true) ||

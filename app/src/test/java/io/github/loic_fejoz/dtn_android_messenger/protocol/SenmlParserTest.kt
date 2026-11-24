@@ -194,4 +194,40 @@ class SenmlParserTest {
         assertEquals("payload_data", records[1].name)
         assertNotNull(records[1].value)
     }
+
+    @Test
+    fun testParseJsonAndCborWithBaseValueBaseSumAndNanGuard() {
+        val json =
+            """
+            [
+              {"bn": "dev/", "bv": 100.0, "bs": 50.0, "n": "temp", "v": 2.5},
+              {"n": "energy", "s": 12.0},
+              {"n": "bad", "v": "not-a-number"}
+            ]
+            """.trimIndent()
+        val jsonRecords = SenmlParser.parse(json.toByteArray(Charsets.UTF_8), fallbackTimestampMs = 1000L)
+        assertEquals(3, jsonRecords.size)
+        assertEquals("102.5", jsonRecords[0].value)
+        assertEquals("62", jsonRecords[1].value)
+        assertEquals("0", jsonRecords[2].value)
+
+        val cborArray = CBORObject.NewArray()
+        val r1 = CBORObject.NewMap().apply {
+            set(CBORObject.FromObject(-2), CBORObject.FromObject("cbor/"))
+            set(CBORObject.FromObject(-5), CBORObject.FromObject(10.0)) // bv
+            set(CBORObject.FromObject(-6), CBORObject.FromObject(20.0)) // bs
+            set(CBORObject.FromObject(0), CBORObject.FromObject("v1"))
+            set(CBORObject.FromObject(2), CBORObject.FromObject(5.5))
+        }
+        val r2 = CBORObject.NewMap().apply {
+            set(CBORObject.FromObject(0), CBORObject.FromObject("s1"))
+            set(CBORObject.FromObject(5), CBORObject.FromObject(3.5)) // s
+        }
+        cborArray.Add(r1)
+        cborArray.Add(r2)
+        val cborRecords = SenmlParser.parse(cborArray.EncodeToBytes(), fallbackTimestampMs = 1000L)
+        assertEquals(2, cborRecords.size)
+        assertEquals("15.5", cborRecords[0].value)
+        assertEquals("23.5", cborRecords[1].value)
+    }
 }

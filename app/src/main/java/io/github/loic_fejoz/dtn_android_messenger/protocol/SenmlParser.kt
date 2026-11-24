@@ -58,21 +58,37 @@ object SenmlParser {
             var baseName = ""
             var baseTime = 0.0
             var baseUnit = ""
+            var baseValue = 0.0
+            var baseSum = 0.0
 
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.optJSONObject(i) ?: continue
 
                 if (obj.has("bn") && !obj.isNull("bn")) baseName = obj.optString("bn", "")
-                if (obj.has("bt") && !obj.isNull("bt")) baseTime = obj.optDouble("bt", 0.0)
+                if (obj.has("bt") && !obj.isNull("bt")) {
+                    val btVal = obj.optDouble("bt", Double.NaN)
+                    if (btVal.isFinite()) baseTime = btVal
+                }
                 if (obj.has("bu") && !obj.isNull("bu")) baseUnit = obj.optString("bu", "")
+                if (obj.has("bv") && !obj.isNull("bv")) {
+                    val bvVal = obj.optDouble("bv", Double.NaN)
+                    if (bvVal.isFinite()) baseValue = bvVal
+                }
+                if (obj.has("bs") && !obj.isNull("bs")) {
+                    val bsVal = obj.optDouble("bs", Double.NaN)
+                    if (bsVal.isFinite()) baseSum = bsVal
+                }
 
                 val n = if (obj.has("n") && !obj.isNull("n")) obj.optString("n", "") else null
                 val fullName = baseName + (n ?: "")
 
                 if (fullName.isEmpty()) continue
 
+                val vVal = if (obj.has("v") && !obj.isNull("v")) obj.optDouble("v", Double.NaN).takeIf { it.isFinite() } else null
+                val sVal = if (obj.has("s") && !obj.isNull("s")) obj.optDouble("s", Double.NaN).takeIf { it.isFinite() } else null
                 val hasValue =
-                    (obj.has("v") && !obj.isNull("v")) ||
+                    vVal != null ||
+                        sVal != null ||
                         (obj.has("vs") && !obj.isNull("vs")) ||
                         (obj.has("vb") && !obj.isNull("vb")) ||
                         (obj.has("vd") && !obj.isNull("vd"))
@@ -85,14 +101,15 @@ object SenmlParser {
 
                 val valueStr =
                     when {
-                        obj.has("v") && !obj.isNull("v") -> formatDouble(obj.optDouble("v", 0.0))
+                        vVal != null -> formatDouble(baseValue + vVal)
                         obj.has("vs") && !obj.isNull("vs") -> obj.optString("vs", "")
                         obj.has("vb") && !obj.isNull("vb") -> obj.optBoolean("vb", false).toString()
                         obj.has("vd") && !obj.isNull("vd") -> obj.optString("vd", "")
+                        sVal != null -> formatDouble(baseSum + sVal)
                         else -> "0"
                     }
 
-                val t = if (obj.has("t") && !obj.isNull("t")) obj.optDouble("t", 0.0) else 0.0
+                val t = if (obj.has("t") && !obj.isNull("t")) obj.optDouble("t", 0.0).takeIf { it.isFinite() } ?: 0.0 else 0.0
                 val timeVal = calculateTimeMs(baseTime + t, fallbackTimestampMs)
 
                 result.add(SenmlRecord(name = fullName, value = valueStr, unit = u, timestamp = timeVal))
@@ -174,6 +191,8 @@ object SenmlParser {
             var baseName = ""
             var baseTime = 0.0
             var baseUnit = ""
+            var baseValue = 0.0
+            var baseSum = 0.0
 
             for (item in list) {
                 if (item.type != CBORType.Map) continue
@@ -184,13 +203,23 @@ object SenmlParser {
                 }
 
                 val bt = getCborDouble(item, "bt", -3)
-                if (bt != null) {
+                if (bt != null && bt.isFinite()) {
                     baseTime = bt
                 }
 
                 val bu = getCborString(item, "bu", -4)
                 if (bu != null) {
                     baseUnit = bu
+                }
+
+                val bv = getCborDouble(item, "bv", -5)
+                if (bv != null && bv.isFinite()) {
+                    baseValue = bv
+                }
+
+                val bs = getCborDouble(item, "bs", -6)
+                if (bs != null && bs.isFinite()) {
+                    baseSum = bs
                 }
 
                 val n = getCborString(item, "n", 0)
@@ -200,9 +229,10 @@ object SenmlParser {
 
                 val u = getCborString(item, "u", 1) ?: baseUnit
 
-                val v = getCborDouble(item, "v", 2)
+                val v = getCborDouble(item, "v", 2)?.takeIf { it.isFinite() }
                 val vs = getCborString(item, "vs", 3)
                 val vb = getCborBoolean(item, "vb", 4)
+                val s = getCborDouble(item, "s", 5)?.takeIf { it.isFinite() }
 
                 val vdObj = item.get("vd") ?: item.get(8)
                 val vd =
@@ -218,20 +248,21 @@ object SenmlParser {
                         null
                     }
 
-                if (v == null && vs == null && vb == null && vd == null && n == null) {
+                if (v == null && vs == null && vb == null && vd == null && s == null && n == null) {
                     continue
                 }
 
                 val valueStr =
                     when {
-                        v != null -> formatDouble(v)
+                        v != null -> formatDouble(baseValue + v)
                         vs != null -> vs
                         vb != null -> vb.toString()
                         vd != null -> vd
+                        s != null -> formatDouble(baseSum + s)
                         else -> "0"
                     }
 
-                val t = getCborDouble(item, "t", 6) ?: 0.0
+                val t = getCborDouble(item, "t", 6)?.takeIf { it.isFinite() } ?: 0.0
                 val timeVal = calculateTimeMs(baseTime + t, fallbackTimestampMs)
 
                 result.add(SenmlRecord(name = fullName, value = valueStr, unit = u, timestamp = timeVal))

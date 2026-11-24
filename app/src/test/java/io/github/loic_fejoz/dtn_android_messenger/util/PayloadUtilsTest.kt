@@ -136,4 +136,21 @@ class PayloadUtilsTest {
         assertFalse(PayloadUtils.isPrefixMatch(pattern, "dtn://node-c/chat"))
         assertFalse(PayloadUtils.isPrefixMatch(pattern, "dtn://node-b-other/chat"))
     }
+
+    @Test
+    fun testBinaryPayloadsNotMisclassifiedAsText(
+        @TempDir tempDir: Path,
+    ) {
+        val zipFile = File(tempDir.toFile(), "archive.bin")
+        zipFile.writeBytes(byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00))
+        assertEquals("bin", PayloadUtils.getPayloadFileExtension(zipFile.absolutePath))
+
+        val invalidUtf8 = File(tempDir.toFile(), "random.bin")
+        invalidUtf8.writeBytes(byteArrayOf(0x80.toByte(), 0x81.toByte(), 0xC0.toByte(), 0xC1.toByte()))
+        assertEquals("bin", PayloadUtils.getPayloadFileExtension(invalidUtf8.absolutePath))
+
+        val utf8WithEmoji = File(tempDir.toFile(), "note.bin")
+        utf8WithEmoji.writeText("Bonjour à tous ! 🚀")
+        assertEquals("txt", PayloadUtils.getPayloadFileExtension(utf8WithEmoji.absolutePath))
+    }
 }
