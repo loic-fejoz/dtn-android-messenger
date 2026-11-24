@@ -76,12 +76,9 @@ class DtnToolsComplianceTest {
     @Test
     fun testInvalidBcbEncryptedBundleHandling() {
         val bytes = loadFixture("invalid_bcb_encrypted.bundle")
-        // Type 12 BPSec BCB is parsed safely without failing or crashing
-        try {
-            val bundle = Bpv7Parser.deserialize(bytes)
-            assertNotNull(bundle)
-        } catch (e: Exception) {
-            assertTrue(e is IllegalArgumentException)
+        // Type 12 BPSec BCB MUST be rejected for ITU Article 25 cleartext compliance
+        assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserialize(bytes)
         }
     }
 

@@ -16,7 +16,12 @@ data class Eid(val uri: String) {
     }
 
     fun toCbor(): CBORObject {
-        val schemeCode = if (scheme.lowercase() == "dtn") 1 else 2
+        val schemeCode =
+            when (scheme.lowercase()) {
+                "dtn" -> 1
+                "ipn" -> 2
+                else -> throw IllegalArgumentException("Unsupported EID scheme: $scheme")
+            }
         val trimmedSsp = ssp.trim()
         val cbor = CBORObject.NewArray()
         cbor.Add(schemeCode)
@@ -61,7 +66,12 @@ data class Eid(val uri: String) {
             }
             val schemeCode = cbor[0].AsInt32()
             val sspObj = cbor[1]
-            val scheme = if (schemeCode == 1) "dtn" else "ipn"
+            val scheme =
+                when (schemeCode) {
+                    1 -> "dtn"
+                    2 -> "ipn"
+                    else -> throw IllegalArgumentException("Unsupported EID scheme code: $schemeCode")
+                }
             val ssp =
                 if (sspObj.type == CBORType.Array) {
                     if (sspObj.size() < 2) {
@@ -351,12 +361,15 @@ object Bpv7Parser {
 
         var crcBytes: ByteArray? = null
         if (crcType != 0) {
+            if (crcType !in 1..2) {
+                throw IllegalArgumentException("Unsupported CRC type in PrimaryBlock: $crcType")
+            }
             if (cbor.size() < 9) {
                 throw IllegalArgumentException("Missing CRC field in PrimaryBlock: expected 9 elements for crcType $crcType, got ${cbor.size()}")
             }
             crcBytes = cbor[8].GetByteString()
-            val expectedLen = if (crcType == 1) 2 else if (crcType == 2) 4 else -1
-            if (expectedLen != -1 && crcBytes.size != expectedLen) {
+            val expectedLen = if (crcType == 1) 2 else 4
+            if (crcBytes.size != expectedLen) {
                 throw IllegalArgumentException("Invalid CRC length in PrimaryBlock: expected $expectedLen bytes, got ${crcBytes.size}")
             }
 
@@ -472,6 +485,43 @@ object Bpv7Parser {
         return serializeCanonicalBlock(11, block.blockNumber, block.blockControlFlags, 0, blockDataBytes)
     }
 
+    private fun readRequiredCbor(
+        stream: java.io.ByteArrayInputStream,
+        fieldName: String,
+    ): CBORObject {
+        return try {
+            CBORObject.Read(stream)
+                ?: throw IllegalArgumentException("Truncated BibBlock CBOR while reading $fieldName")
+        } catch (e: com.upokecenter.cbor.CBORException) {
+            throw IllegalArgumentException("Truncated or malformed BibBlock CBOR while reading $fieldName", e)
+        }
+    }
+
+    private fun verifyCanonicalBlockCrc(blockCbor: CBORObject) {
+        val crcType = blockCbor[3].AsInt32()
+        if (crcType == 0) return
+        if (crcType !in 1..2) {
+            throw IllegalArgumentException("Unsupported CRC type in canonical block: $crcType")
+        }
+        if (blockCbor.size() < 6) {
+            throw IllegalArgumentException("Missing CRC field in canonical block for crcType $crcType")
+        }
+        val crcBytes = blockCbor[5].GetByteString()
+        val expectedLen = if (crcType == 1) 2 else 4
+        if (crcBytes.size != expectedLen) {
+            throw IllegalArgumentException("Invalid CRC length in canonical block: expected $expectedLen bytes, got ${crcBytes.size}")
+        }
+        val verifyArray = CBORObject.NewArray()
+        for (i in 0 until 5) {
+            verifyArray.Add(blockCbor[i])
+        }
+        verifyArray.Add(CBORObject.FromObject(ByteArray(expectedLen)))
+        val computed = if (crcType == 1) computeCrc16(verifyArray.EncodeToBytes()) else computeCrc32c(verifyArray.EncodeToBytes())
+        if (!computed.contentEquals(crcBytes)) {
+            throw IllegalArgumentException("Canonical block CRC mismatch for crcType $crcType")
+        }
+    }
+
     fun deserializeBibBlock(cbor: CBORObject): BibBlock {
         if (cbor.type != CBORType.Array || cbor.size() < 5) {
             throw IllegalArgumentException("Invalid BibBlock CBOR: expected array with size >= 5")
@@ -483,7 +533,7 @@ object Bpv7Parser {
         val stream = java.io.ByteArrayInputStream(dataBytes)
 
         // 1. Targets
-        val targetsArray = CBORObject.Read(stream)
+        val targetsArray = readRequiredCbor(stream, "targets")
         val targets = mutableListOf<Int>()
         if (targetsArray.type == CBORType.Array) {
             for (i in 0 until targetsArray.size()) {
@@ -492,13 +542,13 @@ object Bpv7Parser {
         }
 
         // 2. Security Context
-        val securityContext = CBORObject.Read(stream).AsInt32()
+        val securityContext = readRequiredCbor(stream, "securityContext").AsInt32()
 
         // 3. Security Context Flags
-        val securityContextFlags = CBORObject.Read(stream).AsInt64Value()
+        val securityContextFlags = readRequiredCbor(stream, "securityContextFlags").AsInt64Value()
 
         // 4. Security Source (always present)
-        val securitySource = Eid.fromCbor(CBORObject.Read(stream))
+        val securitySource = Eid.fromCbor(readRequiredCbor(stream, "securitySource"))
 
         var variant = 5
         var scopeFlags = 7
@@ -506,7 +556,7 @@ object Bpv7Parser {
 
         // 5. Parameters (present if bit 0 of flags is set)
         if ((securityContextFlags and 1L) != 0L) {
-            val paramsArray = CBORObject.Read(stream)
+            val paramsArray = readRequiredCbor(stream, "parameters")
             if (paramsArray.type == CBORType.Array) {
                 for (i in 0 until paramsArray.size()) {
                     val param = paramsArray[i]
@@ -521,7 +571,7 @@ object Bpv7Parser {
         }
 
         // 6. Results
-        val resultsArray = CBORObject.Read(stream)
+        val resultsArray = readRequiredCbor(stream, "results")
         if (resultsArray.type == CBORType.Array && resultsArray.size() > 0) {
             val targetResults = resultsArray[0]
             if (targetResults.type == CBORType.Array) {
@@ -575,6 +625,7 @@ object Bpv7Parser {
             if (blockCbor.type != CBORType.Array || blockCbor.size() < 5) {
                 continue
             }
+            verifyCanonicalBlockCrc(blockCbor)
             val type = blockCbor[0].AsInt32()
             when (type) {
                 1 -> {
@@ -594,6 +645,11 @@ object Bpv7Parser {
                         deserializeBibBlock(blockCbor).apply {
                             rawBytes = blockCbor.EncodeToBytes()
                         }
+                }
+                12 -> {
+                    throw IllegalArgumentException(
+                        "BPSec BCB (Block Type 12) is excluded for amateur radio cleartext compliance (ITU Article 25)",
+                    )
                 }
             }
         }

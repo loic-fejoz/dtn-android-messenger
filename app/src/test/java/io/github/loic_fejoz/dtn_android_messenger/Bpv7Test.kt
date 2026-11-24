@@ -546,4 +546,94 @@ class Bpv7Test {
         val ipnBytes = Eid("ipn:1.2").toCbor().EncodeToBytes()
         assertArrayEquals(byteArrayOf(0x82.toByte(), 0x02, 0x82.toByte(), 0x01, 0x02), ipnBytes)
     }
+
+    @Test
+    fun testBcbType12Rejected() {
+        val primary =
+            PrimaryBlock(
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn:none"),
+                creationTimestamp = Pair(1000L, 1L),
+                lifetimeMs = 3600000L,
+            )
+        val bcbBlock = Bpv7Parser.serializeCanonicalBlock(12, 2, 0L, 0, byteArrayOf(1, 2, 3))
+        val payloadBlock = Bpv7Parser.serializeCanonicalBlock(1, 1, 0L, 0, "cipher".toByteArray())
+        val out = java.io.ByteArrayOutputStream()
+        out.write(0x9F)
+        out.write(Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes())
+        out.write(bcbBlock.EncodeToBytes())
+        out.write(payloadBlock.EncodeToBytes())
+        out.write(0xFF)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserialize(out.toByteArray())
+        }
+    }
+
+    @Test
+    fun testCanonicalBlockCrcVerificationAndUnsupportedTypes() {
+        val primary =
+            PrimaryBlock(
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn:none"),
+                creationTimestamp = Pair(1000L, 1L),
+                lifetimeMs = 3600000L,
+            )
+
+        // Build payload canonical block with valid CRC-32C (crcType = 2)
+        val blockNoCrc = Bpv7Parser.serializeCanonicalBlock(1, 1, 0L, 2, "hello".toByteArray())
+        blockNoCrc.Add(com.upokecenter.cbor.CBORObject.FromObject(ByteArray(4)))
+        val validCrc = Bpv7Parser.computeCrc32c(blockNoCrc.EncodeToBytes())
+        blockNoCrc[5] = com.upokecenter.cbor.CBORObject.FromObject(validCrc)
+
+        val outValid = java.io.ByteArrayOutputStream()
+        outValid.write(0x9F)
+        outValid.write(Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes())
+        outValid.write(blockNoCrc.EncodeToBytes())
+        outValid.write(0xFF)
+
+        val parsed = Bpv7Parser.deserialize(outValid.toByteArray())
+        assertEquals("hello", String(parsed.payloadBlock.data))
+
+        // Corrupt canonical block CRC
+        val badCrc = validCrc.clone().apply { this[0] = (this[0].toInt() xor 0xFF).toByte() }
+        blockNoCrc[5] = com.upokecenter.cbor.CBORObject.FromObject(badCrc)
+        val outBad = java.io.ByteArrayOutputStream()
+        outBad.write(0x9F)
+        outBad.write(Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes())
+        outBad.write(blockNoCrc.EncodeToBytes())
+        outBad.write(0xFF)
+        assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserialize(outBad.toByteArray())
+        }
+
+        // Unsupported crcType = 3 on primary block
+        val badPrimaryCbor = Bpv7Parser.serializePrimaryBlock(primary)
+        badPrimaryCbor[2] = com.upokecenter.cbor.CBORObject.FromObject(3)
+        assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserializePrimaryBlock(badPrimaryCbor)
+        }
+    }
+
+    @Test
+    fun testTruncatedBibAndUnsupportedEidSchemesThrowIllegalArgument() {
+        val truncatedBib = Bpv7Parser.serializeCanonicalBlock(11, 2, 0L, 0, byteArrayOf(0x81.toByte(), 0x01))
+        assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserializeBibBlock(truncatedBib)
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            Eid("http://example.com").toCbor()
+        }
+
+        val unknownSchemeCbor = com.upokecenter.cbor.CBORObject.NewArray().apply {
+            Add(99)
+            Add("foo")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            Eid.fromCbor(unknownSchemeCbor)
+        }
+    }
 }
