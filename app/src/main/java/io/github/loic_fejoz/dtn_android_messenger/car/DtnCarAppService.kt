@@ -11,6 +11,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import io.github.loic_fejoz.dtn_android_messenger.BuildConfig
+import io.github.loic_fejoz.dtn_android_messenger.R
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BundleRecordDao
 import io.github.loic_fejoz.dtn_android_messenger.data.model.BundleRecord
 import io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService
@@ -77,13 +78,13 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
                                                     if (bytesRead > 0) {
                                                         String(header, 0, bytesRead, StandardCharsets.UTF_8).take(120)
                                                     } else {
-                                                        "Contenu Vide"
+                                                        carContext.getString(R.string.car_empty_content)
                                                     }
                                                 } else {
-                                                    "Contenu Binaire"
+                                                    carContext.getString(R.string.car_binary_content)
                                                 }
                                             } catch (e: Exception) {
-                                                "Contenu Binaire"
+                                                carContext.getString(R.string.car_binary_content)
                                             }
                                         }
                                     }
@@ -107,7 +108,7 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
                     .setLoading(true)
                     .build(),
             )
-                .setTitle("Dernier Message DTN")
+                .setTitle(carContext.getString(R.string.car_last_message_title))
                 .setHeaderAction(Action.APP_ICON)
                 .build()
         }
@@ -118,8 +119,8 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
         if (bundle == null) {
             paneBuilder.addRow(
                 Row.Builder()
-                    .setTitle("Aucun message reçu")
-                    .addText("Les messages entrants s'afficheront ici en temps réel.")
+                    .setTitle(carContext.getString(R.string.car_no_message_title))
+                    .addText(carContext.getString(R.string.car_no_message_subtitle))
                     .build(),
             )
         } else {
@@ -127,7 +128,7 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
 
             paneBuilder.addRow(
                 Row.Builder()
-                    .setTitle("De : ${bundle.sourceEid}")
+                    .setTitle(carContext.getString(R.string.car_from_prefix, bundle.sourceEid))
                     .addText(payloadText)
                     .build(),
             )
@@ -135,7 +136,7 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
             // Option 1 : Reply action opening the canned responses
             val replyAction =
                 Action.Builder()
-                    .setTitle("Répondre")
+                    .setTitle(carContext.getString(R.string.car_reply))
                     .setOnClickListener {
                         screenManager.push(ReplyCarScreen(carContext, bundle))
                     }
@@ -145,7 +146,7 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
         }
 
         return PaneTemplate.Builder(paneBuilder.build())
-            .setTitle("Dernier Message DTN")
+            .setTitle(carContext.getString(R.string.car_last_message_title))
             .setHeaderAction(Action.APP_ICON)
             .build()
     }
@@ -158,7 +159,14 @@ class ReplyCarScreen(
     private val outboxRepository: io.github.loic_fejoz.dtn_android_messenger.data.repository.BundleOutboxRepository by inject()
 
     override fun onGetTemplate(): Template {
-        val quickReplies = listOf("Oui", "Non", "J'arrive", "En route", "Appelle-moi")
+        val quickReplies =
+            listOf(
+                carContext.getString(R.string.car_quick_reply_yes),
+                carContext.getString(R.string.car_quick_reply_no),
+                carContext.getString(R.string.car_quick_reply_arriving),
+                carContext.getString(R.string.car_quick_reply_enroute),
+                carContext.getString(R.string.car_quick_reply_call_me),
+            )
         val listBuilder = ItemList.Builder()
 
         quickReplies.forEach { text ->
@@ -174,7 +182,7 @@ class ReplyCarScreen(
 
         return ListTemplate.Builder()
             .setSingleList(listBuilder.build())
-            .setTitle("Répondre à ${replyToBundle.sourceEid.substringAfterLast("/")}")
+            .setTitle(carContext.getString(R.string.car_reply_to_prefix, replyToBundle.sourceEid.substringAfterLast("/")))
             .setHeaderAction(Action.BACK)
             .build()
     }

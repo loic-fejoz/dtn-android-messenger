@@ -20,10 +20,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.loic_fejoz.dtn_android_messenger.R
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BundleRecordDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.LocalServiceDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.SenmlEntryDao
@@ -95,7 +97,7 @@ fun SenmlLastScreen(
                 title = { Text(serviceName) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.senml_back))
                     }
                 },
                 actions = {
@@ -107,7 +109,7 @@ fun SenmlLastScreen(
                                 }
                             },
                         ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Tout supprimer", tint = MaterialTheme.colorScheme.error)
+                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.senml_delete_all), tint = MaterialTheme.colorScheme.error)
                         }
                     }
                 },
@@ -131,7 +133,7 @@ fun SenmlLastScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "Aucune mesure SenML reçue pour le moment.",
+                        text = stringResource(R.string.senml_empty),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -249,7 +251,7 @@ fun SenmlEntryCard(
                     ) {
                         Icon(
                             Icons.Default.ArrowUpward,
-                            contentDescription = "Monter",
+                            contentDescription = stringResource(R.string.senml_move_up),
                             tint = if (canMoveUp && !isEditing) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
                         )
                     }
@@ -260,7 +262,7 @@ fun SenmlEntryCard(
                     ) {
                         Icon(
                             Icons.Default.ArrowDownward,
-                            contentDescription = "Descendre",
+                            contentDescription = stringResource(R.string.senml_move_down),
                             tint = if (canMoveDown && !isEditing) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
                         )
                     }
@@ -334,7 +336,7 @@ fun SenmlEntryCard(
                         OutlinedTextField(
                             value = labelInput,
                             onValueChange = { labelInput = it },
-                            label = { Text("Label personnalisé") },
+                            label = { Text(stringResource(R.string.senml_custom_label)) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                             keyboardActions =
@@ -360,14 +362,14 @@ fun SenmlEntryCard(
                         IconButton(onClick = onStartEdit) {
                             Icon(
                                 Icons.Default.Edit,
-                                contentDescription = "Éditer le label",
+                                contentDescription = stringResource(R.string.senml_edit_label),
                                 tint = MaterialTheme.colorScheme.outline,
                             )
                         }
                         IconButton(onClick = onDelete) {
                             Icon(
                                 Icons.Default.Delete,
-                                contentDescription = "Supprimer",
+                                contentDescription = stringResource(R.string.senml_delete),
                                 tint = MaterialTheme.colorScheme.error,
                             )
                         }
@@ -380,14 +382,14 @@ fun SenmlEntryCard(
                         ) {
                             Icon(
                                 Icons.Default.Check,
-                                contentDescription = "Valider",
+                                contentDescription = stringResource(R.string.senml_confirm),
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         }
                         IconButton(onClick = onCancelEdit) {
                             Icon(
                                 Icons.Default.Close,
-                                contentDescription = "Annuler",
+                                contentDescription = stringResource(R.string.senml_cancel),
                                 tint = MaterialTheme.colorScheme.outline,
                             )
                         }
@@ -404,7 +406,7 @@ fun SenmlEntryCard(
                     TextButton(
                         onClick = { onSaveCustomLabel(null) },
                     ) {
-                        Text("Réinitialiser (Effacer label)", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                        Text(stringResource(R.string.senml_reset_label), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                     }
                 }
             }

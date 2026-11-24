@@ -2,105 +2,6 @@
 <issues format="6" by="lint 8.13.2" type="baseline" client="gradle" dependencies="false" name="AGP (8.13.2)" variant="all" version="8.13.2">
 
     <issue
-        id="UnknownIssueId"
-        message="Unknown issue id &quot;UnprotectedReceiver&quot;"
-        errorLine1="        enable += setOf(&quot;HardcodedDebugMode&quot;, &quot;UnprotectedReceiver&quot;, &quot;ExportedService&quot;)"
-        errorLine2="                                               ~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
-            line="57"
-            column="48"/>
-    </issue>
-
-    <issue
-        id="UnknownIssueId"
-        message="Unknown issue id &quot;UnprotectedReceiver&quot;"
-        errorLine1="        enable += setOf(&quot;HardcodedDebugMode&quot;, &quot;UnprotectedReceiver&quot;, &quot;ExportedService&quot;)"
-        errorLine2="                                               ~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
-            line="57"
-            column="48"/>
-    </issue>
-
-    <issue
-        id="MissingPermission"
-        message="Call requires permission which may be rejected by user: code should explicitly check to see if permission is available (with `checkPermission`) or explicitly handle a potential `SecurityException`"
-        errorLine1="        val scans = wifiManager.scanResults"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
-            line="70"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="MissingPermission"
-        message="Missing permissions required by WifiManager.getScanResults: android.permission.ACCESS_FINE_LOCATION"
-        errorLine1="        val scans = wifiManager.scanResults"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
-            line="70"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="MissingPermission"
-        message="Call requires permission which may be rejected by user: code should explicitly check to see if permission is available (with `checkPermission`) or explicitly handle a potential `SecurityException`"
-        errorLine1="        val configs = wifiManager.configuredNetworks"
-        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
-            line="80"
-            column="23"/>
-    </issue>
-
-    <issue
-        id="MissingPermission"
-        message="Missing permissions required by WifiManager.getConfiguredNetworks: android.permission.ACCESS_FINE_LOCATION"
-        errorLine1="        val configs = wifiManager.configuredNetworks"
-        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
-            line="80"
-            column="23"/>
-    </issue>
-
-    <issue
-        id="DefaultLocale"
-        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
-        errorLine1="    return String.format(&quot;%02d:%02d&quot;, mins, secs)"
-        errorLine2="           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/AudioPlayerCard.kt"
-            line="186"
-            column="12"/>
-    </issue>
-
-    <issue
-        id="DefaultLocale"
-        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
-        errorLine1="                                    text = String.format(&quot;Recording: %02d:%02d&quot;, recordingDuration / 60, recordingDuration % 60),"
-        errorLine2="                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
-            line="624"
-            column="44"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Field requires API level 29 (current min is 23): `android.provider.MediaStore.Downloads#EXTERNAL_CONTENT_URI`"
-        errorLine1="        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/BundleListScreen.kt"
-            line="247"
-            column="35"/>
-    </issue>
-
-    <issue
         id="OldTargetApi"
         message="Not targeting the latest versions of Android; compatibility modes apply. Consider testing and updating this version. Consult the `android.os.Build.VERSION_CODES` javadoc for details."
         errorLine1="        targetSdk = 35"
@@ -113,7 +14,7 @@
 
     <issue
         id="AndroidGradlePluginVersion"
-        message="A newer version of Gradle than 8.13 is available: 8.14.5"
+        message="A newer version of Gradle than 8.13 is available: 8.14.8"
         errorLine1="distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip"
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
@@ -135,12 +36,12 @@
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.core:core-ktx than 1.12.0 is available: 1.19.0"
+        message="A newer version of androidx.core:core-ktx than 1.12.0 is available: 1.19.1"
         errorLine1="    implementation(&quot;androidx.core:core-ktx:1.12.0&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="63"
+            line="72"
             column="20"/>
     </issue>
 
@@ -151,7 +52,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="64"
+            line="73"
             column="20"/>
     </issue>
 
@@ -162,18 +63,18 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="65"
+            line="74"
             column="20"/>
     </issue>
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.lifecycle:lifecycle-runtime-ktx than 2.7.0 is available: 2.11.0"
+        message="A newer version of androidx.lifecycle:lifecycle-runtime-ktx than 2.7.0 is available: 2.11.1"
         errorLine1="    implementation(&quot;androidx.lifecycle:lifecycle-runtime-ktx:2.7.0&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="66"
+            line="75"
             column="20"/>
     </issue>
 
@@ -184,62 +85,62 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="67"
-            column="20"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
-        message="A newer version of androidx.navigation:navigation-compose than 2.7.7 is available: 2.9.8"
-        errorLine1="    implementation(&quot;androidx.navigation:navigation-compose:2.7.7&quot;)"
-        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
             line="76"
             column="20"/>
     </issue>
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.room:room-runtime than 2.6.1 is available: 2.8.4"
+        message="A newer version of androidx.navigation:navigation-compose than 2.7.7 is available: 2.10.2"
+        errorLine1="    implementation(&quot;androidx.navigation:navigation-compose:2.7.7&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="85"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.room:room-runtime than 2.6.1 is available: 2.8.5"
         errorLine1="    implementation(&quot;androidx.room:room-runtime:$roomVersion&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="81"
+            line="90"
             column="20"/>
     </issue>
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.room:room-ktx than 2.6.1 is available: 2.8.4"
+        message="A newer version of androidx.room:room-ktx than 2.6.1 is available: 2.8.5"
         errorLine1="    implementation(&quot;androidx.room:room-ktx:$roomVersion&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="82"
+            line="91"
             column="20"/>
     </issue>
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.room:room-compiler than 2.6.1 is available: 2.8.4"
+        message="A newer version of androidx.room:room-compiler than 2.6.1 is available: 2.8.5"
         errorLine1="    ksp(&quot;androidx.room:room-compiler:$roomVersion&quot;)"
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="83"
+            line="92"
             column="9"/>
     </issue>
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.work:work-runtime-ktx than 2.9.0 is available: 2.11.2"
+        message="A newer version of androidx.work:work-runtime-ktx than 2.9.0 is available: 2.12.0"
         errorLine1="    implementation(&quot;androidx.work:work-runtime-ktx:2.9.0&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="95"
+            line="104"
             column="20"/>
     </issue>
 
@@ -250,7 +151,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="98"
+            line="107"
             column="20"/>
     </issue>
 
@@ -261,62 +162,84 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="101"
+            line="110"
             column="20"/>
     </issue>
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.test.ext:junit than 1.1.5 is available: 1.3.0"
-        errorLine1="    androidTestImplementation(&quot;androidx.test.ext:junit:1.1.5&quot;)"
+        message="A newer version of androidx.test.ext:junit than 1.2.1 is available: 1.3.0"
+        errorLine1="    androidTestImplementation(&quot;androidx.test.ext:junit:1.2.1&quot;)"
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="112"
+            line="123"
             column="31"/>
     </issue>
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.test.espresso:espresso-core than 3.5.1 is available: 3.7.0"
-        errorLine1="    androidTestImplementation(&quot;androidx.test.espresso:espresso-core:3.5.1&quot;)"
+        message="A newer version of androidx.test:rules than 1.6.1 is available: 1.7.0"
+        errorLine1="    androidTestImplementation(&quot;androidx.test:rules:1.6.1&quot;)"
+        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="124"
+            column="31"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.test.espresso:espresso-core than 3.6.1 is available: 3.7.0"
+        errorLine1="    androidTestImplementation(&quot;androidx.test.espresso:espresso-core:3.6.1&quot;)"
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="113"
+            line="125"
             column="31"/>
     </issue>
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.compose:compose-bom than 2024.02.00 is available: 2026.08.00"
+        message="A newer version of androidx.test.uiautomator:uiautomator than 2.3.0 is available: 2.4.1"
+        errorLine1="    androidTestImplementation(&quot;androidx.test.uiautomator:uiautomator:2.3.0&quot;)"
+        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="126"
+            column="31"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.compose:compose-bom than 2024.02.00 is available: 2026.11.01"
         errorLine1="    androidTestImplementation(platform(&quot;androidx.compose:compose-bom:2024.02.00&quot;))"
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="114"
+            line="127"
             column="31"/>
     </issue>
 
     <issue
         id="NewerVersionAvailable"
-        message="A newer version of io.ktor:ktor-network than 2.3.10 is available: 3.5.2"
+        message="A newer version of io.ktor:ktor-network than 2.3.10 is available: 3.6.1"
         errorLine1="    implementation(&quot;io.ktor:ktor-network:2.3.10&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="86"
+            line="95"
             column="20"/>
     </issue>
 
     <issue
         id="NewerVersionAvailable"
-        message="A newer version of com.squareup.okio:okio than 3.9.0 is available: 3.18.1"
+        message="A newer version of com.squareup.okio:okio than 3.9.0 is available: 3.18.2"
         errorLine1="    implementation(&quot;com.squareup.okio:okio:3.9.0&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="89"
+            line="98"
             column="20"/>
     </issue>
 
@@ -327,7 +250,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="92"
+            line="101"
             column="20"/>
     </issue>
 
@@ -338,7 +261,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="104"
+            line="113"
             column="20"/>
     </issue>
 
@@ -349,7 +272,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="105"
+            line="114"
             column="20"/>
     </issue>
 
@@ -360,8 +283,41 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="108"
+            line="117"
             column="20"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.junit.jupiter:junit-jupiter than 5.11.3 is available: 6.1.3"
+        errorLine1="    testImplementation(&quot;org.junit.jupiter:junit-jupiter:5.11.3&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="121"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.json:json than 20240303 is available: 20260814"
+        errorLine1="    testImplementation(&quot;org.json:json:20240303&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="122"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="PrivateResource"
+        message="The resource `@array/hosts_allowlist_sample` is marked as private in androidx.car.app:app:1.4.0"
+        errorLine1="                .addAllowedHosts(androidx.car.app.R.array.hosts_allowlist_sample)"
+        errorLine2="                                                          ~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/car/DtnCarAppService.kt"
+            line="37"
+            column="59"/>
     </issue>
 
     <issue
@@ -393,7 +349,7 @@
         errorLine2="                               ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/AudioPlayerCard.kt"
-            line="57"
+            line="32"
             column="32"/>
     </issue>
 
@@ -404,7 +360,7 @@
         errorLine2="                                      ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/AudioPlayerCard.kt"
-            line="58"
+            line="33"
             column="39"/>
     </issue>
 
@@ -415,7 +371,7 @@
         errorLine2="                                       ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
-            line="139"
+            line="106"
             column="40"/>
     </issue>
 
@@ -426,7 +382,7 @@
         errorLine2="                                        ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
-            line="145"
+            line="112"
             column="41"/>
     </issue>
 
@@ -474,14 +430,91 @@
     </issue>
 
     <issue
+        id="ButtonCase"
+        message="The standard Android way to capitalize CANCEL is &quot;Cancel&quot; (tip: use `@android:string/cancel` instead)"
+        errorLine1="    &lt;string name=&quot;config_reset_cancel&quot;>CANCEL&lt;/string>"
+        errorLine2="                                       ~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="40"
+            column="40"/>
+    </issue>
+
+    <issue
         id="UseKtx"
         message="Use the KTX extension function `String.toUri` instead?"
         errorLine1="                        val uri = Uri.parse(filePath)"
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/AudioPlayerCard.kt"
-            line="66"
+            line="42"
             column="35"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                prefs.edit().putString(prefKey, recipientEid).apply()"
+        errorLine2="                ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
+            line="88"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                prefs.edit().putString(prefKey, recipientEid).apply()"
+        errorLine2="                ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
+            line="95"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                            prefs.edit().putString(prefKey, it.trim()).apply()"
+        errorLine2="                            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
+            line="150"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                                        prefs.edit().putString(prefKey, target.trim()).apply()"
+        errorLine2="                                        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
+            line="233"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                            prefs.edit().putString(prefKey, recipientEid.trim()).apply()"
+        errorLine2="                            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
+            line="320"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            val editor = prefs.edit()"
+        errorLine2="                         ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/util/ConfigBackupManager.kt"
+            line="418"
+            column="26"/>
     </issue>
 
     <issue
@@ -491,8 +524,19 @@
         errorLine2="                    ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
-            line="180"
+            line="187"
             column="21"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                        prefs.edit().putInt(io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.PREF_MAX_BUNDLE_SIZE_MB, parsed).apply()"
+        errorLine2="                        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
+            line="200"
+            column="25"/>
     </issue>
 
     <issue
@@ -502,8 +546,19 @@
         errorLine2="                                    ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
-            line="634"
+            line="662"
             column="37"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                            PreferencesHelper.getEncryptedSharedPreferences(context).edit().clear().apply()"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
+            line="1584"
+            column="29"/>
     </issue>
 
     <issue
@@ -513,8 +568,30 @@
         errorLine2="                                                           ~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/service/DtnEngineService.kt"
-            line="461"
+            line="607"
             column="60"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putString(&quot;local_node_name&quot;, nodeEid).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/util/OnboardingHelper.kt"
+            line="32"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putBoolean(PREF_ONBOARDING_COMPLETED, completed).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/util/PreferencesHelper.kt"
+            line="40"
+            column="9"/>
     </issue>
 
     <issue
@@ -524,7 +601,7 @@
         errorLine2="                                                                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
-            line="137"
+            line="104"
             column="95"/>
     </issue>
 
@@ -535,7 +612,7 @@
         errorLine2="                            ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
-            line="706"
+            line="715"
             column="29"/>
     </issue>
 

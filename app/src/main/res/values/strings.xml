@@ -1,3 +1,56 @@
 <resources>
     <string name="app_name">DTN Messenger</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_title">DTN MESSENGER</string>
+    <string name="onboarding_welcome">Welcome! Please configure your node to get started.</string>
+    <string name="onboarding_callsign_option">OPTION 1: AMATEUR RADIO CALLSIGN</string>
+    <string name="onboarding_callsign_desc">Enter your callsign. The app will automatically configure your Chat, Files, and SenML channels.</string>
+    <string name="onboarding_callsign_label">Callsign (e.g. N0CALL or N0CALL-9)</string>
+    <string name="onboarding_validate_start">VALIDATE &amp; START</string>
+    <string name="onboarding_done_toast">Configuration complete!</string>
+    <string name="onboarding_or">  OR  </string>
+    <string name="onboarding_restore_option">OPTION 2: RESTORE A BACKUP</string>
+    <string name="onboarding_restore_desc">Already have a JSON backup file? Restore all your services, keys, and profiles.</string>
+    <string name="onboarding_restore_button">RESTORE FROM FILE (.JSON)</string>
+    <string name="onboarding_file_read_error">Unable to read selected file</string>
+    <string name="onboarding_import_failed">Import failed: %s</string>
+    <string name="onboarding_error_prefix">Error: %s</string>
+
+    <!-- SenML Last Screen -->
+    <string name="senml_back">Back</string>
+    <string name="senml_delete_all">Delete all</string>
+    <string name="senml_empty">No SenML measurements received yet.</string>
+    <string name="senml_move_up">Move up</string>
+    <string name="senml_move_down">Move down</string>
+    <string name="senml_custom_label">Custom label</string>
+    <string name="senml_edit_label">Edit label</string>
+    <string name="senml_delete">Delete</string>
+    <string name="senml_confirm">Confirm</string>
+    <string name="senml_cancel">Cancel</string>
+    <string name="senml_reset_label">Reset (Clear label)</string>
+
+    <!-- Configuration Reset -->
+    <string name="config_reset_title">APPLICATION RESET</string>
+    <string name="config_reset_desc">Clears all local configuration data (services, BPSec keys, CLA profiles, routes) and returns to the first-launch onboarding screen.</string>
+    <string name="config_reset_button">RESET CONFIGURATION</string>
+    <string name="config_reset_dialog_title">Reset application?</string>
+    <string name="config_reset_dialog_msg">This will delete all your local services, CLA profiles, routes, BPSec keys, and preferences. The app will restart on the onboarding screen.</string>
+    <string name="config_reset_confirm">RESET EVERYTHING</string>
+    <string name="config_reset_cancel">CANCEL</string>
+
+    <!-- Android Auto -->
+    <string name="car_last_message_title">Latest DTN Message</string>
+    <string name="car_no_message_title">No message received</string>
+    <string name="car_no_message_subtitle">Incoming messages will appear here in real time.</string>
+    <string name="car_empty_content">Empty Content</string>
+    <string name="car_binary_content">Binary Content</string>
+    <string name="car_from_prefix">From: %s</string>
+    <string name="car_reply">Reply</string>
+    <string name="car_reply_to_prefix">Reply to %s</string>
+    <string name="car_quick_reply_yes">Yes</string>
+    <string name="car_quick_reply_no">No</string>
+    <string name="car_quick_reply_arriving">On my way</string>
+    <string name="car_quick_reply_enroute">En route</string>
+    <string name="car_quick_reply_call_me">Call me</string>
 </resources>

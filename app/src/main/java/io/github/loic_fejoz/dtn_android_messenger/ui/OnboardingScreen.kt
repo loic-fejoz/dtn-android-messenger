@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.room.withTransaction
+import io.github.loic_fejoz.dtn_android_messenger.R
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.*
 import io.github.loic_fejoz.dtn_android_messenger.util.ConfigBackupManager
 import io.github.loic_fejoz.dtn_android_messenger.util.OnboardingHelper
@@ -64,7 +66,7 @@ fun OnboardingScreen(
                         val jsonText =
                             context.contentResolver.openInputStream(uri)?.use { stream ->
                                 stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                            } ?: throw IllegalStateException("Impossible de lire le fichier sélectionné")
+                            } ?: throw IllegalStateException(context.getString(R.string.onboarding_file_read_error))
 
                         if (ConfigBackupManager.isEncryptedBackup(jsonText)) {
                             pendingEncryptedBackupJson = jsonText
@@ -87,7 +89,7 @@ fun OnboardingScreen(
                             onOnboardingFinished()
                         }
                     } catch (e: Exception) {
-                        errorMessage = "Échec de l'importation : ${e.message}"
+                        errorMessage = context.getString(R.string.onboarding_import_failed, e.message ?: "")
                         Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
                     } finally {
                         isLoading = false
@@ -121,14 +123,14 @@ fun OnboardingScreen(
                 modifier = Modifier.size(64.dp),
             )
             Text(
-                text = "DTN MESSENGER",
+                text = stringResource(R.string.onboarding_title),
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = NeonCyan,
                 letterSpacing = 2.sp,
             )
             Text(
-                text = "Bienvenue ! Veuillez configurer votre nœud pour démarrer.",
+                text = stringResource(R.string.onboarding_welcome),
                 fontSize = 13.sp,
                 color = TextGray,
                 textAlign = TextAlign.Center,
@@ -162,13 +164,13 @@ fun OnboardingScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     Text(
-                        text = "OPTION 1 : INDICATIF RADIOAMATEUR",
+                        text = stringResource(R.string.onboarding_callsign_option),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = NeonCyan,
                     )
                     Text(
-                        text = "Saisissez votre indicatif (callsign). L'application configurera automatiquement vos canaux Chat, Files et SenML.",
+                        text = stringResource(R.string.onboarding_callsign_desc),
                         fontSize = 12.sp,
                         color = TextGray,
                         lineHeight = 18.sp,
@@ -178,7 +180,7 @@ fun OnboardingScreen(
                         value = callsignInput,
                         onValueChange = { callsignInput = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Indicatif (ex: N0CALL ou N0CALL-9)", color = TextGray) },
+                        label = { Text(stringResource(R.string.onboarding_callsign_label), color = TextGray) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
                         textStyle =
@@ -201,10 +203,10 @@ fun OnboardingScreen(
                                             localServiceDao = localServiceDao,
                                             convergenceProfileDao = convergenceProfileDao,
                                         )
-                                        Toast.makeText(context, "Configuration terminée !", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, context.getString(R.string.onboarding_done_toast), Toast.LENGTH_SHORT).show()
                                         onOnboardingFinished()
                                     } catch (e: Exception) {
-                                        errorMessage = "Erreur : ${e.message}"
+                                        errorMessage = context.getString(R.string.onboarding_error_prefix, e.message ?: "")
                                     } finally {
                                         isLoading = false
                                     }
@@ -215,19 +217,19 @@ fun OnboardingScreen(
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black),
                     ) {
-                        Text("VALIDER & DÉMARRER", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.onboarding_validate_start), fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            // Divider "OU"
+            // Divider
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 HorizontalDivider(modifier = Modifier.weight(1f), color = Color.White.copy(alpha = 0.15f))
                 Text(
-                    text = "  OU  ",
+                    text = stringResource(R.string.onboarding_or),
                     color = TextGray,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
@@ -247,13 +249,13 @@ fun OnboardingScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     Text(
-                        text = "OPTION 2 : RESTAURER UNE SAUVEGARDE",
+                        text = stringResource(R.string.onboarding_restore_option),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = NeonPurple,
                     )
                     Text(
-                        text = "Vous disposez déjà d'un fichier de sauvegarde JSON ? Restaurez l'intégralité de vos services, clés et profils.",
+                        text = stringResource(R.string.onboarding_restore_desc),
                         fontSize = 12.sp,
                         color = TextGray,
                         lineHeight = 18.sp,
@@ -269,7 +271,7 @@ fun OnboardingScreen(
                     ) {
                         Icon(Icons.Default.FileUpload, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("RESTAURER DEPUIS UN FICHIER (.JSON)", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.onboarding_restore_button), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -328,7 +330,7 @@ fun OnboardingScreen(
                                     Toast.makeText(context, result.summary, Toast.LENGTH_LONG).show()
                                     onOnboardingFinished()
                                 } catch (e: Exception) {
-                                    errorMessage = "Échec de l'importation : ${e.message}"
+                                    errorMessage = context.getString(R.string.onboarding_import_failed, e.message ?: "")
                                     Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
                                 } finally {
                                     isLoading = false

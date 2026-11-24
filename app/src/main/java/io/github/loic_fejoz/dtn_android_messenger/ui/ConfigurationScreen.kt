@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -43,6 +44,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.navigation.NavController
 import androidx.room.withTransaction
+import io.github.loic_fejoz.dtn_android_messenger.R
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BpsecKeyDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.ConvergenceProfileDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.LocalServiceDao
@@ -1413,9 +1415,9 @@ fun BackupConfigTab(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("RÉINITIALISATION DE L'APPLICATION", fontSize = 11.sp, color = GlowRed, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.config_reset_title), fontSize = 11.sp, color = GlowRed, fontWeight = FontWeight.Bold)
                 Text(
-                    "Efface l'ensemble des données de configuration locales (services, clés BPSec, profils CLA, routes) et réaffiche l'écran d'accueil de premier lancement.",
+                    stringResource(R.string.config_reset_desc),
                     color = TextGray,
                     fontSize = 12.sp,
                 )
@@ -1427,7 +1429,7 @@ fun BackupConfigTab(
                 ) {
                     Icon(Icons.Default.RestartAlt, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("RÉINITIALISER LA CONFIGURATION", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.config_reset_button), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1561,10 +1563,10 @@ fun BackupConfigTab(
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
             icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = GlowRed) },
-            title = { Text("Réinitialiser l'application ?", color = Color.White, fontWeight = FontWeight.Bold) },
+            title = { Text(stringResource(R.string.config_reset_dialog_title), color = Color.White, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "Cette action supprimera tous vos services locaux, profils CLA, routes, clés BPSec et préférences. L'application redémarrera sur l'écran d'accueil.",
+                    stringResource(R.string.config_reset_dialog_msg),
                     color = TextGray,
                     fontSize = 13.sp,
                 )
@@ -1588,12 +1590,12 @@ fun BackupConfigTab(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = GlowRed, contentColor = Color.White),
                 ) {
-                    Text("RÉINITIALISER TOUT", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.config_reset_confirm), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showResetDialog = false }) {
-                    Text("ANNULER", color = TextGray)
+                    Text(stringResource(R.string.config_reset_cancel), color = TextGray)
                 }
             },
             containerColor = CharcoalBg,

@@ -23,7 +23,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -55,7 +56,7 @@ android {
         checkReleaseBuilds = true
         warningsAsErrors = false
         baseline = file("lint-baseline.xml")
-        enable += setOf("HardcodedDebugMode", "UnprotectedReceiver", "ExportedService")
+        enable += setOf("HardcodedDebugMode", "ExportedService")
     }
 
     applicationVariants.all {
@@ -128,6 +129,10 @@ dependencies {
     androidTestImplementation("tools.fastlane:screengrab:2.1.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 tasks.withType<Test> {

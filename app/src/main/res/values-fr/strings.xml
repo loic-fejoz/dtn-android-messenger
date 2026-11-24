@@ -1,0 +1,56 @@
+<resources>
+    <string name="app_name">DTN Messenger</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_title">DTN MESSENGER</string>
+    <string name="onboarding_welcome">Bienvenue ! Veuillez configurer votre nœud pour démarrer.</string>
+    <string name="onboarding_callsign_option">OPTION 1 : INDICATIF RADIOAMATEUR</string>
+    <string name="onboarding_callsign_desc">Saisissez votre indicatif (callsign). L\'application configurera automatiquement vos canaux Chat, Files et SenML.</string>
+    <string name="onboarding_callsign_label">Indicatif (ex: N0CALL ou N0CALL-9)</string>
+    <string name="onboarding_validate_start">VALIDER &amp; DÉMARRER</string>
+    <string name="onboarding_done_toast">Configuration terminée !</string>
+    <string name="onboarding_or">  OU  </string>
+    <string name="onboarding_restore_option">OPTION 2 : RESTAURER UNE SAUVEGARDE</string>
+    <string name="onboarding_restore_desc">Vous disposez déjà d\'un fichier de sauvegarde JSON ? Restaurez l\'intégralité de vos services, clés et profils.</string>
+    <string name="onboarding_restore_button">RESTAURER DEPUIS UN FICHIER (.JSON)</string>
+    <string name="onboarding_file_read_error">Impossible de lire le fichier sélectionné</string>
+    <string name="onboarding_import_failed">Échec de l\'importation : %s</string>
+    <string name="onboarding_error_prefix">Erreur : %s</string>
+
+    <!-- SenML Last Screen -->
+    <string name="senml_back">Retour</string>
+    <string name="senml_delete_all">Tout supprimer</string>
+    <string name="senml_empty">Aucune mesure SenML reçue pour le moment.</string>
+    <string name="senml_move_up">Monter</string>
+    <string name="senml_move_down">Descendre</string>
+    <string name="senml_custom_label">Label personnalisé</string>
+    <string name="senml_edit_label">Éditer le label</string>
+    <string name="senml_delete">Supprimer</string>
+    <string name="senml_confirm">Valider</string>
+    <string name="senml_cancel">Annuler</string>
+    <string name="senml_reset_label">Réinitialiser (Effacer label)</string>
+
+    <!-- Configuration Reset -->
+    <string name="config_reset_title">RÉINITIALISATION DE L\'APPLICATION</string>
+    <string name="config_reset_desc">Efface l\'ensemble des données de configuration locales (services, clés BPSec, profils CLA, routes) et réaffiche l\'écran d\'accueil de premier lancement.</string>
+    <string name="config_reset_button">RÉINITIALISER LA CONFIGURATION</string>
+    <string name="config_reset_dialog_title">Réinitialiser l\'application ?</string>
+    <string name="config_reset_dialog_msg">Cette action supprimera tous vos services locaux, profils CLA, routes, clés BPSec et préférences. L\'application redémarrera sur l\'écran d\'accueil.</string>
+    <string name="config_reset_confirm">RÉINITIALISER TOUT</string>
+    <string name="config_reset_cancel">ANNULER</string>
+
+    <!-- Android Auto -->
+    <string name="car_last_message_title">Dernier Message DTN</string>
+    <string name="car_no_message_title">Aucun message reçu</string>
+    <string name="car_no_message_subtitle">Les messages entrants s\'afficheront ici en temps réel.</string>
+    <string name="car_empty_content">Contenu Vide</string>
+    <string name="car_binary_content">Contenu Binaire</string>
+    <string name="car_from_prefix">De : %s</string>
+    <string name="car_reply">Répondre</string>
+    <string name="car_reply_to_prefix">Répondre à %s</string>
+    <string name="car_quick_reply_yes">Oui</string>
+    <string name="car_quick_reply_no">Non</string>
+    <string name="car_quick_reply_arriving">J\'arrive</string>
+    <string name="car_quick_reply_enroute">En route</string>
+    <string name="car_quick_reply_call_me">Appelle-moi</string>
+</resources>

@@ -10,7 +10,8 @@ This document details how to write, mock, and run tests for the DTN Android Mess
 
 ## 2. Testing Framework & Tools
 The project utilizes:
-- **JUnit 4** for unit test structures.
+- **JUnit 5 (`junit-jupiter`)** for unit test structures.
+- **Jazzer** for fuzzing protocol/parser entry points.
 - **KSP** for compiling Room components during builds.
 
 ---
