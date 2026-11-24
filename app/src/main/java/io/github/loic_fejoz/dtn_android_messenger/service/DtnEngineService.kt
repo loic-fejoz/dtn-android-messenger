@@ -760,6 +760,8 @@ class DtnEngineService : Service() {
                         }
                     if (decryptedKey != null) {
                         // Compute signature
+                        val bibBlockNumber = 2
+                        val bibBlockFlags = 0L
                         val rawPrimary = Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
                         val signature =
                             Bpv7Parser.computeHmac(
@@ -769,15 +771,15 @@ class DtnEngineService : Service() {
                                 targetBlockNumber = payload.blockNumber,
                                 targetBlockFlags = payload.blockControlFlags,
                                 securityBlockType = 11,
-                                // BIB block number
-                                securityBlockNumber = 2,
-                                securityBlockFlags = 3,
+                                securityBlockNumber = bibBlockNumber,
+                                securityBlockFlags = bibBlockFlags,
                                 payloadBytes = payloadBytes,
                                 scopeFlags = 7,
                             )
                         bib =
                             BibBlock(
-                                blockNumber = 2,
+                                blockNumber = bibBlockNumber,
+                                blockControlFlags = bibBlockFlags,
                                 securitySource = Eid(record.sourceEid),
                                 signature = signature,
                             )
@@ -803,9 +805,10 @@ class DtnEngineService : Service() {
                     val outerPayloadBytes = pdu.EncodeToBytes()
 
                     // 2. Build the outer bundle targeting the gateway's bibe service
-                    val gatewayBibeEid = if (bibeGateway.endsWith("/bibe")) bibeGateway else "$bibeGateway/bibe"
+                    val cleanGateway = bibeGateway.trim().trimEnd('/')
+                    val gatewayBibeEid = if (cleanGateway.endsWith("/bibe")) cleanGateway else "$cleanGateway/bibe"
                     val prefs = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getEncryptedSharedPreferences(this@DtnEngineService)
-                    val localNodeBase = prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node"
+                    val localNodeBase = (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim().trimEnd('/')
                     val localBibeEid = "$localNodeBase/bibe"
 
                     val outerPrimary =

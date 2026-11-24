@@ -17,10 +17,15 @@ data class Eid(val uri: String) {
 
     fun toCbor(): CBORObject {
         val schemeCode = if (scheme.lowercase() == "dtn") 1 else 2
+        val trimmedSsp = ssp.trim()
         val cbor = CBORObject.NewArray()
         cbor.Add(schemeCode)
+        if (schemeCode == 1 && (trimmedSsp.equals("none", ignoreCase = true) || trimmedSsp == "0")) {
+            cbor.Add(0)
+            return cbor
+        }
         if (schemeCode == 2) {
-            val ipnParts = ssp.split(".")
+            val ipnParts = trimmedSsp.split(".")
             if (ipnParts.size == 2) {
                 val node = ipnParts[0].toLongOrNull()
                 val service = ipnParts[1].toLongOrNull()
@@ -33,7 +38,19 @@ data class Eid(val uri: String) {
                 }
             }
         }
-        cbor.Add(ssp)
+        val encodedSsp =
+            if (schemeCode == 1) {
+                val withSlashes = if (trimmedSsp.startsWith("//")) trimmedSsp else "//$trimmedSsp"
+                val nodeAndDemux = withSlashes.substring(2)
+                if (nodeAndDemux.isNotEmpty() && !nodeAndDemux.contains('/')) {
+                    "$withSlashes/"
+                } else {
+                    withSlashes
+                }
+            } else {
+                trimmedSsp
+            }
+        cbor.Add(encodedSsp)
         return cbor
     }
 
@@ -51,6 +68,8 @@ data class Eid(val uri: String) {
                         throw IllegalArgumentException("Invalid CBOR format for IPN EID: expected array with size >= 2")
                     }
                     "${sspObj[0].AsInt64Value()}.${sspObj[1].AsInt64Value()}"
+                } else if (sspObj.isNumber) {
+                    sspObj.AsInt64Value().toString()
                 } else {
                     sspObj.AsString()
                 }
@@ -72,7 +91,7 @@ data class PrimaryBlock(
     val destination: Eid,
     val source: Eid,
     val reportTo: Eid,
-    // <dtnTimeSeconds, sequenceNumber>
+    // <dtnTimeMillis, sequenceNumber>
     val creationTimestamp: Pair<Long, Long>,
     val lifetimeMs: Long,
     val crc: ByteArray? = null,
@@ -151,8 +170,8 @@ data class BibBlock(
     val targets: List<Int> = listOf(1),
     // BIB_HMAC_SHA2 = 1
     val securityContext: Int = 1,
-    // source + parameters present
-    val securityContextFlags: Long = 3,
+    // RFC 9172 §3.6: Bit 0 = Security Context Parameters Present (reserved bits MUST be 0)
+    val securityContextFlags: Long = 1,
     val securitySource: Eid,
     // HMAC-256-256 = 5
     val variant: Int = 5,
@@ -522,15 +541,23 @@ object Bpv7Parser {
     }
 
     fun serialize(bundle: Bundle): ByteArray {
-        val array = CBORObject.NewArray()
-        array.Add(serializePrimaryBlock(bundle.primaryBlock))
-        bundle.hopCountBlock?.let { array.Add(serializeHopCountBlock(it)) }
-        // Payload block
-        array.Add(
-            serializeCanonicalBlock(1, bundle.payloadBlock.blockNumber, bundle.payloadBlock.blockControlFlags, 0, bundle.payloadBlock.data),
+        val out = java.io.ByteArrayOutputStream()
+        out.write(0x9F) // RFC 9171 §4.2.1: CBOR indefinite-length array start
+        out.write(serializePrimaryBlock(bundle.primaryBlock).EncodeToBytes())
+        bundle.hopCountBlock?.let { out.write(serializeHopCountBlock(it).EncodeToBytes()) }
+        bundle.bibBlock?.let { out.write(serializeBibBlock(it).EncodeToBytes()) }
+        // RFC 9171 §4.3.1: Payload block MUST be the last block in the bundle
+        out.write(
+            serializeCanonicalBlock(
+                1,
+                bundle.payloadBlock.blockNumber,
+                bundle.payloadBlock.blockControlFlags,
+                0,
+                bundle.payloadBlock.data,
+            ).EncodeToBytes(),
         )
-        bundle.bibBlock?.let { array.Add(serializeBibBlock(it)) }
-        return array.EncodeToBytes()
+        out.write(0xFF) // CBOR break stop code
+        return out.toByteArray()
     }
 
     fun deserialize(bytes: ByteArray): Bundle {
