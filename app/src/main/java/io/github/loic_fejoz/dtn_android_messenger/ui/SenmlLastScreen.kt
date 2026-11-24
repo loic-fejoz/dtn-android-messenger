@@ -28,7 +28,7 @@ import io.github.loic_fejoz.dtn_android_messenger.data.dao.BundleRecordDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.LocalServiceDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.SenmlEntryDao
 import io.github.loic_fejoz.dtn_android_messenger.data.model.SenmlEntry
-import io.github.loic_fejoz.dtn_android_messenger.protocol.SenmlParser
+import io.github.loic_fejoz.dtn_android_messenger.protocol.SenmlIngestionHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -72,40 +72,7 @@ fun SenmlLastScreen(
                         val file = File(bundle.payloadFilePath)
                         if (file.exists()) {
                             val bytes = file.readBytes()
-                            val parsed = SenmlParser.parse(bytes, bundle.creationTimestamp)
-                            val latestInBundle =
-                                parsed.groupBy { it.name }
-                                    .mapValues { (_, list) -> list.maxByOrNull { it.timestamp }!! }
-                                    .values
-
-                            for (rec in latestInBundle) {
-                                val existing = senmlEntryDao.getEntry(serviceEid, rec.name)
-                                if (existing != null) {
-                                    if (rec.timestamp >= existing.timestamp) {
-                                        senmlEntryDao.insertOrUpdate(
-                                            existing.copy(
-                                                value = rec.value,
-                                                unit = rec.unit,
-                                                timestamp = rec.timestamp,
-                                                isDeleted = false,
-                                            ),
-                                        )
-                                    }
-                                } else {
-                                    val maxOrder = senmlEntryDao.getMaxOrder(serviceEid) ?: 0
-                                    senmlEntryDao.insertOrUpdate(
-                                        SenmlEntry(
-                                            serviceEid = serviceEid,
-                                            name = rec.name,
-                                            value = rec.value,
-                                            unit = rec.unit,
-                                            timestamp = rec.timestamp,
-                                            displayOrder = maxOrder + 1,
-                                            isDeleted = false,
-                                        ),
-                                    )
-                                }
-                            }
+                            SenmlIngestionHelper.ingest(serviceEid, bytes, bundle.creationTimestamp, senmlEntryDao)
                         }
                     } catch (e: Exception) {
                         // Ignore corrupted bundles

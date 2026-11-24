@@ -148,7 +148,7 @@ class ReplyCarScreen(
     carContext: CarContext,
     private val replyToBundle: BundleRecord,
 ) : Screen(carContext), KoinComponent {
-    private val bundleRecordDao: BundleRecordDao by inject()
+    private val outboxRepository: io.github.loic_fejoz.dtn_android_messenger.data.repository.BundleOutboxRepository by inject()
 
     override fun onGetTemplate(): Template {
         val quickReplies = listOf("Oui", "Non", "J'arrive", "En route", "Appelle-moi")
@@ -174,43 +174,13 @@ class ReplyCarScreen(
 
     private fun sendReply(text: String) {
         lifecycleScope.launch {
-            val context = carContext
             withContext(Dispatchers.IO) {
-                val payloadsDir = File(context.filesDir, "payloads")
-                if (!payloadsDir.exists()) payloadsDir.mkdirs()
-
-                val bundleId = UUID.randomUUID().toString()
-                val payloadFile = File(payloadsDir, "$bundleId.bin")
-                FileOutputStream(payloadFile).use { fos ->
-                    fos.write(text.toByteArray(StandardCharsets.UTF_8))
-                }
-
-                val record =
-                    BundleRecord(
-                        bundleId = bundleId,
-                        destinationEid = replyToBundle.sourceEid,
-                        sourceEid = replyToBundle.destinationEid,
-                        creationTimestamp = System.currentTimeMillis(),
-                        sequenceNumber = System.currentTimeMillis() % 100000,
-                        lifetimeMs = io.github.loic_fejoz.dtn_android_messenger.data.model.BundleRecord.DEFAULT_LIFETIME_MS,
-                        payloadFilePath = payloadFile.absolutePath,
-                        state = io.github.loic_fejoz.dtn_android_messenger.data.model.BundleState.OUTBOX,
-                        isRead = true,
-                        bpsecStatus = io.github.loic_fejoz.dtn_android_messenger.data.model.BpsecStatus.UNVERIFIED,
-                        hopCount = 0,
-                    )
-                bundleRecordDao.insert(record)
-
-                // Trigger engine service to flush the queue
-                val serviceIntent =
-                    Intent(context, DtnEngineService::class.java).apply {
-                        action = "FLUSH_QUEUE"
-                    }
-                try {
-                    androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
-                } catch (e: Exception) {
-                    android.util.Log.e("DtnCarAppService", "Failed to start foreground service: ${e.message}")
-                }
+                outboxRepository.enqueueTextBundle(
+                    sourceEid = replyToBundle.destinationEid,
+                    destinationEid = replyToBundle.sourceEid,
+                    text = text,
+                )
+                outboxRepository.triggerQueueFlush()
             }
 
             // Pop back to the last message screen on main thread

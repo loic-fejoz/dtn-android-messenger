@@ -30,4 +30,11 @@ val appModule =
         single { get<AppDatabase>().systemLogDao() }
         single { get<AppDatabase>().senmlEntryDao() }
         single<io.github.loic_fejoz.dtn_android_messenger.util.TimeProvider> { io.github.loic_fejoz.dtn_android_messenger.util.SystemTimeProvider }
+        single {
+            io.github.loic_fejoz.dtn_android_messenger.data.repository.BundleOutboxRepository(
+                androidContext(),
+                get(),
+                get(),
+            )
+        }
     }

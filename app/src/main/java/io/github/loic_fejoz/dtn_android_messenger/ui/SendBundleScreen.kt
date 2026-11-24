@@ -48,10 +48,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BundleRecordDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.LocalServiceDao
-import io.github.loic_fejoz.dtn_android_messenger.data.model.BpsecStatus
-import io.github.loic_fejoz.dtn_android_messenger.data.model.BundleRecord
-import io.github.loic_fejoz.dtn_android_messenger.data.model.BundleState
-import io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService
+import io.github.loic_fejoz.dtn_android_messenger.data.repository.BundleOutboxRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -123,6 +120,7 @@ fun SendBundleScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val outboxRepository: BundleOutboxRepository = org.koin.compose.koinInject()
 
     // Read local node name/EID from preferences
     val prefs = remember { io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getEncryptedSharedPreferences(context) }
@@ -748,29 +746,15 @@ fun SendBundleScreen(
                             val calculatedLifetimeMs = parsedTtlValue * multiplier
 
                             withContext(Dispatchers.IO) {
-                                val record =
-                                    BundleRecord(
-                                        bundleId = payloadFile.nameWithoutExtension,
-                                        destinationEid = destination.trim(),
-                                        sourceEid = resolvedSourceEid,
-                                        creationTimestamp = System.currentTimeMillis(),
-                                        sequenceNumber = System.currentTimeMillis() % 100000,
-                                        lifetimeMs = calculatedLifetimeMs,
-                                        payloadFilePath = payloadFile.absolutePath,
-                                        state = BundleState.OUTBOX,
-                                        isRead = true,
-                                        bpsecStatus = BpsecStatus.UNVERIFIED,
-                                        hopCount = 0,
-                                    )
-                                bundleRecordDao.insert(record)
+                                outboxRepository.enqueuePayloadFile(
+                                    sourceEid = resolvedSourceEid,
+                                    destinationEid = destination,
+                                    payloadFile = payloadFile,
+                                    lifetimeMs = calculatedLifetimeMs,
+                                )
                             }
 
-                            // Start service queue flush
-                            val serviceIntent =
-                                Intent(context, DtnEngineService::class.java).apply {
-                                    action = "FLUSH_QUEUE"
-                                }
-                            androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
+                            outboxRepository.triggerQueueFlush()
 
                             Toast.makeText(context, "Bundle created in OUTBOX. Transmission pending.", Toast.LENGTH_SHORT).show()
                             navController.popBackStack()

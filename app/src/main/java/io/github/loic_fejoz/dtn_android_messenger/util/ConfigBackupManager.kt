@@ -48,16 +48,9 @@ object ConfigBackupManager {
     private const val IV_BYTES = 12
     private const val GCM_TAG_BITS = 128
 
-    fun bytesToHex(bytes: ByteArray): String {
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
+    fun bytesToHex(bytes: ByteArray): String = HexUtils.bytesToHex(bytes)
 
-    fun hexToBytes(hex: String): ByteArray {
-        val clean = hex.trim()
-        if (clean.isEmpty()) return ByteArray(0)
-        require(clean.length % 2 == 0) { "Hex string length must be even" }
-        return clean.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-    }
+    fun hexToBytes(hex: String): ByteArray = HexUtils.hexToBytes(hex)
 
     private fun base64Decode(encoded: String): ByteArray {
         return try {

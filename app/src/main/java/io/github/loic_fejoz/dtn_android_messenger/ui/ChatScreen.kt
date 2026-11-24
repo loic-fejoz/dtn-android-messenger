@@ -35,18 +35,15 @@ import io.github.loic_fejoz.dtn_android_messenger.data.dao.BundleRecordDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.LocalServiceDao
 import io.github.loic_fejoz.dtn_android_messenger.data.model.BpsecStatus
 import io.github.loic_fejoz.dtn_android_messenger.data.model.BundleRecord
-import io.github.loic_fejoz.dtn_android_messenger.data.model.BundleState
 import io.github.loic_fejoz.dtn_android_messenger.data.model.LocalService
-import io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService
+import io.github.loic_fejoz.dtn_android_messenger.data.repository.BundleOutboxRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,6 +55,7 @@ fun ChatScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val outboxRepository: BundleOutboxRepository = org.koin.compose.koinInject()
     val prefs = remember { io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getEncryptedSharedPreferences(context) }
     val prefKey = remember(serviceEid) { "chat_last_recipient_$serviceEid" }
 
@@ -317,41 +315,16 @@ fun ChatScreen(
                             }
                             prefs.edit().putString(prefKey, recipientEid.trim()).apply()
                             scope.launch {
-                                val bundleId = UUID.randomUUID().toString()
+                                val textToSend = replyText
                                 withContext(Dispatchers.IO) {
-                                    // Save payload
-                                    val payloadsDir = File(context.filesDir, "payloads")
-                                    if (!payloadsDir.exists()) payloadsDir.mkdirs()
-
-                                    val payloadFile = File(payloadsDir, "$bundleId.bin")
-                                    FileOutputStream(payloadFile).use { fos ->
-                                        fos.write(replyText.toByteArray(Charsets.UTF_8))
-                                    }
-
-                                    val record =
-                                        BundleRecord(
-                                            bundleId = bundleId,
-                                            destinationEid = recipientEid,
-                                            sourceEid = serviceEid,
-                                            creationTimestamp = System.currentTimeMillis(),
-                                            sequenceNumber = System.currentTimeMillis() % 100000,
-                                            lifetimeMs = BundleRecord.DEFAULT_LIFETIME_MS,
-                                            payloadFilePath = payloadFile.absolutePath,
-                                            state = BundleState.OUTBOX,
-                                            isRead = true,
-                                            bpsecStatus = BpsecStatus.UNVERIFIED,
-                                            hopCount = 0,
-                                        )
-                                    bundleRecordDao.insert(record)
+                                    outboxRepository.enqueueTextBundle(
+                                        sourceEid = serviceEid,
+                                        destinationEid = recipientEid,
+                                        text = textToSend,
+                                    )
                                 }
                                 replyText = ""
-
-                                // Trigger service flush
-                                val serviceIntent =
-                                    Intent(context, DtnEngineService::class.java).apply {
-                                        action = "FLUSH_QUEUE"
-                                    }
-                                androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
+                                outboxRepository.triggerQueueFlush()
                             }
                         }
                     },

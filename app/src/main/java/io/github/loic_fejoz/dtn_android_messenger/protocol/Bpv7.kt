@@ -381,13 +381,19 @@ object Bpv7Parser {
                 verifyArray.Add(CBORObject.FromObject(ByteArray(2)))
                 val computed = computeCrc16(verifyArray.EncodeToBytes())
                 if (!computed.contentEquals(crcBytes)) {
-                    throw IllegalArgumentException("PrimaryBlock CRC-16 mismatch: expected ${crcBytes.joinToString("") { "%02x".format(it) }}, computed ${computed.joinToString("") { "%02x".format(it) }}")
+                    throw IllegalArgumentException(
+                        "PrimaryBlock CRC-16 mismatch: expected ${io.github.loic_fejoz.dtn_android_messenger.util.HexUtils.bytesToHex(crcBytes)}, " +
+                            "computed ${io.github.loic_fejoz.dtn_android_messenger.util.HexUtils.bytesToHex(computed)}",
+                    )
                 }
             } else if (crcType == 2) {
                 verifyArray.Add(CBORObject.FromObject(ByteArray(4)))
                 val computed = computeCrc32c(verifyArray.EncodeToBytes())
                 if (!computed.contentEquals(crcBytes)) {
-                    throw IllegalArgumentException("PrimaryBlock CRC-32C mismatch: expected ${crcBytes.joinToString("") { "%02x".format(it) }}, computed ${computed.joinToString("") { "%02x".format(it) }}")
+                    throw IllegalArgumentException(
+                        "PrimaryBlock CRC-32C mismatch: expected ${io.github.loic_fejoz.dtn_android_messenger.util.HexUtils.bytesToHex(crcBytes)}, " +
+                            "computed ${io.github.loic_fejoz.dtn_android_messenger.util.HexUtils.bytesToHex(computed)}",
+                    )
                 }
             }
         }

@@ -615,7 +615,7 @@ fun KeystoreConfigTab(
                     null
                 }
             }
-        localKeyHex = decryptedBytes?.joinToString("") { "%02x".format(it) } ?: ""
+        localKeyHex = decryptedBytes?.let { io.github.loic_fejoz.dtn_android_messenger.util.HexUtils.bytesToHex(it) } ?: ""
     }
 
     val scrollState = rememberScrollState()
@@ -707,7 +707,7 @@ fun KeystoreConfigTab(
                             val secureRandom = java.security.SecureRandom()
                             val keyBytes = ByteArray(32)
                             secureRandom.nextBytes(keyBytes)
-                            localKeyHex = keyBytes.joinToString("") { "%02x".format(it) }
+                            localKeyHex = io.github.loic_fejoz.dtn_android_messenger.util.HexUtils.bytesToHex(keyBytes)
                         },
                         modifier = Modifier.weight(1.5f),
                         colors = ButtonDefaults.buttonColors(containerColor = GlassCardColor, contentColor = Color.White),
@@ -738,7 +738,7 @@ fun KeystoreConfigTab(
                             }
                             val keyBytes =
                                 try {
-                                    localKeyHex.trim().chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                                    io.github.loic_fejoz.dtn_android_messenger.util.HexUtils.hexToBytes(localKeyHex)
                                 } catch (e: Exception) {
                                     Toast.makeText(context, "Invalid Hex format!", Toast.LENGTH_SHORT).show()
                                     return@Button
@@ -804,7 +804,7 @@ fun KeystoreConfigTab(
                         }
                         val keyBytes =
                             try {
-                                secretHex.trim().chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                                io.github.loic_fejoz.dtn_android_messenger.util.HexUtils.hexToBytes(secretHex)
                             } catch (e: Exception) {
                                 Toast.makeText(context, "Invalid Hex format!", Toast.LENGTH_SHORT).show()
                                 return@Button
