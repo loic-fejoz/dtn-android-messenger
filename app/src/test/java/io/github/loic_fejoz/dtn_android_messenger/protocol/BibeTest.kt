@@ -24,6 +24,11 @@ class BibeTest {
         val innerBundle = Bundle(innerPrimary, innerPayload, innerHopCount, null)
 
         val innerBundleBytes = Bpv7Parser.serialize(innerBundle)
+        assertEquals(0x9F.toByte(), innerBundleBytes.first())
+        assertEquals(0xFF.toByte(), innerBundleBytes.last())
+        val innerCbor = CBORObject.DecodeFromBytes(innerBundleBytes)
+        assertEquals(9, innerCbor[0].size())
+        assertEquals(1, innerCbor[innerCbor.size() - 1][0].AsInt32())
 
         // 2. Encapsulate into a BIBE PDU (CBOR Administrative Record 64443)
         // Format: [64443, [transmission-id, retransmission-time, encapsulated-bundle]]
@@ -52,6 +57,11 @@ class BibeTest {
         val outerBundle = Bundle(outerPrimary, outerPayload, outerHopCount, null)
 
         val outerBundleBytes = Bpv7Parser.serialize(outerBundle)
+        assertEquals(0x9F.toByte(), outerBundleBytes.first())
+        assertEquals(0xFF.toByte(), outerBundleBytes.last())
+        val outerCbor = CBORObject.DecodeFromBytes(outerBundleBytes)
+        assertEquals(9, outerCbor[0].size())
+        assertEquals(1, outerCbor[outerCbor.size() - 1][0].AsInt32())
 
         // 4. Deserialize outer bundle
         val deserializedOuter = Bpv7Parser.deserialize(outerBundleBytes)
@@ -195,5 +205,102 @@ class BibeTest {
         val isMatchedBroadcast3 = matchedLocalServices3.any { it.isBroadcast }
         val shouldForward3 = nextHopProfileExists && (!isLocal3 || isMatchedBroadcast3)
         assertTrue(shouldForward3)
+    }
+
+    @Test
+    fun testSignedInnerBundleInBibePduRoundTrip() {
+        val secretKey = "bibe_inner_secret_key_32_bytes!!".toByteArray(Charsets.UTF_8)
+        val innerPrimary =
+            PrimaryBlock(
+                destination = Eid("dtn://destination/chat"),
+                source = Eid("dtn://source/chat"),
+                reportTo = Eid("dtn:none"),
+                creationTimestamp = Pair(1000L, 7L),
+                lifetimeMs = 3600000L,
+            )
+        val innerPayloadData = "Signed inner bundle over BIBE".toByteArray(Charsets.UTF_8)
+        val innerPayload = PayloadBlock(data = innerPayloadData)
+        val innerHopCount = HopCountBlock(hopLimit = 64, hopCount = 1)
+        val rawInnerPrimary = Bpv7Parser.serializePrimaryBlock(innerPrimary).EncodeToBytes()
+        val innerSig =
+            Bpv7Parser.computeHmac(
+                secretKey = secretKey,
+                primaryBlockBytes = rawInnerPrimary,
+                targetBlockType = 1,
+                targetBlockNumber = innerPayload.blockNumber,
+                targetBlockFlags = innerPayload.blockControlFlags,
+                securityBlockType = 11,
+                securityBlockNumber = 2,
+                securityBlockFlags = 0L,
+                payloadBytes = innerPayloadData,
+                scopeFlags = 7,
+            )
+        val innerBib =
+            BibBlock(
+                blockNumber = 2,
+                blockControlFlags = 0L,
+                securitySource = Eid("dtn://source/chat"),
+                signature = innerSig,
+            )
+        val innerBundle = Bundle(innerPrimary, innerPayload, innerHopCount, innerBib)
+        val innerBundleBytes = Bpv7Parser.serialize(innerBundle)
+
+        val pduContent =
+            CBORObject.NewArray().apply {
+                Add(100)
+                Add(0)
+                Add(innerBundleBytes)
+            }
+        val pdu =
+            CBORObject.NewArray().apply {
+                Add(64443)
+                Add(pduContent)
+            }
+        val outerPrimary =
+            PrimaryBlock(
+                destination = Eid("dtn://gateway/bibe"),
+                source = Eid("dtn://my-node/bibe"),
+                reportTo = Eid("dtn:none"),
+                creationTimestamp = Pair(2000L, 8L),
+                lifetimeMs = 3600000L,
+            )
+        val outerBundle =
+            Bundle(
+                outerPrimary,
+                PayloadBlock(data = pdu.EncodeToBytes()),
+                HopCountBlock(hopLimit = 64, hopCount = 1),
+                null,
+            )
+        val outerBundleBytes = Bpv7Parser.serialize(outerBundle)
+
+        assertEquals(0x9F.toByte(), outerBundleBytes.first())
+        assertEquals(0xFF.toByte(), outerBundleBytes.last())
+        val outerCbor = CBORObject.DecodeFromBytes(outerBundleBytes)
+        assertEquals(1, outerCbor[outerCbor.size() - 1][0].AsInt32())
+
+        val deserializedOuter = Bpv7Parser.deserialize(outerBundleBytes)
+        val extractedInnerBytes = CBORObject.DecodeFromBytes(deserializedOuter.payloadBlock.data)[1][2].GetByteString()
+        assertEquals(0x9F.toByte(), extractedInnerBytes.first())
+        assertEquals(0xFF.toByte(), extractedInnerBytes.last())
+        val innerCbor = CBORObject.DecodeFromBytes(extractedInnerBytes)
+        assertEquals(1, innerCbor[innerCbor.size() - 1][0].AsInt32())
+
+        val deserializedInner = Bpv7Parser.deserialize(extractedInnerBytes)
+        val rxBib = deserializedInner.bibBlock!!
+        assertEquals(1L, rxBib.securityContextFlags)
+        val verifiedSig =
+            Bpv7Parser.computeHmac(
+                secretKey = secretKey,
+                primaryBlockBytes = deserializedInner.primaryBlock.rawBytes!!,
+                targetBlockType = 1,
+                targetBlockNumber = deserializedInner.payloadBlock.blockNumber,
+                targetBlockFlags = deserializedInner.payloadBlock.blockControlFlags,
+                securityBlockType = 11,
+                securityBlockNumber = rxBib.blockNumber,
+                securityBlockFlags = rxBib.blockControlFlags,
+                payloadBytes = deserializedInner.payloadBlock.data,
+                scopeFlags = rxBib.scopeFlags,
+            )
+        assertArrayEquals(rxBib.signature, verifiedSig)
     }
 }

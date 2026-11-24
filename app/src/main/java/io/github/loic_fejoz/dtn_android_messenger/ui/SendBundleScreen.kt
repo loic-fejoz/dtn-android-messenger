@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
 import android.widget.Toast
+import io.github.loic_fejoz.dtn_android_messenger.util.OggOpusFixer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
@@ -127,7 +128,7 @@ fun SendBundleScreen(
     val prefs = remember { io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getEncryptedSharedPreferences(context) }
     val lastDestination = remember { prefs.getString("last_destination_eid", "") ?: "" }
     var destination by remember { mutableStateOf(preFilledDest.ifEmpty { lastDestination }) }
-    var ttlValue by remember { mutableStateOf("1") }
+    var ttlValue by remember { mutableStateOf("48") }
     var ttlUnit by remember { mutableStateOf("h") }
     val localNodeName = remember { mutableStateOf(prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node") }
 
@@ -204,19 +205,28 @@ fun SendBundleScreen(
 
     fun stopRecording(save: Boolean) {
         isRecording = false
-        try {
-            mediaRecorder?.apply {
-                stop()
-                release()
-            }
-        } catch (e: Exception) {
-            // Ignore if release failed
-        }
+        val recorder = mediaRecorder
         mediaRecorder = null
+        try {
+            recorder?.stop()
+        } catch (e: Exception) {
+            android.util.Log.e("SendBundleScreen", "MediaRecorder.stop() failed", e)
+        } finally {
+            try {
+                recorder?.release()
+            } catch (e: Exception) {
+                android.util.Log.e("SendBundleScreen", "MediaRecorder.release() failed", e)
+            }
+        }
 
         if (save && !recordingCancelled) {
             val file = recordingFile
             if (file != null && file.exists() && file.length() > 0) {
+                // Post-process the Ogg container to fix Stagefright non-conformities (EOS flag, granulepos, preskip)
+                if (file.extension.equals("ogg", ignoreCase = true) || file.extension.equals("opus", ignoreCase = true)) {
+                    OggOpusFixer.fixOggOpusFile(file)
+                }
+
                 selectedFileUri = Uri.fromFile(file)
                 selectedFileName = file.name
                 selectedFileSize = file.length()
@@ -703,6 +713,9 @@ fun SendBundleScreen(
                                                 input!!.copyTo(output)
                                             }
                                         }
+                                        if (file.extension.equals("ogg", ignoreCase = true) || file.extension.equals("opus", ignoreCase = true)) {
+                                            OggOpusFixer.fixOggOpusFile(file)
+                                        }
                                     } else {
                                         val textBytes = payloadText.toByteArray(Charsets.UTF_8)
                                         FileOutputStream(file).use { fos ->
@@ -723,7 +736,7 @@ fun SendBundleScreen(
                             // Save last destination EID in preferences
                             prefs.edit().putString("last_destination_eid", destination.trim()).apply()
 
-                            val parsedTtlValue = ttlValue.toLongOrNull() ?: 1L
+                            val parsedTtlValue = ttlValue.toLongOrNull() ?: 48L
                             val multiplier =
                                 when (ttlUnit) {
                                     "s" -> 1000L

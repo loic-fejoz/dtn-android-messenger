@@ -74,7 +74,12 @@ data class BundleRecord(
     val isRead: Boolean,
     val bpsecStatus: BpsecStatus,
     val hopCount: Int,
-)
+) {
+    companion object {
+        // 48 hours default lifetime in milliseconds (RFC 9171)
+        const val DEFAULT_LIFETIME_MS = 48L * 3600L * 1000L
+    }
+}
 
 @Entity(tableName = "routing_rules")
 data class RoutingRule(

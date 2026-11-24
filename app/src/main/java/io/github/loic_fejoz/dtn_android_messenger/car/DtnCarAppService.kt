@@ -185,7 +185,7 @@ class ReplyCarScreen(
                         sourceEid = replyToBundle.destinationEid,
                         creationTimestamp = System.currentTimeMillis(),
                         sequenceNumber = System.currentTimeMillis() % 100000,
-                        lifetimeMs = 3600000L,
+                        lifetimeMs = io.github.loic_fejoz.dtn_android_messenger.data.model.BundleRecord.DEFAULT_LIFETIME_MS,
                         payloadFilePath = payloadFile.absolutePath,
                         state = io.github.loic_fejoz.dtn_android_messenger.data.model.BundleState.OUTBOX,
                         isRead = true,

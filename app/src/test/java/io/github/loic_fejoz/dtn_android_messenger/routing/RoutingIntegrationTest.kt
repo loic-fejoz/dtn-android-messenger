@@ -237,9 +237,9 @@ class RoutingIntegrationTest {
 
         val success = adapter.sendBundles(listOf(item), profile.targetAddress)
 
-        assertTrue(latch.await(15, TimeUnit.SECONDS))
-        assertTrue(success)
-        assertTrue(acked)
+        assertTrue(latch.await(15, TimeUnit.SECONDS), "Mock server did not receive bundle within 15s (sc1)")
+        assertTrue(success, "sendBundles() must return true on XFER_ACK (sc1)")
+        assertTrue(acked, "onAcknowledged callback must complete before sendBundles() returns (sc1)")
         assertEquals(1, receivedBundles.size)
 
         val receivedBundle = Bpv7Parser.deserialize(receivedBundles[0])
@@ -351,9 +351,9 @@ class RoutingIntegrationTest {
 
         val success = adapter.sendBundles(listOf(item), profileNodeC.targetAddress)
 
-        assertTrue(latch.await(15, TimeUnit.SECONDS))
-        assertTrue(success)
-        assertTrue(acked)
+        assertTrue(latch.await(15, TimeUnit.SECONDS), "Mock server did not receive bundle within 15s (sc3)")
+        assertTrue(success, "sendBundles() must return true on XFER_ACK (sc3)")
+        assertTrue(acked, "onAcknowledged callback must complete before sendBundles() returns (sc3)")
         assertEquals(1, receivedBundles.size)
 
         val receivedBundle = Bpv7Parser.deserialize(receivedBundles[0])
@@ -384,7 +384,7 @@ class RoutingIntegrationTest {
             blockNumber = 2,
             targets = listOf(1),
             securityContext = 1,
-            securityContextFlags = 3,
+            securityContextFlags = 1,
             securitySource = Eid("dtn://node-a"),
             variant = 5,
             scopeFlags = 7,
@@ -409,15 +409,16 @@ class RoutingIntegrationTest {
 
         val success = adapter.sendBundles(listOf(item), "127.0.0.1:$port")
 
-        assertTrue(latch.await(15, TimeUnit.SECONDS))
-        assertTrue(success)
-        assertTrue(acked)
+        assertTrue(latch.await(15, TimeUnit.SECONDS), "Mock server did not receive bundle within 15s (sc4)")
+        assertTrue(success, "sendBundles() must return true on XFER_ACK (sc4)")
+        assertTrue(acked, "onAcknowledged callback must complete before sendBundles() returns (sc4)")
         assertEquals(1, receivedBundles.size)
 
         val receivedBundle = Bpv7Parser.deserialize(receivedBundles[0])
         val rxBib = receivedBundle.bibBlock
         assertTrue(rxBib != null, "BIB block must be preserved in received bundle")
-        assertEquals("dtn://node-a", rxBib!!.securitySource.uri)
+        assertEquals("dtn://node-a/", rxBib!!.securitySource.uri)
+        assertEquals(1L, rxBib.securityContextFlags)
         assertTrue(dummySignature.contentEquals(rxBib.signature), "BPSec signature must be byte-for-byte identical after routing")
 
         adapter.stop()
@@ -863,7 +864,7 @@ class RoutingIntegrationTest {
             targetBlockFlags = 0L,
             securityBlockType = 11,
             securityBlockNumber = 2,
-            securityBlockFlags = 3L,
+            securityBlockFlags = 0L,
             payloadBytes = authenticPayloadData,
             scopeFlags = 7
         )
@@ -872,12 +873,26 @@ class RoutingIntegrationTest {
             blockNumber = 2,
             targets = listOf(1),
             securityContext = 1,
-            securityContextFlags = 3,
+            securityContextFlags = 1,
             securitySource = Eid("dtn://node-a/secure"),
             variant = 5,
             scopeFlags = 7,
             signature = validSignature
         )
+
+        val authenticCheck = Bpv7Parser.computeHmac(
+            secretKey = secretKey,
+            primaryBlockBytes = rawPrimaryBytes,
+            targetBlockType = 1,
+            targetBlockNumber = 1,
+            targetBlockFlags = 0L,
+            securityBlockType = 11,
+            securityBlockNumber = bibBlock.blockNumber,
+            securityBlockFlags = bibBlock.blockControlFlags,
+            payloadBytes = authenticPayloadData,
+            scopeFlags = bibBlock.scopeFlags
+        )
+        assertTrue(validSignature.contentEquals(authenticCheck), "Authentic payload signature must match bibBlock.blockControlFlags")
 
         // Build corrupted bundle (valid BIB signature header, but tampered payload data)
         val tamperedPayloadBlock = PayloadBlock(data = tamperedPayloadData)

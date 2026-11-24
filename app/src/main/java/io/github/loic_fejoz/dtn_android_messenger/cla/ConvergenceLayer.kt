@@ -520,7 +520,8 @@ private suspend fun sendSessTerm(
 private class OutboundTransfer(
     val bundleBytes: ByteArray,
     val onAcknowledged: (suspend () -> Unit)?,
-    val resultDeferred: CompletableDeferred<Boolean>,
+    val ackDeferred: CompletableDeferred<Boolean>,
+    val completionDeferred: CompletableDeferred<Boolean>,
 )
 
 private class ActiveTcpclSession(
@@ -557,6 +558,11 @@ private class ActiveTcpclSession(
             readerJob.join()
             isClosing = true
             outgoingChannel.close()
+            while (true) {
+                val pending = outgoingChannel.tryReceive().getOrNull() ?: break
+                pending.ackDeferred.complete(false)
+                pending.completionDeferred.complete(false)
+            }
             writerJob.cancel()
             idleJob.cancel()
             try {
@@ -570,13 +576,14 @@ private class ActiveTcpclSession(
     private suspend fun writeLoop() {
         for (task in outgoingChannel) {
             if (isClosing) {
-                task.resultDeferred.complete(false)
+                task.ackDeferred.complete(false)
+                task.completionDeferred.complete(false)
                 continue
             }
             val transferId =
                 synchronized(acksLock) {
                     val tid = transferIdSeq++
-                    pendingAcks[tid] = task.resultDeferred
+                    pendingAcks[tid] = task.ackDeferred
                     tid
                 }
             try {
@@ -597,7 +604,7 @@ private class ActiveTcpclSession(
                     }
                     lastActivityTime = System.currentTimeMillis()
 
-                    val acked = task.resultDeferred.await()
+                    val acked = task.ackDeferred.await()
                     if (acked) {
                         try {
                             task.onAcknowledged?.invoke()
@@ -605,13 +612,15 @@ private class ActiveTcpclSession(
                             log("ERROR", "Error executing onAcknowledged callback: ${e.message}")
                         }
                     }
+                    task.completionDeferred.complete(acked)
                 }
             } catch (e: Exception) {
                 log("ERROR", "Failed sending transfer $transferId to $targetAddress: ${e.message}")
                 synchronized(acksLock) {
                     pendingAcks.remove(transferId)
                 }
-                task.resultDeferred.complete(false)
+                task.ackDeferred.complete(false)
+                task.completionDeferred.complete(false)
             }
         }
     }
@@ -775,10 +784,12 @@ private class ActiveTcpclSession(
         onAcknowledged: (suspend () -> Unit)?,
     ): Boolean {
         if (isClosing) return false
-        val deferred = CompletableDeferred<Boolean>()
-        val task = OutboundTransfer(bundleBytes, onAcknowledged, deferred)
-        outgoingChannel.send(task)
-        return deferred.await()
+        val ackDeferred = CompletableDeferred<Boolean>()
+        val completionDeferred = CompletableDeferred<Boolean>()
+        val task = OutboundTransfer(bundleBytes, onAcknowledged, ackDeferred, completionDeferred)
+        val sendResult = outgoingChannel.trySend(task)
+        if (sendResult.isFailure) return false
+        return completionDeferred.await()
     }
 }
 

@@ -47,6 +47,105 @@ class Bpv7Test {
         assertEquals(primary.reportTo.uri, deserialized.reportTo.uri)
         assertEquals(primary.creationTimestamp, deserialized.creationTimestamp)
         assertEquals(primary.lifetimeMs, deserialized.lifetimeMs)
+        assertEquals(8, cbor.size())
+    }
+
+    @Test
+    fun testPrimaryBlockSerializationDefaultCrc32c() {
+        val primary =
+            PrimaryBlock(
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn://node-a/chat"),
+                creationTimestamp = Pair(12345678L, 99L),
+                lifetimeMs = 3600000L,
+            )
+
+        // Default crcType must be 2 (CRC-32C Castagnoli) per RFC 9171 §4.3.1
+        assertEquals(2, primary.crcType)
+
+        val cbor = Bpv7Parser.serializePrimaryBlock(primary)
+        assertEquals(9, cbor.size(), "CBOR array must have 9 elements when crcType is 2")
+
+        val crcElement = cbor[8]
+        assertEquals(com.upokecenter.cbor.CBORType.ByteString, crcElement.type)
+        assertEquals(4, crcElement.GetByteString().size, "CRC-32C must be 4 bytes")
+
+        val deserialized = Bpv7Parser.deserializePrimaryBlock(cbor)
+        assertEquals(2, deserialized.crcType)
+        assertNotNull(deserialized.crc)
+        assertArrayEquals(crcElement.GetByteString(), deserialized.crc)
+        assertEquals(primary.destination.uri, deserialized.destination.uri)
+    }
+
+    @Test
+    fun testPrimaryBlockSerializationCrc16() {
+        val primary =
+            PrimaryBlock(
+                crcType = 1, // CRC-16 (X.25)
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn://node-a/chat"),
+                creationTimestamp = Pair(12345678L, 99L),
+                lifetimeMs = 3600000L,
+            )
+
+        val cbor = Bpv7Parser.serializePrimaryBlock(primary)
+        assertEquals(9, cbor.size(), "CBOR array must have 9 elements when crcType is 1")
+
+        val crcElement = cbor[8]
+        assertEquals(com.upokecenter.cbor.CBORType.ByteString, crcElement.type)
+        assertEquals(2, crcElement.GetByteString().size, "CRC-16 must be 2 bytes")
+
+        val deserialized = Bpv7Parser.deserializePrimaryBlock(cbor)
+        assertEquals(1, deserialized.crcType)
+        assertNotNull(deserialized.crc)
+        assertArrayEquals(crcElement.GetByteString(), deserialized.crc)
+    }
+
+    @Test
+    fun testPrimaryBlockCorruptedCrcThrows() {
+        val primary =
+            PrimaryBlock(
+                crcType = 2,
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn://node-a/chat"),
+                creationTimestamp = Pair(12345678L, 99L),
+                lifetimeMs = 3600000L,
+            )
+
+        val cbor = Bpv7Parser.serializePrimaryBlock(primary)
+        val validCrc = cbor[8].GetByteString()
+        val corruptCrc = validCrc.clone().apply { this[0] = (this[0].toInt() xor 0xFF).toByte() }
+        cbor[8] = com.upokecenter.cbor.CBORObject.FromObject(corruptCrc)
+
+        val ex = assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserializePrimaryBlock(cbor)
+        }
+        assertTrue(ex.message!!.contains("CRC-32C mismatch"))
+    }
+
+    @Test
+    fun testPrimaryBlockMissingCrcThrows() {
+        // Construct 8-element array with crcType = 2 (missing 9th element)
+        val array = com.upokecenter.cbor.CBORObject.NewArray()
+        array.Add(7)
+        array.Add(0L)
+        array.Add(2) // crcType = 2
+        array.Add(Eid("dtn://node-b/chat").toCbor())
+        array.Add(Eid("dtn://node-a/chat").toCbor())
+        array.Add(Eid("dtn://node-a/chat").toCbor())
+        val ts = com.upokecenter.cbor.CBORObject.NewArray()
+        ts.Add(100L)
+        ts.Add(1L)
+        array.Add(ts)
+        array.Add(1000L)
+
+        val ex = assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserializePrimaryBlock(array)
+        }
+        assertTrue(ex.message!!.contains("Missing CRC field in PrimaryBlock"))
     }
 
     @Test
@@ -84,6 +183,7 @@ class Bpv7Test {
 
         assertEquals(bib.blockNumber, deserialized.blockNumber)
         assertEquals(bib.blockControlFlags, deserialized.blockControlFlags)
+        assertEquals(1L, deserialized.securityContextFlags)
         assertEquals(bib.targets, deserialized.targets)
         assertEquals(bib.securitySource.uri, deserialized.securitySource.uri)
         assertEquals(bib.variant, deserialized.variant)
@@ -132,7 +232,7 @@ class Bpv7Test {
                 targetBlockFlags = 0L,
                 securityBlockType = 11,
                 securityBlockNumber = 2,
-                securityBlockFlags = 3L,
+                securityBlockFlags = 0L,
                 payloadBytes = payloadBytes,
                 scopeFlags = 7,
             )
@@ -147,7 +247,7 @@ class Bpv7Test {
                 targetBlockFlags = 0L,
                 securityBlockType = 11,
                 securityBlockNumber = 2,
-                securityBlockFlags = 3L,
+                securityBlockFlags = 0L,
                 payloadBytes = payloadBytes,
                 scopeFlags = 7,
             )
@@ -164,7 +264,7 @@ class Bpv7Test {
                 targetBlockFlags = 0L,
                 securityBlockType = 11,
                 securityBlockNumber = 2,
-                securityBlockFlags = 3L,
+                securityBlockFlags = 0L,
                 payloadBytes = payloadBytes,
                 scopeFlags = 7,
             )
@@ -180,7 +280,7 @@ class Bpv7Test {
                 targetBlockFlags = 0L,
                 securityBlockType = 11,
                 securityBlockNumber = 2,
-                securityBlockFlags = 3L,
+                securityBlockFlags = 0L,
                 payloadBytes = "DTN Secure Message!".toByteArray(Charsets.UTF_8),
                 scopeFlags = 7,
             )
@@ -283,7 +383,7 @@ class Bpv7Test {
             targetBlockFlags = 0L,
             securityBlockType = 11,
             securityBlockNumber = 2,
-            securityBlockFlags = 3L,
+            securityBlockFlags = 0L,
             payloadBytes = payloadBytes,
             scopeFlags = 7
         )
@@ -296,7 +396,7 @@ class Bpv7Test {
             targetBlockFlags = 0L,
             securityBlockType = 11,
             securityBlockNumber = 2,
-            securityBlockFlags = 3L,
+            securityBlockFlags = 0L,
             payloadBytes = payloadBytes,
             scopeFlags = 1
         )
@@ -305,5 +405,145 @@ class Bpv7Test {
         assertTrue(sigFullScope.isNotEmpty())
         assertTrue(sigPrimaryOnlyScope.isNotEmpty())
         assertFalse(sigFullScope.contentEquals(sigPrimaryOnlyScope), "Signatures with different RFC 9173 scope flags MUST differ")
+    }
+
+    @Test
+    fun testRfc9171IndefiniteArrayPayloadLastAndDtnNone() {
+        val primary = PrimaryBlock(
+            destination = Eid("dtn://node-b/chat"),
+            source = Eid("dtn://node-a/chat"),
+            reportTo = Eid("dtn:none"),
+            creationTimestamp = Pair(12345678L, 99L),
+            lifetimeMs = 3600000L,
+        )
+        val payload = PayloadBlock(data = "Hello RFC 9171!".toByteArray(Charsets.UTF_8))
+        val hopCount = HopCountBlock(hopLimit = 64, hopCount = 1)
+        val bib = BibBlock(securitySource = Eid("dtn://node-a/chat"), signature = byteArrayOf(9, 9, 9))
+
+        val bundle = Bundle(primary, payload, hopCount, bib)
+        val serializedBytes = Bpv7Parser.serialize(bundle)
+
+        assertTrue(serializedBytes.isNotEmpty())
+        assertEquals(0x9F.toByte(), serializedBytes.first(), "Bundle must start with CBOR indefinite-length array (0x9F)")
+        assertEquals(0xFF.toByte(), serializedBytes.last(), "Bundle must end with CBOR break code (0xFF)")
+
+        val cbor = com.upokecenter.cbor.CBORObject.DecodeFromBytes(serializedBytes)
+        assertEquals(4, cbor.size())
+        assertEquals(10, cbor[1][0].AsInt32(), "Hop Count block should precede Payload block")
+        assertEquals(11, cbor[2][0].AsInt32(), "BIB block should precede Payload block")
+        assertEquals(1, cbor[3][0].AsInt32(), "Payload block must be last per RFC 9171 §4.3.1")
+
+        val nullEidBytes = Eid("dtn:none").toCbor().EncodeToBytes()
+        assertArrayEquals(byteArrayOf(0x82.toByte(), 0x01, 0x00), nullEidBytes, "dtn:none must encode as [1, 0] per RFC 9171 §4.2.5.1.1")
+        val parsedNullEid = Eid.fromCbor(com.upokecenter.cbor.CBORObject.DecodeFromBytes(nullEidBytes))
+        assertEquals("dtn:none", parsedNullEid.uri)
+    }
+
+    @Test
+    fun testSignedBibRoundTripVerification() {
+        val secretKey = "test_bpsec_hmac_key_32_bytes_ok!".toByteArray(Charsets.UTF_8)
+        val payloadData = "RFC 9171 + RFC 9172/9173 round-trip signed payload".toByteArray(Charsets.UTF_8)
+        val primary = PrimaryBlock(
+            destination = Eid("dtn://node-b/chat"),
+            source = Eid("dtn://node-a/chat"),
+            reportTo = Eid("dtn:none"),
+            creationTimestamp = Pair(12345678L, 42L),
+            lifetimeMs = 3600000L,
+        )
+        val payload = PayloadBlock(data = payloadData)
+        val hopCount = HopCountBlock(hopLimit = 64, hopCount = 1)
+
+        val rawPrimaryBytes = Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
+        val signature = Bpv7Parser.computeHmac(
+            secretKey = secretKey,
+            primaryBlockBytes = rawPrimaryBytes,
+            targetBlockType = 1,
+            targetBlockNumber = payload.blockNumber,
+            targetBlockFlags = payload.blockControlFlags,
+            securityBlockType = 11,
+            securityBlockNumber = 2,
+            securityBlockFlags = 0L,
+            payloadBytes = payloadData,
+            scopeFlags = 7,
+        )
+        val bib = BibBlock(
+            blockNumber = 2,
+            blockControlFlags = 0L,
+            securitySource = Eid("dtn://node-a/chat"),
+            signature = signature,
+        )
+        assertEquals(1L, bib.securityContextFlags, "RFC 9172 §3.6: only bit 0 (parameters present) should be set")
+
+        val bundle = Bundle(primary, payload, hopCount, bib)
+        val serializedBytes = Bpv7Parser.serialize(bundle)
+
+        assertEquals(0x9F.toByte(), serializedBytes.first(), "Bundle must start with 0x9F")
+        assertEquals(0xFF.toByte(), serializedBytes.last(), "Bundle must end with 0xFF")
+
+        val cbor = com.upokecenter.cbor.CBORObject.DecodeFromBytes(serializedBytes)
+        assertEquals(4, cbor.size())
+        assertEquals(9, cbor[0].size(), "Primary block must have 9 elements including CRC-32C")
+        assertEquals(4, cbor[0][8].GetByteString().size, "CRC-32C must be 4 bytes")
+        assertArrayEquals(byteArrayOf(0x82.toByte(), 0x01, 0x00), cbor[0][5].EncodeToBytes(), "reportTo dtn:none must encode as [1, 0]")
+        assertEquals(10, cbor[1][0].AsInt32(), "Hop Count block must precede BIB and Payload")
+        assertEquals(11, cbor[2][0].AsInt32(), "BIB block must precede Payload")
+        assertEquals(0L, cbor[2][2].AsInt64Value(), "BIB blockControlFlags must be 0")
+        assertEquals(1, cbor[3][0].AsInt32(), "Payload block must be last")
+
+        val parsedBundle = Bpv7Parser.deserialize(serializedBytes)
+        val parsedBib = parsedBundle.bibBlock!!
+        assertEquals(1L, parsedBib.securityContextFlags)
+        val verifiedSignature = Bpv7Parser.computeHmac(
+            secretKey = secretKey,
+            primaryBlockBytes = parsedBundle.primaryBlock.rawBytes!!,
+            targetBlockType = 1,
+            targetBlockNumber = parsedBundle.payloadBlock.blockNumber,
+            targetBlockFlags = parsedBundle.payloadBlock.blockControlFlags,
+            securityBlockType = 11,
+            securityBlockNumber = parsedBib.blockNumber,
+            securityBlockFlags = parsedBib.blockControlFlags,
+            payloadBytes = parsedBundle.payloadBlock.data,
+            scopeFlags = parsedBib.scopeFlags,
+        )
+        assertArrayEquals(parsedBib.signature, verifiedSignature, "Recomputed BIB HMAC must match serialized signature")
+
+        val tamperedPayload = payloadData.clone().apply { this[0] = (this[0].toInt() xor 0x01).toByte() }
+        val tamperedSignature = Bpv7Parser.computeHmac(
+            secretKey = secretKey,
+            primaryBlockBytes = parsedBundle.primaryBlock.rawBytes!!,
+            targetBlockType = 1,
+            targetBlockNumber = parsedBundle.payloadBlock.blockNumber,
+            targetBlockFlags = parsedBundle.payloadBlock.blockControlFlags,
+            securityBlockType = 11,
+            securityBlockNumber = parsedBib.blockNumber,
+            securityBlockFlags = parsedBib.blockControlFlags,
+            payloadBytes = tamperedPayload,
+            scopeFlags = parsedBib.scopeFlags,
+        )
+        assertFalse(parsedBib.signature.contentEquals(tamperedSignature), "Tampered payload must not verify")
+    }
+
+    @Test
+    fun testDtnNodeEidTrailingSlashNormalization() {
+        val nodeNoSlash = Eid("dtn://node-a").toCbor()
+        assertEquals(1, nodeNoSlash[0].AsInt32())
+        assertEquals("//node-a/", nodeNoSlash[1].AsString())
+        assertEquals("dtn://node-a/", Eid.fromCbor(nodeNoSlash).uri)
+
+        val nodeWithSlash = Eid("dtn://node-a/").toCbor()
+        assertArrayEquals(nodeNoSlash.EncodeToBytes(), nodeWithSlash.EncodeToBytes())
+
+        val serviceEid = Eid("dtn://node-a/chat").toCbor()
+        assertEquals("//node-a/chat", serviceEid[1].AsString())
+
+        val nullLower = Eid("dtn:none").toCbor().EncodeToBytes()
+        val nullUpper = Eid("DTN:NONE").toCbor().EncodeToBytes()
+        val expectedNull = byteArrayOf(0x82.toByte(), 0x01, 0x00)
+        assertArrayEquals(expectedNull, nullLower)
+        assertArrayEquals(expectedNull, nullUpper)
+        assertEquals("dtn:none", Eid.fromCbor(com.upokecenter.cbor.CBORObject.DecodeFromBytes(nullLower)).uri)
+
+        val ipnBytes = Eid("ipn:1.2").toCbor().EncodeToBytes()
+        assertArrayEquals(byteArrayOf(0x82.toByte(), 0x02, 0x82.toByte(), 0x01, 0x02), ipnBytes)
     }
 }
