@@ -1017,9 +1017,10 @@ class BluetoothClassicAdapter(
         bundles: List<Pair<ByteArray, (suspend () -> Unit)?>>,
         targetAddress: String,
     ): Boolean {
-        if (bundles.isEmpty()) return sendBundle(ByteArray(0), targetAddress, null)
+        if (bundles.isEmpty()) return true
         var allSuccess = true
         for ((bytes, onAck) in bundles) {
+            if (bytes.isEmpty()) continue
             val ok = sendBundle(bytes, targetAddress, onAck)
             if (!ok) allSuccess = false
         }
@@ -1050,27 +1051,33 @@ class BluetoothClassicAdapter(
                 outputStream.write(bundleBytes)
                 outputStream.flush()
 
-                // Wait for 1-byte ACK from receiver to verify full reception before closing the connection.
-                // A 5-second timeout ensures backward-compatibility with older nodes that don't send an ACK.
-                try {
-                    val startWait = System.currentTimeMillis()
-                    val inputStream = socket.inputStream
-                    while (inputStream.available() == 0 && (System.currentTimeMillis() - startWait) < 5000) {
-                        delay(100)
-                    }
+                // Wait for 1-byte ACK (== 1) from receiver to enforce responsibility transfer.
+                val startWait = System.currentTimeMillis()
+                val inputStream = socket.inputStream
+                var ackReceived = false
+                while ((System.currentTimeMillis() - startWait) < 5000) {
                     if (inputStream.available() > 0) {
-                        inputStream.read()
+                        val ackByte = inputStream.read()
+                        if (ackByte == 1) {
+                            ackReceived = true
+                        }
+                        break
                     }
-                    try {
-                        onAcknowledged?.invoke()
-                    } catch (e: Exception) {
-                        log("ERROR", "Error executing onAcknowledged callback: ${e.message}")
-                    }
-                } catch (e: Exception) {
-                    // Proceed to close even if ACK read fails/times out
+                    delay(50)
                 }
 
-                log("INFO", "Successfully sent bundle of size ${bundleBytes.size} to $targetAddress")
+                if (!ackReceived) {
+                    log("WARN", "No valid RFCOMM ACK received from $targetAddress within 5s; withholding delivery confirmation")
+                    return@withContext false
+                }
+
+                try {
+                    onAcknowledged?.invoke()
+                } catch (e: Exception) {
+                    log("ERROR", "Error executing onAcknowledged callback: ${e.message}")
+                }
+
+                log("INFO", "Successfully sent and acknowledged bundle of size ${bundleBytes.size} to $targetAddress")
                 return@withContext true
             } catch (e: SecurityException) {
                 log("ERROR", "Bluetooth permission denied for outbound connection: ${e.message}")
