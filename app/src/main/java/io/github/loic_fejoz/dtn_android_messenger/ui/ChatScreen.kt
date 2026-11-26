@@ -97,14 +97,12 @@ fun ChatScreen(
                 recipientEid = saved
             } else if (!s?.defaultDestinationEid.isNullOrBlank()) {
                 recipientEid = s!!.defaultDestinationEid!!
-                prefs.edit().putString(prefKey, recipientEid).apply()
             } else {
                 val partner =
                     messages.firstOrNull { it.sourceEid != serviceEid }?.sourceEid
                         ?: messages.firstOrNull { it.destinationEid != serviceEid }?.destinationEid
                         ?: "dtn://remote-node/chat"
                 recipientEid = partner
-                prefs.edit().putString(prefKey, recipientEid).apply()
             }
         }
     }
@@ -246,7 +244,6 @@ fun ChatScreen(
                                     .clickable {
                                         val target = if (isMe) msg.destinationEid else msg.sourceEid
                                         recipientEid = target
-                                        prefs.edit().putString(prefKey, target.trim()).apply()
                                         Toast.makeText(context, "Recipient set to: $target", Toast.LENGTH_SHORT).show()
                                     },
                         ) {

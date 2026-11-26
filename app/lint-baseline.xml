@@ -421,44 +421,11 @@
     <issue
         id="UseKtx"
         message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="                prefs.edit().putString(prefKey, recipientEid).apply()"
-        errorLine2="                ~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
-            line="100"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="                prefs.edit().putString(prefKey, recipientEid).apply()"
-        errorLine2="                ~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
-            line="107"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="                                        prefs.edit().putString(prefKey, target.trim()).apply()"
-        errorLine2="                                        ~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
-            line="249"
-            column="41"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `SharedPreferences.edit` instead?"
         errorLine1="                            prefs.edit().putString(prefKey, recipientEid.trim()).apply()"
         errorLine2="                            ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
-            line="336"
+            line="333"
             column="29"/>
     </issue>
 
