@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BundleRecordDao
 import io.github.loic_fejoz.dtn_android_messenger.data.model.BpsecStatus
 import io.github.loic_fejoz.dtn_android_messenger.data.model.BundleRecord
@@ -22,18 +23,19 @@ class BundleOutboxRepository(
 ) {
     private val sequenceLock = Any()
     private var lastTimestampMs = 0L
-    private var sequenceCounter =
-        runCatching {
-            PreferencesHelper.getEncryptedSharedPreferences(context).getLong("outbox_seq_counter", 0L)
-        }.getOrDefault(0L)
+    private var sequenceCounter: Long? = null
 
     private fun nextSequenceLocked(): Long {
-        val seq = ++sequenceCounter
+        val current =
+            sequenceCounter ?: runCatching {
+                PreferencesHelper.getEncryptedSharedPreferences(context).getLong("outbox_seq_counter", 0L)
+            }.getOrDefault(0L)
+        val seq = current + 1L
+        sequenceCounter = seq
         runCatching {
-            PreferencesHelper.getEncryptedSharedPreferences(context)
-                .edit()
-                .putLong("outbox_seq_counter", seq)
-                .apply()
+            PreferencesHelper.getEncryptedSharedPreferences(context).edit {
+                putLong("outbox_seq_counter", seq)
+            }
         }
         return seq
     }

@@ -446,14 +446,6 @@ fun SendBundleScreen(
                     ) { uri: Uri? ->
                         if (uri != null) {
                             selectedFileUri = uri
-                            selectedFileName = getFileNameFromUri(context, uri)
-                            try {
-                                context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { fd ->
-                                    selectedFileSize = fd.length
-                                }
-                            } catch (e: Exception) {
-                                selectedFileSize = 0L
-                            }
                         }
                     }
 
@@ -722,7 +714,12 @@ fun SendBundleScreen(
                                         if (copiedBytes < 0L) {
                                             return@withContext null
                                         }
-                                        if (file.extension.equals("ogg", ignoreCase = true) || file.extension.equals("opus", ignoreCase = true)) {
+                                        val alreadyFixedRecording =
+                                            selectedFileUri?.scheme == "file" &&
+                                                selectedFileUri?.path == File(context.cacheDir, "temp_recording.ogg").absolutePath
+                                        if (!alreadyFixedRecording &&
+                                            (file.extension.equals("ogg", ignoreCase = true) || file.extension.equals("opus", ignoreCase = true))
+                                        ) {
                                             OggOpusFixer.fixOggOpusFile(file)
                                         }
                                     } else {

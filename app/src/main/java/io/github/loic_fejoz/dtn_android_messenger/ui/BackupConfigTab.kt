@@ -51,6 +51,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.edit
 import androidx.navigation.NavController
 import androidx.room.withTransaction
 import io.github.loic_fejoz.dtn_android_messenger.R
@@ -504,13 +505,17 @@ fun BackupConfigTab(
                     onClick = {
                         showResetDialog = false
                         scope.launch {
-                            localServiceDao.deleteAll()
-                            convergenceProfileDao.deleteAll()
-                            routingRuleDao.deleteAll()
-                            bpsecKeyDao.deleteAll()
-                            senmlEntryDao.deleteAll()
-                            PreferencesHelper.getEncryptedSharedPreferences(context).edit().clear().apply()
-                            PreferencesHelper.setOnboardingCompleted(context, false)
+                            withContext(Dispatchers.IO) {
+                                database.withTransaction {
+                                    localServiceDao.deleteAll()
+                                    convergenceProfileDao.deleteAll()
+                                    routingRuleDao.deleteAll()
+                                    bpsecKeyDao.deleteAll()
+                                    senmlEntryDao.deleteAll()
+                                }
+                                PreferencesHelper.getEncryptedSharedPreferences(context).edit { clear() }
+                                PreferencesHelper.setOnboardingCompleted(context, false)
+                            }
                             navController.navigate("onboarding") {
                                 popUpTo(0) { inclusive = true }
                             }

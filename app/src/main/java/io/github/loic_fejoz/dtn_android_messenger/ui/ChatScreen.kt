@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.edit
 import androidx.navigation.NavController
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BundleRecordDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.LocalServiceDao
@@ -63,17 +64,29 @@ fun ChatScreen(
     val allBundles by bundleRecordDao.getAll().collectAsState(initial = emptyList())
 
     val messages =
-        allBundles.filter {
-            io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(serviceEid, it.destinationEid) ||
-                io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(it.destinationEid, serviceEid) ||
-                io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(serviceEid, it.sourceEid) ||
-                io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(it.sourceEid, serviceEid)
+        remember(allBundles, serviceEid) {
+            allBundles.filter {
+                io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(serviceEid, it.destinationEid) ||
+                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(it.destinationEid, serviceEid) ||
+                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(serviceEid, it.sourceEid) ||
+                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(it.sourceEid, serviceEid)
+            }
         }
 
     var recipientEid by rememberSaveable(serviceEid) {
         mutableStateOf(prefs.getString(prefKey, "") ?: "")
     }
     var replyText by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(recipientEid, prefKey) {
+        val trimmed = recipientEid.trim()
+        if (trimmed.isNotEmpty()) {
+            kotlinx.coroutines.delay(400)
+            withContext(Dispatchers.IO) {
+                prefs.edit { putString(prefKey, trimmed) }
+            }
+        }
+    }
 
     LaunchedEffect(serviceEid) {
         val s = localServiceDao.getById(serviceEid)
@@ -144,10 +157,7 @@ fun ChatScreen(
                     )
                     BasicTextField(
                         value = recipientEid,
-                        onValueChange = {
-                            recipientEid = it
-                            prefs.edit().putString(prefKey, it.trim()).apply()
-                        },
+                        onValueChange = { recipientEid = it },
                         textStyle =
                             TextStyle(
                                 color = Color.White,
