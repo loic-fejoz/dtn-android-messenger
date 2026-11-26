@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.LiveData
@@ -621,6 +622,14 @@ fun ProfilesConfigTab(
                             fontSize = 12.sp,
                         )
                         if (profile.triggerType == TriggerType.FILE_CLA) {
+                            val hasSafGrant =
+                                remember(profile.targetAddress, profiles) {
+                                    context.contentResolver.persistedUriPermissions.any { perm ->
+                                        perm.uri.toString() == profile.targetAddress &&
+                                            perm.isReadPermission &&
+                                            perm.isWritePermission
+                                    }
+                                }
                             val pollSec =
                                 profile.triggerCondition?.ifBlank {
                                     FileClaAdapter.DEFAULT_POLL_INTERVAL_SECONDS.toString()
@@ -630,6 +639,14 @@ fun ProfilesConfigTab(
                                 color = if (profile.isPaused || isTemporarilyPaused) Color.Gray else NeonPurple,
                                 fontSize = 11.sp,
                             )
+                            if (!hasSafGrant) {
+                                Text(
+                                    "Folder permission missing — tap to re-pick base folder",
+                                    color = GlowRed,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
                         } else if (!profile.triggerCondition.isNullOrBlank()) {
                             Text(
                                 "Cond: ${profile.triggerCondition}",
@@ -844,7 +861,6 @@ fun KeystoreConfigTab(
     val localNodeName = remember { prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node" }
     var localKeyRecord by remember { mutableStateOf<BpsecKey?>(null) }
     var localKeyHex by remember { mutableStateOf("") }
-    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
     LaunchedEffect(localNodeName) {
         localKeyRecord = dao.getByKeyId(localNodeName)
@@ -960,7 +976,15 @@ fun KeystoreConfigTab(
                     Button(
                         onClick = {
                             if (localKeyHex.isNotBlank()) {
-                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(localKeyHex))
+                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val clip = android.content.ClipData.newPlainText("BPSec Key", localKeyHex)
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    clip.description.extras =
+                                        android.os.PersistableBundle().apply {
+                                            putBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE, true)
+                                        }
+                                }
+                                cm.setPrimaryClip(clip)
                                 Toast.makeText(context, "Key copied to clipboard!", Toast.LENGTH_SHORT).show()
                             }
                         },
@@ -1391,17 +1415,19 @@ fun BackupConfigTab(
             if (uri != null) {
                 scope.launch {
                     try {
-                        context.contentResolver.openOutputStream(uri)?.use { stream ->
-                            ConfigBackupManager.exportToStream(
-                                stream,
-                                context,
-                                localServiceDao,
-                                convergenceProfileDao,
-                                routingRuleDao,
-                                bpsecKeyDao,
-                                senmlEntryDao,
-                                passphrase = backupPassphrase.ifEmpty { null },
-                            )
+                        withContext(Dispatchers.IO) {
+                            context.contentResolver.openOutputStream(uri)?.use { stream ->
+                                ConfigBackupManager.exportToStream(
+                                    stream,
+                                    context,
+                                    localServiceDao,
+                                    convergenceProfileDao,
+                                    routingRuleDao,
+                                    bpsecKeyDao,
+                                    senmlEntryDao,
+                                    passphrase = backupPassphrase.ifEmpty { null },
+                                )
+                            } ?: error("Unable to open output stream")
                         }
                         statusMessage = "Configuration exported successfully to file!"
                         isError = false
@@ -1423,9 +1449,11 @@ fun BackupConfigTab(
                 scope.launch {
                     try {
                         val jsonText =
-                            context.contentResolver.openInputStream(uri)?.use { stream ->
-                                stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                            } ?: error("Unable to open input stream")
+                            withContext(Dispatchers.IO) {
+                                context.contentResolver.openInputStream(uri)?.use { stream ->
+                                    ConfigBackupManager.readBoundedUtf8(stream)
+                                } ?: error("Unable to open input stream")
+                            }
                         if (ConfigBackupManager.isEncryptedBackup(jsonText)) {
                             pendingEncryptedImportJson = jsonText
                             importPassphraseInput = ""
@@ -1500,7 +1528,7 @@ fun BackupConfigTab(
                 Text(
                     "Export your complete node configuration to a JSON backup file to avoid data loss during reinstallations, device migrations, or updates. The backup includes:\n" +
                         "• Local Node EID, Identity & Limits\n" +
-                        "• Convergence Layer Profiles (TCPCL & Bluetooth)\n" +
+                        "• Convergence Layer Profiles (TCPCL, Bluetooth & File-CLA)\n" +
                         "• Next-Hop Routing Rules\n" +
                         "• BPSec Pre-shared HMAC Keys (safely re-encryptable)\n" +
                         "• Local Channels & Services\n" +
@@ -1531,6 +1559,8 @@ fun BackupConfigTab(
                     onValueChange = { backupPassphrase = it },
                     label = { Text("Optional Backup Passphrase (AES-256-GCM)", color = TextGray) },
                     singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrect = false),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Button(
@@ -1741,60 +1771,39 @@ fun BackupConfigTab(
     }
 
     if (pendingEncryptedImportJson != null) {
-        AlertDialog(
-            onDismissRequest = { pendingEncryptedImportJson = null },
-            title = { Text("Encrypted Backup", color = Color.White, fontWeight = FontWeight.Bold) },
-            text = {
-                OutlinedTextField(
-                    value = importPassphraseInput,
-                    onValueChange = { importPassphraseInput = it },
-                    label = { Text("Enter Backup Passphrase", color = TextGray) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val jsonText = pendingEncryptedImportJson ?: return@Button
-                        val pass = importPassphraseInput
-                        pendingEncryptedImportJson = null
-                        scope.launch {
-                            try {
-                                val result =
-                                    ConfigBackupManager.importConfigJson(
-                                        jsonText,
-                                        context,
-                                        localServiceDao,
-                                        convergenceProfileDao,
-                                        routingRuleDao,
-                                        bpsecKeyDao,
-                                        senmlEntryDao,
-                                        clearExisting = clearExistingBeforeImport,
-                                        passphrase = pass,
-                                        runInTransaction = { block -> database.withTransaction { block() } },
-                                    )
-                                statusMessage = result.summary
-                                isError = false
-                                Toast.makeText(context, result.summary, Toast.LENGTH_LONG).show()
-                            } catch (e: Exception) {
-                                statusMessage = "Import failed: ${e.message}"
-                                isError = true
-                                Toast.makeText(context, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black),
-                ) {
-                    Text("DECRYPT & IMPORT", fontWeight = FontWeight.Bold)
+        EncryptedBackupPassphraseDialog(
+            passphrase = importPassphraseInput,
+            onPassphraseChange = { importPassphraseInput = it },
+            onDismiss = { pendingEncryptedImportJson = null },
+            onConfirm = {
+                val jsonText = pendingEncryptedImportJson ?: return@EncryptedBackupPassphraseDialog
+                val pass = importPassphraseInput
+                pendingEncryptedImportJson = null
+                scope.launch {
+                    try {
+                        val result =
+                            ConfigBackupManager.importConfigJson(
+                                jsonText,
+                                context,
+                                localServiceDao,
+                                convergenceProfileDao,
+                                routingRuleDao,
+                                bpsecKeyDao,
+                                senmlEntryDao,
+                                clearExisting = clearExistingBeforeImport,
+                                passphrase = pass,
+                                runInTransaction = { block -> database.withTransaction { block() } },
+                            )
+                        statusMessage = result.summary
+                        isError = false
+                        Toast.makeText(context, result.summary, Toast.LENGTH_LONG).show()
+                    } catch (e: Exception) {
+                        statusMessage = "Import failed: ${e.message}"
+                        isError = true
+                        Toast.makeText(context, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { pendingEncryptedImportJson = null }) {
-                    Text("CANCEL", color = TextGray)
-                }
-            },
-            containerColor = CharcoalBg,
         )
     }
 

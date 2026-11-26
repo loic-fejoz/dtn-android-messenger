@@ -32,7 +32,9 @@ import io.github.loic_fejoz.dtn_android_messenger.data.dao.*
 import io.github.loic_fejoz.dtn_android_messenger.util.ConfigBackupManager
 import io.github.loic_fejoz.dtn_android_messenger.util.OnboardingHelper
 import io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun OnboardingScreen(
@@ -64,9 +66,11 @@ fun OnboardingScreen(
                     errorMessage = null
                     try {
                         val jsonText =
-                            context.contentResolver.openInputStream(uri)?.use { stream ->
-                                stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                            } ?: throw IllegalStateException(context.getString(R.string.onboarding_file_read_error))
+                            withContext(Dispatchers.IO) {
+                                context.contentResolver.openInputStream(uri)?.use { stream ->
+                                    ConfigBackupManager.readBoundedUtf8(stream)
+                                } ?: throw IllegalStateException(context.getString(R.string.onboarding_file_read_error))
+                            }
 
                         if (ConfigBackupManager.isEncryptedBackup(jsonText)) {
                             pendingEncryptedBackupJson = jsonText
@@ -292,62 +296,41 @@ fun OnboardingScreen(
         }
 
         if (pendingEncryptedBackupJson != null) {
-            AlertDialog(
-                onDismissRequest = { pendingEncryptedBackupJson = null },
-                title = { Text("Encrypted Backup", color = Color.White, fontWeight = FontWeight.Bold) },
-                text = {
-                    OutlinedTextField(
-                        value = passphraseInput,
-                        onValueChange = { passphraseInput = it },
-                        label = { Text("Enter Backup Passphrase", color = TextGray) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            val jsonText = pendingEncryptedBackupJson ?: return@Button
-                            val pass = passphraseInput
-                            pendingEncryptedBackupJson = null
-                            scope.launch {
-                                isLoading = true
-                                try {
-                                    val result =
-                                        ConfigBackupManager.importConfigJson(
-                                            jsonString = jsonText,
-                                            context = context,
-                                            localServiceDao = localServiceDao,
-                                            convergenceProfileDao = convergenceProfileDao,
-                                            routingRuleDao = routingRuleDao,
-                                            bpsecKeyDao = bpsecKeyDao,
-                                            senmlEntryDao = senmlEntryDao,
-                                            clearExisting = true,
-                                            passphrase = pass,
-                                            runInTransaction = { block -> database.withTransaction { block() } },
-                                        )
-                                    PreferencesHelper.setOnboardingCompleted(context, true)
-                                    Toast.makeText(context, result.summary, Toast.LENGTH_LONG).show()
-                                    onOnboardingFinished()
-                                } catch (e: Exception) {
-                                    errorMessage = context.getString(R.string.onboarding_import_failed, e.message ?: "")
-                                    Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
-                                } finally {
-                                    isLoading = false
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color.Black),
-                    ) {
-                        Text("DECRYPT & IMPORT", fontWeight = FontWeight.Bold)
+            EncryptedBackupPassphraseDialog(
+                passphrase = passphraseInput,
+                onPassphraseChange = { passphraseInput = it },
+                onDismiss = { pendingEncryptedBackupJson = null },
+                onConfirm = {
+                    val jsonText = pendingEncryptedBackupJson ?: return@EncryptedBackupPassphraseDialog
+                    val pass = passphraseInput
+                    pendingEncryptedBackupJson = null
+                    scope.launch {
+                        isLoading = true
+                        try {
+                            val result =
+                                ConfigBackupManager.importConfigJson(
+                                    jsonString = jsonText,
+                                    context = context,
+                                    localServiceDao = localServiceDao,
+                                    convergenceProfileDao = convergenceProfileDao,
+                                    routingRuleDao = routingRuleDao,
+                                    bpsecKeyDao = bpsecKeyDao,
+                                    senmlEntryDao = senmlEntryDao,
+                                    clearExisting = true,
+                                    passphrase = pass,
+                                    runInTransaction = { block -> database.withTransaction { block() } },
+                                )
+                            PreferencesHelper.setOnboardingCompleted(context, true)
+                            Toast.makeText(context, result.summary, Toast.LENGTH_LONG).show()
+                            onOnboardingFinished()
+                        } catch (e: Exception) {
+                            errorMessage = context.getString(R.string.onboarding_import_failed, e.message ?: "")
+                            Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
+                        } finally {
+                            isLoading = false
+                        }
                     }
                 },
-                dismissButton = {
-                    TextButton(onClick = { pendingEncryptedBackupJson = null }) {
-                        Text("CANCEL", color = TextGray)
-                    }
-                },
-                containerColor = CharcoalBg,
             )
         }
     }

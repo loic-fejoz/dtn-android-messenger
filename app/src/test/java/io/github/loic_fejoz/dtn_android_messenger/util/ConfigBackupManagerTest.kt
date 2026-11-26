@@ -751,4 +751,70 @@ class ConfigBackupManagerTest {
             assertEquals("120", restored.triggerCondition)
             assertTrue(restored.isPaused)
         }
+
+    @Test
+    fun testRejectsOutOfRangePbkdf2IterationsAndOversizedStream() =
+        runBlocking {
+            val encryptedJson =
+                ConfigBackupManager.exportConfigJson(
+                    context = fakeContext,
+                    localServiceDao = fakeServiceDao,
+                    convergenceProfileDao = fakeProfileDao,
+                    routingRuleDao = fakeRuleDao,
+                    bpsecKeyDao = fakeKeyDao,
+                    senmlEntryDao = fakeSenmlDao,
+                    prefs = fakePrefs,
+                    passphrase = "secret",
+                )
+
+            val lowIter = JSONObject(encryptedJson).put("iterations", 1).toString()
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    ConfigBackupManager.importConfigJson(
+                        jsonString = lowIter,
+                        context = fakeContext,
+                        localServiceDao = fakeServiceDao,
+                        convergenceProfileDao = fakeProfileDao,
+                        routingRuleDao = fakeRuleDao,
+                        bpsecKeyDao = fakeKeyDao,
+                        senmlEntryDao = fakeSenmlDao,
+                        prefs = fakePrefs,
+                        passphrase = "secret",
+                    )
+                }
+            }
+
+            val highIter = JSONObject(encryptedJson).put("iterations", 5_000_000).toString()
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    ConfigBackupManager.importConfigJson(
+                        jsonString = highIter,
+                        context = fakeContext,
+                        localServiceDao = fakeServiceDao,
+                        convergenceProfileDao = fakeProfileDao,
+                        routingRuleDao = fakeRuleDao,
+                        bpsecKeyDao = fakeKeyDao,
+                        senmlEntryDao = fakeSenmlDao,
+                        prefs = fakePrefs,
+                        passphrase = "secret",
+                    )
+                }
+            }
+
+            val oversizedBytes = ByteArray(ConfigBackupManager.MAX_BACKUP_BYTES + 1) { 'a'.code.toByte() }
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    ConfigBackupManager.importFromStream(
+                        inputStream = ByteArrayInputStream(oversizedBytes),
+                        context = fakeContext,
+                        localServiceDao = fakeServiceDao,
+                        convergenceProfileDao = fakeProfileDao,
+                        routingRuleDao = fakeRuleDao,
+                        bpsecKeyDao = fakeKeyDao,
+                        senmlEntryDao = fakeSenmlDao,
+                        prefs = fakePrefs,
+                    )
+                }
+            }
+        }
 }
