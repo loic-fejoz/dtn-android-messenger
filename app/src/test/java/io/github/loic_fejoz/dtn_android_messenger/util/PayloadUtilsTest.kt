@@ -103,8 +103,16 @@ class PayloadUtilsTest {
     @Test
     fun testIsValidEid() {
         assertTrue(PayloadUtils.isValidEid("dtn://node-1/chat"))
+        assertTrue(PayloadUtils.isValidEid("dtn://node-1"))
+        assertTrue(PayloadUtils.isValidEid("dtn:none"))
         assertTrue(PayloadUtils.isValidEid("ipn:1.2"))
         assertFalse(PayloadUtils.isValidEid(""))
+        assertFalse(PayloadUtils.isValidEid("dtn://"))
+        assertFalse(PayloadUtils.isValidEid("dtn:"))
+        assertFalse(PayloadUtils.isValidEid("ipn:"))
+        assertFalse(PayloadUtils.isValidEid("ipn:1"))
+        assertFalse(PayloadUtils.isValidEid("ipn:."))
+        assertFalse(PayloadUtils.isValidEid("dtn://node 1/chat"))
         assertFalse(PayloadUtils.isValidEid("http://example.com"))
     }
 

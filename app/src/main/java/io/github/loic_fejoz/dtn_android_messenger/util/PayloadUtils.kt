@@ -137,8 +137,21 @@ object PayloadUtils {
 
     fun isValidEid(eid: String): Boolean {
         val trimmed = eid.trim()
-        if (trimmed.isEmpty()) return false
-        return trimmed.startsWith("dtn://") || trimmed.startsWith("ipn:")
+        if (trimmed.isEmpty() || trimmed.any { it.isWhitespace() }) return false
+        if (trimmed.equals("dtn:none", ignoreCase = true)) return true
+        if (trimmed.startsWith("dtn://", ignoreCase = true)) {
+            val rest = trimmed.substring(6).trim('/')
+            return rest.isNotEmpty()
+        }
+        if (trimmed.startsWith("ipn:", ignoreCase = true)) {
+            val ssp = trimmed.substring(4)
+            val parts = ssp.split(".")
+            if (parts.size != 2) return false
+            val node = parts[0].toLongOrNull()
+            val service = parts[1].toLongOrNull()
+            return node != null && node >= 0L && service != null && service >= 0L
+        }
+        return false
     }
 
     fun isPrefixMatch(
@@ -147,7 +160,11 @@ object PayloadUtils {
     ): Boolean {
         val p = parent.trim().lowercase()
         val c = child.trim().lowercase()
+        if (p.isEmpty() || c.isEmpty()) return false
         if (p == c) return true
+        val pNoSlash = p.trimEnd('/')
+        val cNoSlash = c.trimEnd('/')
+        if (pNoSlash.isNotEmpty() && pNoSlash == cNoSlash) return true
         val normalizedParent = if (p.endsWith("/")) p else "$p/"
         return c.startsWith(normalizedParent)
     }

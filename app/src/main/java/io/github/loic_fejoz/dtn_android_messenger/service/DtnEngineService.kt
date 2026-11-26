@@ -102,6 +102,40 @@ class DtnEngineService : Service() {
             return destination
         }
 
+        internal fun selectBpsecKey(
+            targetEid: String,
+            keys: List<BpsecKey>,
+        ): BpsecKey? {
+            if (!io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isValidEid(targetEid)) return null
+            return keys
+                .filter { key ->
+                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isValidEid(key.nodeEid) &&
+                        io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(key.nodeEid, targetEid)
+                }
+                .maxByOrNull { it.nodeEid.trim().trimEnd('/').length }
+        }
+
+        internal fun shouldRejectUnsignedBundle(policy: String): Boolean = policy == "strict"
+
+        internal fun isLocalDestination(
+            destinationEid: String,
+            localNodeBase: String,
+            localServices: List<LocalService>,
+        ): Pair<Boolean, List<LocalService>> {
+            if (!io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isValidEid(destinationEid)) {
+                return Pair(false, emptyList())
+            }
+            val isLocalNode =
+                io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isValidEid(localNodeBase) &&
+                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(localNodeBase, destinationEid)
+            val matchedLocalServices =
+                localServices.filter { service ->
+                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isValidEid(service.serviceEid) &&
+                        io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(service.serviceEid, destinationEid)
+                }
+            return Pair(isLocalNode || matchedLocalServices.isNotEmpty(), matchedLocalServices)
+        }
+
         @Volatile
         var isRunning = false
     }
@@ -121,11 +155,7 @@ class DtnEngineService : Service() {
     }
 
     private suspend fun findBpsecKey(sourceEid: String): BpsecKey? {
-        val keys = bpsecKeyDao.getAllList()
-        return keys.find { key ->
-            io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(key.nodeEid, sourceEid) ||
-                io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(sourceEid, key.nodeEid)
-        }
+        return selectBpsecKey(sourceEid, bpsecKeyDao.getAllList())
     }
 
     override fun onCreate() {
@@ -415,18 +445,22 @@ class DtnEngineService : Service() {
                         val rawPrimaryBytes = primary.rawBytes ?: Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
 
                         val computedSignature =
-                            Bpv7Parser.computeHmac(
-                                secretKey = decryptedKey,
-                                primaryBlockBytes = rawPrimaryBytes,
-                                targetBlockType = 1,
-                                targetBlockNumber = payload.blockNumber,
-                                targetBlockFlags = payload.blockControlFlags,
-                                securityBlockType = 11,
-                                securityBlockNumber = bib.blockNumber,
-                                securityBlockFlags = bib.blockControlFlags,
-                                payloadBytes = payload.data,
-                                scopeFlags = bib.scopeFlags,
-                            )
+                            try {
+                                Bpv7Parser.computeHmac(
+                                    secretKey = decryptedKey,
+                                    primaryBlockBytes = rawPrimaryBytes,
+                                    targetBlockType = 1,
+                                    targetBlockNumber = payload.blockNumber,
+                                    targetBlockFlags = payload.blockControlFlags,
+                                    securityBlockType = 11,
+                                    securityBlockNumber = bib.blockNumber,
+                                    securityBlockFlags = bib.blockControlFlags,
+                                    payloadBytes = payload.data,
+                                    scopeFlags = bib.scopeFlags,
+                                )
+                            } finally {
+                                decryptedKey.fill(0)
+                            }
 
                         bpsecStatus =
                             if (java.security.MessageDigest.isEqual(computedSignature, bib.signature)) {
@@ -453,15 +487,14 @@ class DtnEngineService : Service() {
                     }
                 }
             } else {
+                if (shouldRejectUnsignedBundle(policy)) {
+                    log("ERROR", "BPSec signature missing under STRICT policy. Discarding bundle from ${primary.source.uri}.")
+                    return false
+                }
                 // Check if a key exists for this node EID
                 val keyRecord = findBpsecKey(primary.source.uri)
-                if (keyRecord != null) {
-                    if (policy == "strict") {
-                        log("ERROR", "BPSec signature missing under STRICT policy. Discarding bundle from ${primary.source.uri}.")
-                        return false
-                    } else if (policy == "warn") {
-                        log("WARN", "BPSec signature missing under WARN policy for bundle from ${primary.source.uri}.")
-                    }
+                if (keyRecord != null && policy == "warn") {
+                    log("WARN", "BPSec signature missing under WARN policy for bundle from ${primary.source.uri}.")
                 }
             }
 
@@ -483,18 +516,13 @@ class DtnEngineService : Service() {
 
             // Verify if it is for local services on our node (supporting prefix/multicast match for multiple services)
             val localNodeBase = (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim()
-
-            val isLocalNode =
-                io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(localNodeBase, primary.destination.uri) ||
-                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(primary.destination.uri, localNodeBase)
-
             val localServices = localServiceDao.getAllList()
-            val matchedLocalServices =
-                localServices.filter { service ->
-                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(service.serviceEid, primary.destination.uri) ||
-                        io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(primary.destination.uri, service.serviceEid)
-                }
-            val isLocal = isLocalNode || matchedLocalServices.isNotEmpty()
+            val (isLocal, matchedLocalServices) =
+                isLocalDestination(
+                    destinationEid = primary.destination.uri,
+                    localNodeBase = localNodeBase,
+                    localServices = localServices,
+                )
 
             var isBibeDecapsulated = false
             val isBibeCandidate =
@@ -853,18 +881,22 @@ class DtnEngineService : Service() {
                         val bibBlockFlags = 0L
                         val rawPrimary = Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
                         val signature =
-                            Bpv7Parser.computeHmac(
-                                secretKey = decryptedKey,
-                                primaryBlockBytes = rawPrimary,
-                                targetBlockType = 1,
-                                targetBlockNumber = payload.blockNumber,
-                                targetBlockFlags = payload.blockControlFlags,
-                                securityBlockType = 11,
-                                securityBlockNumber = bibBlockNumber,
-                                securityBlockFlags = bibBlockFlags,
-                                payloadBytes = payloadBytes,
-                                scopeFlags = 7,
-                            )
+                            try {
+                                Bpv7Parser.computeHmac(
+                                    secretKey = decryptedKey,
+                                    primaryBlockBytes = rawPrimary,
+                                    targetBlockType = 1,
+                                    targetBlockNumber = payload.blockNumber,
+                                    targetBlockFlags = payload.blockControlFlags,
+                                    securityBlockType = 11,
+                                    securityBlockNumber = bibBlockNumber,
+                                    securityBlockFlags = bibBlockFlags,
+                                    payloadBytes = payloadBytes,
+                                    scopeFlags = 7,
+                                )
+                            } finally {
+                                decryptedKey.fill(0)
+                            }
                         bib =
                             BibBlock(
                                 blockNumber = bibBlockNumber,
