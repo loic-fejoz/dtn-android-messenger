@@ -65,6 +65,6 @@
     <string name="file_cla_invalid_name">Nom de dossier invalide</string>
     <string name="file_cla_invalid_interval">L\'intervalle doit être un nombre (&gt;= 5 secondes)</string>
     <string name="file_cla_sync_now">Synchroniser le File-CLA maintenant</string>
-    <string name="file_cla_syncing_toast">Synchronisation du File-CLA \'%s\' (RX &amp; TX)...</string>
+    <string name="file_cla_syncing_toast">Synchronisation du File-CLA \'%s\' (RX &amp; TX)&#8230;</string>
     <string name="file_cla_poll_display">Scan : %ss</string>
 </resources>

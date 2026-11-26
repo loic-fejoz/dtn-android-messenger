@@ -7,3 +7,4 @@ ktlint_standard_property-naming = disabled
 ktlint_standard_value-argument-comment = disabled
 ktlint_standard_value-parameter-comment = disabled
 ktlint_standard_import-ordering = disabled
+ktlint_standard_package-name = disabled

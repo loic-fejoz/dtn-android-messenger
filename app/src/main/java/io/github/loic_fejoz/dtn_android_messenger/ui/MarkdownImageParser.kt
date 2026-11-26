@@ -2,6 +2,7 @@ package io.github.loic_fejoz.dtn_android_messenger.ui
 
 sealed class MarkdownLineElement {
     data class Text(val content: String) : MarkdownLineElement()
+
     data class Image(val altText: String, val url: String) : MarkdownLineElement()
 }
 

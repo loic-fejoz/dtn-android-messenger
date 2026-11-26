@@ -2,7 +2,7 @@ package io.github.loic_fejoz.dtn_android_messenger.cla
 
 import android.content.ContentResolver
 import android.content.Context
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.SystemLogDao
 import io.github.loic_fejoz.dtn_android_messenger.data.model.SystemLog
@@ -72,7 +72,7 @@ class SafClaDirectoryFactory(private val context: Context) : ClaDirectoryFactory
     override fun fromLocation(location: String): ClaDirectory? {
         if (location.isBlank()) return null
         return try {
-            val uri = Uri.parse(location)
+            val uri = location.toUri()
             val doc = DocumentFile.fromTreeUri(context, uri)
             if (doc != null && doc.exists() && doc.isDirectory) {
                 SafClaDirectory(context.contentResolver, doc)
@@ -371,76 +371,18 @@ class FileClaAdapter(
             withContext(Dispatchers.IO) {
                 val dirs = resolveClaDirectories(baseTreeUri, claName, failureLogLevel = "WARN") ?: return@withContext 0
                 val folderName = dirs.folderName
-                val rxDir = dirs.rxDir
                 val prefix = "$baseTreeUri|$folderName|"
-
                 val maxBytes = maxBundleSizeBytesProvider()
                 val snapshots =
-                    rxDir.listFiles()
-                        .map { file ->
-                            FileSnapshot(
-                                file = file,
-                                name = file.name,
-                                isDirectory = file.isDirectory,
-                                length = file.length,
-                                lastModified = file.lastModified,
-                            )
-                        }
+                    dirs.rxDir.listFiles()
+                        .map { FileSnapshot(it, it.name, it.isDirectory, it.length, it.lastModified) }
                         .sortedWith(compareBy<FileSnapshot> { it.lastModified }.thenBy { it.name })
 
                 val seenFailureKeys = HashSet<String>()
                 var ingestedCount = 0
-
                 for (snap in snapshots) {
-                    val fileName = snap.name
-                    if (snap.isDirectory || fileName.isBlank()) continue
-                    if (fileName.startsWith(".") || fileName.endsWith(".tmp", ignoreCase = true)) continue
-
-                    val signature = "${snap.lastModified}:${snap.length}"
-                    val failureKey = "$prefix$fileName"
-                    if (failedFileSignatures[failureKey] == signature) {
-                        seenFailureKeys.add(failureKey)
-                        continue
-                    }
-
-                    if (snap.length > maxBytes) {
-                        log(
-                            "WARN",
-                            "File-CLA '$folderName' skipping '$fileName': size (${snap.length} bytes) exceeds limit ($maxBytes bytes)",
-                        )
-                        failedFileSignatures[failureKey] = signature
-                        seenFailureKeys.add(failureKey)
-                        continue
-                    }
-
-                    val bytes = snap.file.readBytes(maxBytes)
-                    if (bytes == null || bytes.isEmpty()) {
-                        log("WARN", "File-CLA '$folderName' skipping '$fileName': empty, oversized, or unreadable")
-                        failedFileSignatures[failureKey] = signature
-                        seenFailureKeys.add(failureKey)
-                        continue
-                    }
-
-                    val accepted =
-                        try {
-                            listener(bytes)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            log("WARN", "File-CLA '$folderName' failed to process '$fileName': ${e.message}")
-                            false
-                        }
-
-                    if (accepted) {
-                        failedFileSignatures.remove(failureKey)
-                        if (!snap.file.delete()) {
-                            log("WARN", "File-CLA '$folderName' ingested '$fileName' but could not delete it from RX")
-                        }
+                    if (processIncomingFile(snap, folderName, prefix, maxBytes, listener, seenFailureKeys)) {
                         ingestedCount++
-                    } else {
-                        log("WARN", "File-CLA '$folderName' rejected '$fileName' (invalid BPv7 bundle); leaving in RX")
-                        failedFileSignatures[failureKey] = signature
-                        seenFailureKeys.add(failureKey)
                     }
                 }
 
@@ -453,6 +395,66 @@ class FileClaAdapter(
                 ingestedCount
             }
         }
+
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun processIncomingFile(
+        snap: FileSnapshot,
+        folderName: String,
+        prefix: String,
+        maxBytes: Long,
+        listener: suspend (ByteArray) -> Boolean,
+        seenFailureKeys: MutableSet<String>,
+    ): Boolean {
+        val fileName = snap.name
+        if (snap.isDirectory || fileName.isBlank()) return false
+        if (fileName.startsWith(".") || fileName.endsWith(".tmp", ignoreCase = true)) return false
+
+        val signature = "${snap.lastModified}:${snap.length}"
+        val failureKey = "$prefix$fileName"
+        if (failedFileSignatures[failureKey] == signature) {
+            seenFailureKeys.add(failureKey)
+            return false
+        }
+        if (snap.length > maxBytes) {
+            log(
+                "WARN",
+                "File-CLA '$folderName' skipping '$fileName': size (${snap.length} bytes) exceeds limit ($maxBytes bytes)",
+            )
+            failedFileSignatures[failureKey] = signature
+            seenFailureKeys.add(failureKey)
+            return false
+        }
+
+        val bytes = snap.file.readBytes(maxBytes)
+        if (bytes == null || bytes.isEmpty()) {
+            log("WARN", "File-CLA '$folderName' skipping '$fileName': empty, oversized, or unreadable")
+            failedFileSignatures[failureKey] = signature
+            seenFailureKeys.add(failureKey)
+            return false
+        }
+
+        val accepted =
+            try {
+                listener(bytes)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("WARN", "File-CLA '$folderName' failed to process '$fileName': ${e.message}")
+                false
+            }
+
+        if (accepted) {
+            failedFileSignatures.remove(failureKey)
+            if (!snap.file.delete()) {
+                log("WARN", "File-CLA '$folderName' ingested '$fileName' but could not delete it from RX")
+            }
+            return true
+        }
+        log("WARN", "File-CLA '$folderName' rejected '$fileName' (invalid BPv7 bundle); leaving in RX")
+        failedFileSignatures[failureKey] = signature
+        seenFailureKeys.add(failureKey)
+        return false
+    }
 
     suspend fun sendNamedBundles(
         baseTreeUri: String,

@@ -16,25 +16,30 @@ import java.io.File
  * NS_ERROR_DOM_MEDIA_DECODE_ERR (0x806e0006).
  */
 object OggOpusFixer {
-
     private const val MIN_PRE_SKIP = 312
 
-    private val OGG_CRC_TABLE = IntArray(256) { i ->
-        var r = i shl 24
-        for (j in 0 until 8) {
-            r = if ((r and 0x80000000.toInt()) != 0) {
-                (r shl 1) xor 0x04C11DB7
-            } else {
-                r shl 1
+    private val OGG_CRC_TABLE =
+        IntArray(256) { i ->
+            var r = i shl 24
+            for (j in 0 until 8) {
+                r =
+                    if ((r and 0x80000000.toInt()) != 0) {
+                        (r shl 1) xor 0x04C11DB7
+                    } else {
+                        r shl 1
+                    }
             }
+            r
         }
-        r
-    }
 
     /**
      * Computes the 32-bit CRC checksum for an Ogg page (RFC 3533).
      */
-    fun computeOggCrc(data: ByteArray, start: Int, length: Int): Int {
+    fun computeOggCrc(
+        data: ByteArray,
+        start: Int,
+        length: Int,
+    ): Int {
         var crc = 0
         for (i in start until start + length) {
             val b = data[i].toInt() and 0xFF
@@ -57,56 +62,61 @@ object OggOpusFixer {
         val bodyOffset = 27 + nsegs
         if (data.size < bodyOffset + 8) return false
         return data[bodyOffset] == 'O'.code.toByte() &&
-               data[bodyOffset + 1] == 'p'.code.toByte() &&
-               data[bodyOffset + 2] == 'u'.code.toByte() &&
-               data[bodyOffset + 3] == 's'.code.toByte() &&
-               data[bodyOffset + 4] == 'H'.code.toByte() &&
-               data[bodyOffset + 5] == 'e'.code.toByte() &&
-               data[bodyOffset + 6] == 'a'.code.toByte() &&
-               data[bodyOffset + 7] == 'd'.code.toByte()
+            data[bodyOffset + 1] == 'p'.code.toByte() &&
+            data[bodyOffset + 2] == 'u'.code.toByte() &&
+            data[bodyOffset + 3] == 's'.code.toByte() &&
+            data[bodyOffset + 4] == 'H'.code.toByte() &&
+            data[bodyOffset + 5] == 'e'.code.toByte() &&
+            data[bodyOffset + 6] == 'a'.code.toByte() &&
+            data[bodyOffset + 7] == 'd'.code.toByte()
     }
 
     /**
      * Calculates the number of 48 kHz PCM samples in an Opus packet based on its TOC byte (RFC 6716 §3.1).
      */
-    fun calculateOpusSamples(toc: Int, frameCountByte: Int): Int {
+    fun calculateOpusSamples(
+        toc: Int,
+        frameCountByte: Int,
+    ): Int {
         if (toc < 0) return 0
         val config = (toc ushr 3) and 0x1F
         val code = toc and 0x03
 
-        val samplesPerFrame = when {
-            config >= 16 -> {
-                // CELT
-                when (config and 0x03) {
-                    0 -> 120  // 2.5 ms at 48kHz
-                    1 -> 240  // 5 ms
-                    2 -> 480  // 10 ms
-                    else -> 960 // 20 ms
+        val samplesPerFrame =
+            when {
+                config >= 16 -> {
+                    // CELT
+                    when (config and 0x03) {
+                        0 -> 120 // 2.5 ms at 48kHz
+                        1 -> 240 // 5 ms
+                        2 -> 480 // 10 ms
+                        else -> 960 // 20 ms
+                    }
+                }
+                config >= 12 -> {
+                    // Hybrid
+                    if ((config and 0x01) == 0) 480 else 960
+                }
+                else -> {
+                    // SILK
+                    when (config and 0x03) {
+                        0 -> 480 // 10 ms
+                        1 -> 960 // 20 ms
+                        2 -> 1920 // 40 ms
+                        else -> 2880 // 60 ms
+                    }
                 }
             }
-            config >= 12 -> {
-                // Hybrid
-                if ((config and 0x01) == 0) 480 else 960
-            }
-            else -> {
-                // SILK
-                when (config and 0x03) {
-                    0 -> 480  // 10 ms
-                    1 -> 960  // 20 ms
-                    2 -> 1920 // 40 ms
-                    else -> 2880 // 60 ms
-                }
-            }
-        }
 
-        val frames = when (code) {
-            0 -> 1
-            1, 2 -> 2
-            else -> {
-                val m = frameCountByte and 0x3F
-                if (m <= 0) 1 else m
+        val frames =
+            when (code) {
+                0 -> 1
+                1, 2 -> 2
+                else -> {
+                    val m = frameCountByte and 0x3F
+                    if (m <= 0) 1 else m
+                }
             }
-        }
 
         return samplesPerFrame * frames
     }
@@ -173,8 +183,9 @@ object OggOpusFixer {
             data[p0.bodyOffset + 6] == 'a'.code.toByte() &&
             data[p0.bodyOffset + 7] == 'd'.code.toByte()
         ) {
-            val origPreskip = (data[p0.bodyOffset + 10].toInt() and 0xFF) or
-                              ((data[p0.bodyOffset + 11].toInt() and 0xFF) shl 8)
+            val origPreskip =
+                (data[p0.bodyOffset + 10].toInt() and 0xFF) or
+                    ((data[p0.bodyOffset + 11].toInt() and 0xFF) shl 8)
             if (origPreskip < MIN_PRE_SKIP) {
                 preskip = MIN_PRE_SKIP
                 data[p0.bodyOffset + 10] = (preskip and 0xFF).toByte()
@@ -203,11 +214,12 @@ object OggOpusFixer {
 
         // Check if granule positions need fixing:
         // If the first audio page has granulepos == 0 or less than preskip, they are buggy and must be recalculated.
-        val needGranuleFix = if (firstAudioIdx < pages.size) {
-            pages[firstAudioIdx].granulePos < preskip
-        } else {
-            false
-        }
+        val needGranuleFix =
+            if (firstAudioIdx < pages.size) {
+                pages[firstAudioIdx].granulePos < preskip
+            } else {
+                false
+            }
 
         var cumSamples = preskip.toLong()
         var runningToc = -1
@@ -293,18 +305,23 @@ object OggOpusFixer {
         return data
     }
 
-    private fun isHeaderPage(data: ByteArray, page: PageInfo): Boolean {
+    private fun isHeaderPage(
+        data: ByteArray,
+        page: PageInfo,
+    ): Boolean {
         if (page.bodyLength < 8) return false
         val b = page.bodyOffset
-        val isHead = data[b] == 'O'.code.toByte() && data[b+1] == 'p'.code.toByte() &&
-                     data[b+2] == 'u'.code.toByte() && data[b+3] == 's'.code.toByte() &&
-                     data[b+4] == 'H'.code.toByte() && data[b+5] == 'e'.code.toByte() &&
-                     data[b+6] == 'a'.code.toByte() && data[b+7] == 'd'.code.toByte()
+        val isHead =
+            data[b] == 'O'.code.toByte() && data[b + 1] == 'p'.code.toByte() &&
+                data[b + 2] == 'u'.code.toByte() && data[b + 3] == 's'.code.toByte() &&
+                data[b + 4] == 'H'.code.toByte() && data[b + 5] == 'e'.code.toByte() &&
+                data[b + 6] == 'a'.code.toByte() && data[b + 7] == 'd'.code.toByte()
 
-        val isTags = data[b] == 'O'.code.toByte() && data[b+1] == 'p'.code.toByte() &&
-                     data[b+2] == 'u'.code.toByte() && data[b+3] == 's'.code.toByte() &&
-                     data[b+4] == 'T'.code.toByte() && data[b+5] == 'a'.code.toByte() &&
-                     data[b+6] == 'g'.code.toByte() && data[b+7] == 's'.code.toByte()
+        val isTags =
+            data[b] == 'O'.code.toByte() && data[b + 1] == 'p'.code.toByte() &&
+                data[b + 2] == 'u'.code.toByte() && data[b + 3] == 's'.code.toByte() &&
+                data[b + 4] == 'T'.code.toByte() && data[b + 5] == 'a'.code.toByte() &&
+                data[b + 6] == 'g'.code.toByte() && data[b + 7] == 's'.code.toByte()
 
         return isHead || isTags
     }
@@ -326,25 +343,36 @@ object OggOpusFixer {
         }
     }
 
-    private fun readLittleEndianLong(data: ByteArray, offset: Int): Long {
+    private fun readLittleEndianLong(
+        data: ByteArray,
+        offset: Int,
+    ): Long {
         return (data[offset].toLong() and 0xFF) or
-               ((data[offset + 1].toLong() and 0xFF) shl 8) or
-               ((data[offset + 2].toLong() and 0xFF) shl 16) or
-               ((data[offset + 3].toLong() and 0xFF) shl 24) or
-               ((data[offset + 4].toLong() and 0xFF) shl 32) or
-               ((data[offset + 5].toLong() and 0xFF) shl 40) or
-               ((data[offset + 6].toLong() and 0xFF) shl 48) or
-               ((data[offset + 7].toLong() and 0xFF) shl 56)
+            ((data[offset + 1].toLong() and 0xFF) shl 8) or
+            ((data[offset + 2].toLong() and 0xFF) shl 16) or
+            ((data[offset + 3].toLong() and 0xFF) shl 24) or
+            ((data[offset + 4].toLong() and 0xFF) shl 32) or
+            ((data[offset + 5].toLong() and 0xFF) shl 40) or
+            ((data[offset + 6].toLong() and 0xFF) shl 48) or
+            ((data[offset + 7].toLong() and 0xFF) shl 56)
     }
 
-    private fun writeLittleEndianInt(data: ByteArray, offset: Int, value: Int) {
+    private fun writeLittleEndianInt(
+        data: ByteArray,
+        offset: Int,
+        value: Int,
+    ) {
         data[offset] = (value and 0xFF).toByte()
         data[offset + 1] = ((value ushr 8) and 0xFF).toByte()
         data[offset + 2] = ((value ushr 16) and 0xFF).toByte()
         data[offset + 3] = ((value ushr 24) and 0xFF).toByte()
     }
 
-    private fun writeLittleEndianLong(data: ByteArray, offset: Int, value: Long) {
+    private fun writeLittleEndianLong(
+        data: ByteArray,
+        offset: Int,
+        value: Long,
+    ) {
         data[offset] = (value and 0xFF).toByte()
         data[offset + 1] = ((value ushr 8) and 0xFF).toByte()
         data[offset + 2] = ((value ushr 16) and 0xFF).toByte()

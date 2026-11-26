@@ -81,8 +81,8 @@ private suspend fun readSessInitPayload(input: ByteReadChannel) {
     val extLenBytes = ByteArray(4)
     input.readFully(extLenBytes, 0, 4)
     val extLen = ByteBuffer.wrap(extLenBytes).int
-    if (extLen < 0 || extLen > MAX_EXTENSION_LENGTH) {
-        throw IllegalArgumentException("Invalid SESS_INIT extension length: $extLen (exceeds max $MAX_EXTENSION_LENGTH)")
+    require(extLen in 0..MAX_EXTENSION_LENGTH) {
+        "Invalid SESS_INIT extension length: $extLen (exceeds max $MAX_EXTENSION_LENGTH)"
     }
     if (extLen > 0) {
         val extBytes = ByteArray(extLen)
@@ -131,8 +131,8 @@ private suspend fun readXferSegmentAndHandle(
     // RFC 9174 §5.2.2: Transfer Extension Items length is present ONLY when START (bit 1 = 0x02) is set
     if ((flags and XFER_FLAG_START) != 0) {
         val extByteLen = input.readInt()
-        if (extByteLen < 0 || extByteLen > MAX_EXTENSION_LENGTH) {
-            throw IllegalArgumentException("Invalid XFER_SEGMENT extension length: $extByteLen (exceeds max $MAX_EXTENSION_LENGTH)")
+        require(extByteLen in 0..MAX_EXTENSION_LENGTH) {
+            "Invalid XFER_SEGMENT extension length: $extByteLen (exceeds max $MAX_EXTENSION_LENGTH)"
         }
         if (extByteLen > 0) {
             val extBytes = ByteArray(extByteLen)
@@ -142,8 +142,8 @@ private suspend fun readXferSegmentAndHandle(
 
     // Validate 64-bit length before narrowing to Int to prevent truncation bypass
     val rawLength = input.readLong()
-    if (rawLength <= 0L || rawLength > maxSizeBytes) {
-        throw IllegalArgumentException("Invalid segment length: $rawLength (exceeds max $maxSizeBytes bytes)")
+    require(rawLength in 1L..maxSizeBytes) {
+        "Invalid segment length: $rawLength (exceeds max $maxSizeBytes bytes)"
     }
     val length = rawLength.toInt()
     val segmentBytes =
@@ -339,7 +339,7 @@ class TcpClAdapter(
                 if (clientHeader[0] != 'd'.code.toByte() || clientHeader[1] != 't'.code.toByte() ||
                     clientHeader[2] != 'n'.code.toByte() || clientHeader[3] != '!'.code.toByte()
                 ) {
-                    throw Exception("Invalid contact header from client")
+                    throw java.io.IOException("Invalid contact header from client")
                 }
 
                 // Send contact header back (6 bytes)
@@ -357,7 +357,7 @@ class TcpClAdapter(
                 // Read SESS_INIT (type 7)
                 val sessInitType = input.readByte().toInt()
                 if (sessInitType != MSG_SESS_INIT) {
-                    throw Exception("Expected SESS_INIT from client, got type $sessInitType")
+                    throw java.io.IOException("Expected SESS_INIT from client, got type $sessInitType")
                 }
                 readSessInitPayload(input)
 
@@ -397,7 +397,7 @@ class TcpClAdapter(
                                     withTimeout(TCPCL_GRACE_TIMEOUT_MS) {
                                         sendSessTerm(output, isReply = true, reasonCode = termReason)
                                     }
-                                } catch (e: Exception) {
+                                } catch (_: Exception) {
                                 }
                             }
                         }
@@ -427,7 +427,7 @@ class TcpClAdapter(
             for (session in activeSessions.values) {
                 try {
                     session.socket.close()
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                 }
             }
             activeSessions.clear()
@@ -435,7 +435,7 @@ class TcpClAdapter(
         synchronized(selectorLock) {
             try {
                 selectorManager?.close()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
             }
             selectorManager = null
         }
@@ -548,7 +548,7 @@ class TcpClAdapter(
                         serverHeader[2] != 'n'.code.toByte() || serverHeader[3] != '!'.code.toByte() ||
                         serverHeader[4] != 4.toByte()
                     ) {
-                        throw Exception("Invalid contact header version from server")
+                        throw java.io.IOException("Invalid contact header version from server")
                     }
 
                     val sessInit = buildSessInit(getLocalNodeName())
@@ -556,7 +556,7 @@ class TcpClAdapter(
 
                     val sessInitType = input.readByte().toInt()
                     if (sessInitType != MSG_SESS_INIT) {
-                        throw Exception("Expected SESS_INIT from server, got type $sessInitType")
+                        throw java.io.IOException("Expected SESS_INIT from server, got type $sessInitType")
                     }
                     readSessInitPayload(input)
                 }
@@ -667,7 +667,7 @@ private class ActiveTcpclSession(
             idleJob.cancel()
             try {
                 socket.close()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
             }
             onSessionClosed()
         }
@@ -805,7 +805,7 @@ private class ActiveTcpclSession(
                                             sendSessTerm(output, isReply = true, reasonCode = termReason)
                                         }
                                     }
-                                } catch (e: Exception) {
+                                } catch (_: Exception) {
                                 }
                             }
                         }
@@ -838,7 +838,7 @@ private class ActiveTcpclSession(
                             sendSessTerm(output, isReply = false, reasonCode = REASON_IDLE_TIMEOUT)
                         }
                     }
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                 }
                 break
             }
@@ -864,7 +864,7 @@ class BluetoothClassicAdapter(
     private val logDao: SystemLogDao,
 ) : ConvergenceLayerAdapter {
     override val name = "Bluetooth"
-    private val SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    private val sppUuid = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     private var serverJob: Job? = null
     private var serverSocket: BluetoothServerSocket? = null
     private val bluetoothAdapter: BluetoothAdapter? = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)?.adapter
@@ -911,7 +911,7 @@ class BluetoothClassicAdapter(
                         var serverSock: BluetoothServerSocket? = null
                         try {
                             // In Android 12+, we need BLUETOOTH_CONNECT.
-                            serverSock = bluetoothAdapter.listenUsingRfcommWithServiceRecord("DtnMessenger", SPP_UUID)
+                            serverSock = bluetoothAdapter.listenUsingRfcommWithServiceRecord("DtnMessenger", sppUuid)
                             serverSocket = serverSock
                             log("INFO", "RFCOMM server socket opened")
                             while (isActive && bluetoothAdapter.isEnabled) {
@@ -929,7 +929,7 @@ class BluetoothClassicAdapter(
                         } finally {
                             try {
                                 serverSock?.close()
-                            } catch (e: Exception) {
+                            } catch (_: Exception) {
                             }
                         }
                     } catch (e: SecurityException) {
@@ -952,7 +952,7 @@ class BluetoothClassicAdapter(
                 var bytesRead = 0
                 while (bytesRead < 4) {
                     val read = inputStream.read(sizeBuf, bytesRead, 4 - bytesRead)
-                    if (read == -1) throw Exception("Stream closed")
+                    if (read == -1) throw java.io.IOException("Stream closed")
                     bytesRead += read
                 }
                 val length = ByteBuffer.wrap(sizeBuf).int
@@ -972,7 +972,7 @@ class BluetoothClassicAdapter(
                 var bodyRead = 0
                 while (bodyRead < length) {
                     val read = inputStream.read(bundleBytes, bodyRead, length - bodyRead)
-                    if (read == -1) throw Exception("Stream closed")
+                    if (read == -1) throw java.io.IOException("Stream closed")
                     bodyRead += read
                 }
                 log("INFO", "Received bundle via RFCOMM ($length bytes)")
@@ -1004,11 +1004,11 @@ class BluetoothClassicAdapter(
             activeSockets.remove(socket)
             try {
                 inputStream?.close()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
             }
             try {
                 socket.close()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
             }
         }
     }
@@ -1042,7 +1042,7 @@ class BluetoothClassicAdapter(
             try {
                 val device = bluetoothAdapter.getRemoteDevice(targetAddress)
                 log("INFO", "Attempting RFCOMM connection to ${device.name ?: targetAddress}")
-                socket = device.createRfcommSocketToServiceRecord(SPP_UUID)
+                socket = device.createRfcommSocketToServiceRecord(sppUuid)
                 socket.connect()
 
                 outputStream = socket.outputStream
@@ -1088,11 +1088,11 @@ class BluetoothClassicAdapter(
             } finally {
                 try {
                     outputStream?.close()
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                 }
                 try {
                     socket?.close()
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                 }
             }
         }
@@ -1100,13 +1100,13 @@ class BluetoothClassicAdapter(
     override fun stop() {
         try {
             serverSocket?.close()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
         synchronized(activeSockets) {
             for (socket in activeSockets) {
                 try {
                     socket.close()
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                 }
             }
             activeSockets.clear()

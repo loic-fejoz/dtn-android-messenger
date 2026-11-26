@@ -10,13 +10,12 @@ import java.io.File
 import java.nio.file.Path
 
 class OggOpusFixerTest {
-
     private fun buildPage(
         flags: Int,
         granulePos: Long,
         seq: Int,
         body: ByteArray,
-        packetSizes: List<Int> = listOf(body.size)
+        packetSizes: List<Int> = listOf(body.size),
     ): ByteArray {
         val nsegs = packetSizes.sumOf { (it / 255) + 1 }
         val segTable = mutableListOf<Byte>()
@@ -33,7 +32,10 @@ class OggOpusFixerTest {
         val page = ByteArray(pageLen)
 
         // Capture pattern
-        page[0] = 0x4F; page[1] = 0x67; page[2] = 0x67; page[3] = 0x53
+        page[0] = 0x4F
+        page[1] = 0x67
+        page[2] = 0x67
+        page[3] = 0x53
         page[4] = 0 // version
         page[5] = flags.toByte()
 
@@ -79,8 +81,12 @@ class OggOpusFixerTest {
         opusHead[9] = 1 // channels = 1
         opusHead[10] = 52.toByte() // preskip = 52 (< 312)
         opusHead[11] = 0
-        opusHead[12] = 0x80.toByte(); opusHead[13] = 0xBB.toByte(); opusHead[14] = 0; opusHead[15] = 0 // 48000 Hz
-        opusHead[16] = 0; opusHead[17] = 0 // gain
+        opusHead[12] = 0x80.toByte()
+        opusHead[13] = 0xBB.toByte()
+        opusHead[14] = 0
+        opusHead[15] = 0 // 48000 Hz
+        opusHead[16] = 0
+        opusHead[17] = 0 // gain
         opusHead[18] = 0 // mapping family
 
         val p0 = buildPage(flags = 0x02, granulePos = 0, seq = 0, body = opusHead)
@@ -134,7 +140,9 @@ class OggOpusFixerTest {
     }
 
     @Test
-    fun testFixBuggyAndroidOggOpus(@TempDir tempDir: Path) {
+    fun testFixBuggyAndroidOggOpus(
+        @TempDir tempDir: Path,
+    ) {
         val buggyBytes = createBuggyAndroidOggOpus()
         val fixedBytes = OggOpusFixer.fixOggOpusBytes(buggyBytes)
 
@@ -168,13 +176,17 @@ class OggOpusFixerTest {
             val pageLen = 27 + nsegs + bodyLen
 
             // Verify page CRC
-            val recordedCrc = (fixedBytes[pos + 22].toInt() and 0xFF) or
-                              ((fixedBytes[pos + 23].toInt() and 0xFF) shl 8) or
-                              ((fixedBytes[pos + 24].toInt() and 0xFF) shl 16) or
-                              ((fixedBytes[pos + 25].toInt() and 0xFF) shl 24)
+            val recordedCrc =
+                (fixedBytes[pos + 22].toInt() and 0xFF) or
+                    ((fixedBytes[pos + 23].toInt() and 0xFF) shl 8) or
+                    ((fixedBytes[pos + 24].toInt() and 0xFF) shl 16) or
+                    ((fixedBytes[pos + 25].toInt() and 0xFF) shl 24)
 
             val checkCopy = fixedBytes.copyOfRange(pos, pos + pageLen)
-            checkCopy[22] = 0; checkCopy[23] = 0; checkCopy[24] = 0; checkCopy[25] = 0
+            checkCopy[22] = 0
+            checkCopy[23] = 0
+            checkCopy[24] = 0
+            checkCopy[25] = 0
             val computedCrc = OggOpusFixer.computeOggCrc(checkCopy, 0, pageLen)
             assertEquals(computedCrc, recordedCrc, "Page $pageIdx CRC must be valid")
 
@@ -199,9 +211,10 @@ class OggOpusFixerTest {
         val hasOggInfo = File("/usr/bin/ogginfo").exists()
 
         if (hasOpusInfo) {
-            val proc = ProcessBuilder("opusinfo", file.absolutePath)
-                .redirectErrorStream(true)
-                .start()
+            val proc =
+                ProcessBuilder("opusinfo", file.absolutePath)
+                    .redirectErrorStream(true)
+                    .start()
             val output = proc.inputStream.bufferedReader().readText()
             val exitCode = proc.waitFor()
             println("opusinfo output:\n$output")
@@ -212,9 +225,10 @@ class OggOpusFixerTest {
         }
 
         if (hasOggInfo) {
-            val proc = ProcessBuilder("ogginfo", file.absolutePath)
-                .redirectErrorStream(true)
-                .start()
+            val proc =
+                ProcessBuilder("ogginfo", file.absolutePath)
+                    .redirectErrorStream(true)
+                    .start()
             val output = proc.inputStream.bufferedReader().readText()
             val exitCode = proc.waitFor()
             println("ogginfo output:\n$output")
@@ -224,7 +238,9 @@ class OggOpusFixerTest {
     }
 
     @Test
-    fun testFixOggOpusFileInPlace(@TempDir tempDir: Path) {
+    fun testFixOggOpusFileInPlace(
+        @TempDir tempDir: Path,
+    ) {
         val file = File(tempDir.toFile(), "voice.ogg")
         file.writeBytes(createBuggyAndroidOggOpus())
 

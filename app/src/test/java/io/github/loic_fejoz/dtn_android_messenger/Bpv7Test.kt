@@ -82,7 +82,8 @@ class Bpv7Test {
     fun testPrimaryBlockSerializationCrc16() {
         val primary =
             PrimaryBlock(
-                crcType = 1, // CRC-16 (X.25)
+                // CRC-16 (X.25)
+                crcType = 1,
                 destination = Eid("dtn://node-b/chat"),
                 source = Eid("dtn://node-a/chat"),
                 reportTo = Eid("dtn://node-a/chat"),
@@ -120,9 +121,10 @@ class Bpv7Test {
         val corruptCrc = validCrc.clone().apply { this[0] = (this[0].toInt() xor 0xFF).toByte() }
         cbor[8] = com.upokecenter.cbor.CBORObject.FromObject(corruptCrc)
 
-        val ex = assertThrows(IllegalArgumentException::class.java) {
-            Bpv7Parser.deserializePrimaryBlock(cbor)
-        }
+        val ex =
+            assertThrows(IllegalArgumentException::class.java) {
+                Bpv7Parser.deserializePrimaryBlock(cbor)
+            }
         assertTrue(ex.message!!.contains("CRC-32C mismatch"))
     }
 
@@ -142,9 +144,10 @@ class Bpv7Test {
         array.Add(ts)
         array.Add(1000L)
 
-        val ex = assertThrows(IllegalArgumentException::class.java) {
-            Bpv7Parser.deserializePrimaryBlock(array)
-        }
+        val ex =
+            assertThrows(IllegalArgumentException::class.java) {
+                Bpv7Parser.deserializePrimaryBlock(array)
+            }
         assertTrue(ex.message!!.contains("Missing CRC field in PrimaryBlock"))
     }
 
@@ -365,41 +368,44 @@ class Bpv7Test {
         val secretKey = "shared_secret_key_456".toByteArray(Charsets.UTF_8)
         val payloadBytes = "RFC 9173 Scope Flags Test".toByteArray(Charsets.UTF_8)
 
-        val primary = PrimaryBlock(
-            destination = Eid("dtn://node-b/app"),
-            source = Eid("dtn://node-a/app"),
-            reportTo = Eid("dtn://node-a/app"),
-            creationTimestamp = Pair(100000L, 14L),
-            lifetimeMs = 600000L
-        )
+        val primary =
+            PrimaryBlock(
+                destination = Eid("dtn://node-b/app"),
+                source = Eid("dtn://node-a/app"),
+                reportTo = Eid("dtn://node-a/app"),
+                creationTimestamp = Pair(100000L, 14L),
+                lifetimeMs = 600000L,
+            )
         val primaryBytes = Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
 
         // RFC 9173 Section 3.2: Scope flags mask scopeFlags = 7 (all included) vs scopeFlags = 1 (primary + payload)
-        val sigFullScope = Bpv7Parser.computeHmac(
-            secretKey = secretKey,
-            primaryBlockBytes = primaryBytes,
-            targetBlockType = 1,
-            targetBlockNumber = 1,
-            targetBlockFlags = 0L,
-            securityBlockType = 11,
-            securityBlockNumber = 2,
-            securityBlockFlags = 0L,
-            payloadBytes = payloadBytes,
-            scopeFlags = 7
-        )
+        val sigFullScope =
+            Bpv7Parser.computeHmac(
+                secretKey = secretKey,
+                primaryBlockBytes = primaryBytes,
+                targetBlockType = 1,
+                targetBlockNumber = 1,
+                targetBlockFlags = 0L,
+                securityBlockType = 11,
+                securityBlockNumber = 2,
+                securityBlockFlags = 0L,
+                payloadBytes = payloadBytes,
+                scopeFlags = 7,
+            )
 
-        val sigPrimaryOnlyScope = Bpv7Parser.computeHmac(
-            secretKey = secretKey,
-            primaryBlockBytes = primaryBytes,
-            targetBlockType = 1,
-            targetBlockNumber = 1,
-            targetBlockFlags = 0L,
-            securityBlockType = 11,
-            securityBlockNumber = 2,
-            securityBlockFlags = 0L,
-            payloadBytes = payloadBytes,
-            scopeFlags = 1
-        )
+        val sigPrimaryOnlyScope =
+            Bpv7Parser.computeHmac(
+                secretKey = secretKey,
+                primaryBlockBytes = primaryBytes,
+                targetBlockType = 1,
+                targetBlockNumber = 1,
+                targetBlockFlags = 0L,
+                securityBlockType = 11,
+                securityBlockNumber = 2,
+                securityBlockFlags = 0L,
+                payloadBytes = payloadBytes,
+                scopeFlags = 1,
+            )
 
         // Both signatures are valid for their respective RFC 9173 scope flag configurations
         assertTrue(sigFullScope.isNotEmpty())
@@ -409,13 +415,14 @@ class Bpv7Test {
 
     @Test
     fun testRfc9171IndefiniteArrayPayloadLastAndDtnNone() {
-        val primary = PrimaryBlock(
-            destination = Eid("dtn://node-b/chat"),
-            source = Eid("dtn://node-a/chat"),
-            reportTo = Eid("dtn:none"),
-            creationTimestamp = Pair(12345678L, 99L),
-            lifetimeMs = 3600000L,
-        )
+        val primary =
+            PrimaryBlock(
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn:none"),
+                creationTimestamp = Pair(12345678L, 99L),
+                lifetimeMs = 3600000L,
+            )
         val payload = PayloadBlock(data = "Hello RFC 9171!".toByteArray(Charsets.UTF_8))
         val hopCount = HopCountBlock(hopLimit = 64, hopCount = 1)
         val bib = BibBlock(securitySource = Eid("dtn://node-a/chat"), signature = byteArrayOf(9, 9, 9))
@@ -443,35 +450,38 @@ class Bpv7Test {
     fun testSignedBibRoundTripVerification() {
         val secretKey = "test_bpsec_hmac_key_32_bytes_ok!".toByteArray(Charsets.UTF_8)
         val payloadData = "RFC 9171 + RFC 9172/9173 round-trip signed payload".toByteArray(Charsets.UTF_8)
-        val primary = PrimaryBlock(
-            destination = Eid("dtn://node-b/chat"),
-            source = Eid("dtn://node-a/chat"),
-            reportTo = Eid("dtn:none"),
-            creationTimestamp = Pair(12345678L, 42L),
-            lifetimeMs = 3600000L,
-        )
+        val primary =
+            PrimaryBlock(
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn:none"),
+                creationTimestamp = Pair(12345678L, 42L),
+                lifetimeMs = 3600000L,
+            )
         val payload = PayloadBlock(data = payloadData)
         val hopCount = HopCountBlock(hopLimit = 64, hopCount = 1)
 
         val rawPrimaryBytes = Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
-        val signature = Bpv7Parser.computeHmac(
-            secretKey = secretKey,
-            primaryBlockBytes = rawPrimaryBytes,
-            targetBlockType = 1,
-            targetBlockNumber = payload.blockNumber,
-            targetBlockFlags = payload.blockControlFlags,
-            securityBlockType = 11,
-            securityBlockNumber = 2,
-            securityBlockFlags = 0L,
-            payloadBytes = payloadData,
-            scopeFlags = 7,
-        )
-        val bib = BibBlock(
-            blockNumber = 2,
-            blockControlFlags = 0L,
-            securitySource = Eid("dtn://node-a/chat"),
-            signature = signature,
-        )
+        val signature =
+            Bpv7Parser.computeHmac(
+                secretKey = secretKey,
+                primaryBlockBytes = rawPrimaryBytes,
+                targetBlockType = 1,
+                targetBlockNumber = payload.blockNumber,
+                targetBlockFlags = payload.blockControlFlags,
+                securityBlockType = 11,
+                securityBlockNumber = 2,
+                securityBlockFlags = 0L,
+                payloadBytes = payloadData,
+                scopeFlags = 7,
+            )
+        val bib =
+            BibBlock(
+                blockNumber = 2,
+                blockControlFlags = 0L,
+                securitySource = Eid("dtn://node-a/chat"),
+                signature = signature,
+            )
         assertEquals(1L, bib.securityContextFlags, "RFC 9172 §3.6: only bit 0 (parameters present) should be set")
 
         val bundle = Bundle(primary, payload, hopCount, bib)
@@ -493,33 +503,35 @@ class Bpv7Test {
         val parsedBundle = Bpv7Parser.deserialize(serializedBytes)
         val parsedBib = parsedBundle.bibBlock!!
         assertEquals(1L, parsedBib.securityContextFlags)
-        val verifiedSignature = Bpv7Parser.computeHmac(
-            secretKey = secretKey,
-            primaryBlockBytes = parsedBundle.primaryBlock.rawBytes!!,
-            targetBlockType = 1,
-            targetBlockNumber = parsedBundle.payloadBlock.blockNumber,
-            targetBlockFlags = parsedBundle.payloadBlock.blockControlFlags,
-            securityBlockType = 11,
-            securityBlockNumber = parsedBib.blockNumber,
-            securityBlockFlags = parsedBib.blockControlFlags,
-            payloadBytes = parsedBundle.payloadBlock.data,
-            scopeFlags = parsedBib.scopeFlags,
-        )
+        val verifiedSignature =
+            Bpv7Parser.computeHmac(
+                secretKey = secretKey,
+                primaryBlockBytes = parsedBundle.primaryBlock.rawBytes!!,
+                targetBlockType = 1,
+                targetBlockNumber = parsedBundle.payloadBlock.blockNumber,
+                targetBlockFlags = parsedBundle.payloadBlock.blockControlFlags,
+                securityBlockType = 11,
+                securityBlockNumber = parsedBib.blockNumber,
+                securityBlockFlags = parsedBib.blockControlFlags,
+                payloadBytes = parsedBundle.payloadBlock.data,
+                scopeFlags = parsedBib.scopeFlags,
+            )
         assertArrayEquals(parsedBib.signature, verifiedSignature, "Recomputed BIB HMAC must match serialized signature")
 
         val tamperedPayload = payloadData.clone().apply { this[0] = (this[0].toInt() xor 0x01).toByte() }
-        val tamperedSignature = Bpv7Parser.computeHmac(
-            secretKey = secretKey,
-            primaryBlockBytes = parsedBundle.primaryBlock.rawBytes!!,
-            targetBlockType = 1,
-            targetBlockNumber = parsedBundle.payloadBlock.blockNumber,
-            targetBlockFlags = parsedBundle.payloadBlock.blockControlFlags,
-            securityBlockType = 11,
-            securityBlockNumber = parsedBib.blockNumber,
-            securityBlockFlags = parsedBib.blockControlFlags,
-            payloadBytes = tamperedPayload,
-            scopeFlags = parsedBib.scopeFlags,
-        )
+        val tamperedSignature =
+            Bpv7Parser.computeHmac(
+                secretKey = secretKey,
+                primaryBlockBytes = parsedBundle.primaryBlock.rawBytes!!,
+                targetBlockType = 1,
+                targetBlockNumber = parsedBundle.payloadBlock.blockNumber,
+                targetBlockFlags = parsedBundle.payloadBlock.blockControlFlags,
+                securityBlockType = 11,
+                securityBlockNumber = parsedBib.blockNumber,
+                securityBlockFlags = parsedBib.blockControlFlags,
+                payloadBytes = tamperedPayload,
+                scopeFlags = parsedBib.scopeFlags,
+            )
         assertFalse(parsedBib.signature.contentEquals(tamperedSignature), "Tampered payload must not verify")
     }
 
@@ -628,10 +640,11 @@ class Bpv7Test {
             Eid("http://example.com").toCbor()
         }
 
-        val unknownSchemeCbor = com.upokecenter.cbor.CBORObject.NewArray().apply {
-            Add(99)
-            Add("foo")
-        }
+        val unknownSchemeCbor =
+            com.upokecenter.cbor.CBORObject.NewArray().apply {
+                Add(99)
+                Add("foo")
+            }
         assertThrows(IllegalArgumentException::class.java) {
             Eid.fromCbor(unknownSchemeCbor)
         }

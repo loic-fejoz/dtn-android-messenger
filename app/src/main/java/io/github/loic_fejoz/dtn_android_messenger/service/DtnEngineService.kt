@@ -778,7 +778,7 @@ class DtnEngineService : Service() {
                     try {
                         val fileObj = File(record.payloadFilePath)
                         if (fileObj.exists()) fileObj.delete()
-                    } catch (e: Exception) {
+                    } catch (_: SecurityException) {
                     }
                     bundleRecordDao.delete(record)
                     continue
@@ -789,7 +789,7 @@ class DtnEngineService : Service() {
                     try {
                         val fileObj = File(record.payloadFilePath)
                         if (fileObj.exists()) fileObj.delete()
-                    } catch (e: Exception) {
+                    } catch (_: SecurityException) {
                     }
                     bundleRecordDao.delete(record)
                     continue
@@ -1159,7 +1159,7 @@ class DtnEngineService : Service() {
         isRunning = false
         try {
             carConnectionTypeLiveData?.removeObserver(carConnectionObserver)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
         isTcpActive.value = false
         isBluetoothActive.value = false

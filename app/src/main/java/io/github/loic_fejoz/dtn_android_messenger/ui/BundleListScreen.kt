@@ -413,7 +413,7 @@ fun BundleDetailPane(
                             try {
                                 val file = File(bundle.payloadFilePath)
                                 if (file.exists()) file.delete()
-                            } catch (e: Exception) {
+                            } catch (_: SecurityException) {
                             }
                             bundleRecordDao.delete(bundle)
                             onClose()

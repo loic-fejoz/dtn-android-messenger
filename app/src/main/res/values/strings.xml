@@ -65,6 +65,6 @@
     <string name="file_cla_invalid_name">Invalid folder name</string>
     <string name="file_cla_invalid_interval">Poll interval must be a number (&gt;= 5 seconds)</string>
     <string name="file_cla_sync_now">Sync File-CLA now</string>
-    <string name="file_cla_syncing_toast">Syncing File-CLA \'%s\' (RX &amp; TX)...</string>
+    <string name="file_cla_syncing_toast">Syncing File-CLA \'%s\' (RX &amp; TX)&#8230;</string>
     <string name="file_cla_poll_display">Poll: %ss</string>
 </resources>

@@ -2,7 +2,6 @@ package io.github.loic_fejoz.dtn_android_messenger.ui
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaRecorder
 import android.net.Uri

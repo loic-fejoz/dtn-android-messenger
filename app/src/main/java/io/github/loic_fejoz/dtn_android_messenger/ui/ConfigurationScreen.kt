@@ -3,11 +3,11 @@ package io.github.loic_fejoz.dtn_android_messenger.ui
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
-import android.net.Uri
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.widget.Toast
+import androidx.core.net.toUri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -69,7 +69,7 @@ import kotlinx.coroutines.withContext
 private fun formatSafUriForDisplay(uriString: String): String {
     if (uriString.isBlank()) return ""
     return try {
-        val decoded = Uri.decode(Uri.parse(uriString).lastPathSegment ?: uriString)
+        val decoded = android.net.Uri.decode(uriString.toUri().lastPathSegment ?: uriString)
         val colonIdx = decoded.indexOf(':')
         if (colonIdx == -1) return decoded
         val volume = decoded.substring(0, colonIdx)
@@ -231,6 +231,43 @@ fun LocalNodeIdentityCard(context: Context = LocalContext.current) {
                 singleLine = true,
             )
         }
+    }
+}
+
+@Composable
+private fun FileClaFolderSelector(
+    address: String,
+    folderName: String,
+    onPickFolder: () -> Unit,
+) {
+    OutlinedButton(
+        onClick = onPickFolder,
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, NeonCyan),
+    ) {
+        Icon(Icons.Default.FolderOpen, contentDescription = null, tint = NeonCyan)
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(stringResource(R.string.file_cla_pick_folder), color = NeonCyan, fontWeight = FontWeight.Bold)
+    }
+    val folderDisplay =
+        if (address.isBlank()) {
+            stringResource(R.string.file_cla_no_folder_selected)
+        } else {
+            stringResource(R.string.file_cla_selected_folder_prefix, formatSafUriForDisplay(address))
+        }
+    Text(
+        folderDisplay,
+        color = if (address.isBlank()) TextGray else NeonCyan,
+        fontSize = 12.sp,
+    )
+    val previewFolder = FileClaAdapter.sanitizeFolderName(folderName)
+    if (previewFolder.isNotBlank()) {
+        Text(
+            "$previewFolder/RX & $previewFolder/TX",
+            color = TextGray,
+            fontSize = 11.sp,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+        )
     }
 }
 
@@ -408,35 +445,11 @@ fun ProfilesConfigTab(
                 }
 
                 if (type == TriggerType.FILE_CLA) {
-                    OutlinedButton(
-                        onClick = { pickFileClaFolderLauncher.launch(null) },
-                        modifier = Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.dp, NeonCyan),
-                    ) {
-                        Icon(Icons.Default.FolderOpen, contentDescription = null, tint = NeonCyan)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.file_cla_pick_folder), color = NeonCyan, fontWeight = FontWeight.Bold)
-                    }
-                    val folderDisplay =
-                        if (address.isBlank()) {
-                            stringResource(R.string.file_cla_no_folder_selected)
-                        } else {
-                            stringResource(R.string.file_cla_selected_folder_prefix, formatSafUriForDisplay(address))
-                        }
-                    Text(
-                        folderDisplay,
-                        color = if (address.isBlank()) TextGray else NeonCyan,
-                        fontSize = 12.sp,
+                    FileClaFolderSelector(
+                        address = address,
+                        folderName = name,
+                        onPickFolder = { pickFileClaFolderLauncher.launch(null) },
                     )
-                    val previewFolder = FileClaAdapter.sanitizeFolderName(name)
-                    if (previewFolder.isNotBlank()) {
-                        Text(
-                            "$previewFolder/RX & $previewFolder/TX",
-                            color = TextGray,
-                            fontSize = 11.sp,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        )
-                    }
                 } else {
                     OutlinedTextField(
                         value = address,
@@ -696,7 +709,7 @@ fun ProfilesConfigTab(
                                             val flags =
                                                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                                             context.contentResolver.releasePersistableUriPermission(
-                                                Uri.parse(profile.targetAddress),
+                                                profile.targetAddress.toUri(),
                                                 flags,
                                             )
                                         }
@@ -1412,7 +1425,7 @@ fun BackupConfigTab(
                         val jsonText =
                             context.contentResolver.openInputStream(uri)?.use { stream ->
                                 stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                            } ?: throw IllegalStateException("Unable to open input stream")
+                            } ?: error("Unable to open input stream")
                         if (ConfigBackupManager.isEncryptedBackup(jsonText)) {
                             pendingEncryptedImportJson = jsonText
                             importPassphraseInput = ""

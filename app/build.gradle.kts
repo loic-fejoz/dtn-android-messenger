@@ -62,7 +62,7 @@ android {
     applicationVariants.all {
         outputs.all {
             val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output?.outputFileName = "dtn-android-messenger-v${versionName}-${buildType.name}.apk"
+            output?.outputFileName = "dtn-android-messenger-v$versionName-${buildType.name}.apk"
         }
     }
 }
@@ -71,7 +71,7 @@ dependencies {
     // AndroidX & Lifecycle
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("androidx.documentfile:documentfile:1.1.0")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.2")
@@ -143,8 +143,7 @@ tasks.withType<Test> {
 tasks.register<Exec>("generateDtnToolsFixtures") {
     group = "verification"
     description = "Generates BPv7 binary bundle fixtures using NASA's dtn-tools script"
-    val venvPython = file("${rootDir}/.venv/bin/python3")
+    val venvPython = file("$rootDir/.venv/bin/python3")
     val pythonExec = if (venvPython.exists()) venvPython.absolutePath else "python3"
-    commandLine(pythonExec, "${rootDir}/scripts/generate_dtn_tools_fixtures.py")
+    commandLine(pythonExec, "$rootDir/scripts/generate_dtn_tools_fixtures.py")
 }
-

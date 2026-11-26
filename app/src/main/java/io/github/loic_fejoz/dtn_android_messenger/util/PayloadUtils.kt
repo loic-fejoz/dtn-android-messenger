@@ -1,118 +1,128 @@
 package io.github.loic_fejoz.dtn_android_messenger.util
 
 import java.io.File
+import java.io.IOException
 import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 
 object PayloadUtils {
+    private val htmlBodyMarkers = listOf("<head", "<body", "<title", "</html>", "</head>", "</body>")
+
     fun getPayloadFileExtension(filePath: String): String {
         val file = File(filePath)
         if (!file.exists()) return "bin"
-        try {
-            file.inputStream().use { input ->
-                val header = ByteArray(12)
-                val bytesRead = input.read(header)
-                if (bytesRead >= 4) {
-                    // Check PNG
-                    if (header[0] == 0x89.toByte() && header[1] == 0x50.toByte() && header[2] == 0x4E.toByte() && header[3] == 0x47.toByte()) {
-                        return "png"
-                    }
-                    // Check JPEG (FF D8 FF)
-                    if (header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() && header[2] == 0xFF.toByte()) {
-                        return "jpg"
-                    }
-                    // Check GIF (GIF)
-                    if (header[0] == 0x47.toByte() && header[1] == 0x49.toByte() && header[2] == 0x46.toByte()) {
-                        return "gif"
-                    }
-                    // Check WEBP (RIFFxxxxWEBP)
-                    if (bytesRead >= 12 &&
-                        header[0] == 'R'.code.toByte() && header[1] == 'I'.code.toByte() && header[2] == 'F'.code.toByte() && header[3] == 'F'.code.toByte() &&
-                        header[8] == 'W'.code.toByte() && header[9] == 'E'.code.toByte() && header[10] == 'B'.code.toByte() && header[11] == 'P'.code.toByte()
-                    ) {
-                        return "webp"
-                    }
-                    // Check BMP (BM)
-                    if (header[0] == 0x42.toByte() && header[1] == 0x4D.toByte()) {
-                        return "bmp"
-                    }
-                    // Check OGG (OggS)
-                    if (header[0] == 0x4F.toByte() && header[1] == 0x67.toByte() && header[2] == 0x67.toByte() && header[3] == 0x53.toByte()) {
-                        return "ogg"
-                    }
-                    // Check MP3 (ID3 or MPEG frame sync FF FB/F3/F2)
-                    if ((header[0] == 0x49.toByte() && header[1] == 0x44.toByte() && header[2] == 0x33.toByte()) ||
-                        (header[0] == 0xFF.toByte() && (header[1].toInt() and 0xE0) == 0xE0)
-                    ) {
-                        return "mp3"
-                    }
-                    // Check M4A/MP4 (ftyp at offset 4)
-                    if (bytesRead >= 8 && header[4] == 0x66.toByte() && header[5] == 0x74.toByte() && header[6] == 0x79.toByte() && header[7] == 0x70.toByte()) {
-                        return "m4a"
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            // Ignore
-        }
+
+        detectMagicExtension(file)?.let { return it }
 
         val ext = file.extension.lowercase()
         if (ext.isNotEmpty() && ext != "bin") {
             return ext
         }
 
-        // Check if valid text / Markdown / HTML (stream only first 4KB to avoid large memory allocations)
-        try {
-            val headerBytes = ByteArray(4096)
-            val bytesRead = file.inputStream().use { it.read(headerBytes) }
-            if (bytesRead > 0) {
-                var textLen = bytesRead
-                // If buffer is full, trim any trailing incomplete UTF-8 multi-byte sequence
-                if (bytesRead == headerBytes.size) {
-                    var i = bytesRead - 1
-                    while (i >= 0 && (headerBytes[i].toInt() and 0xC0) == 0x80) {
-                        i--
-                    }
-                    if (i >= 0 && (headerBytes[i].toInt() and 0x80) != 0) {
-                        textLen = i
-                    }
-                }
-                for (i in 0 until textLen) {
-                    val b = headerBytes[i].toInt() and 0xFF
-                    if (b == 0 || (b < 0x09) || (b in 0x0E..0x1F)) {
-                        return "bin"
-                    }
-                }
-                val decoder =
-                    StandardCharsets.UTF_8.newDecoder()
-                        .onMalformedInput(CodingErrorAction.REPORT)
-                        .onUnmappableCharacter(CodingErrorAction.REPORT)
-                val text = decoder.decode(ByteBuffer.wrap(headerBytes, 0, textLen)).toString()
-                val cleanText = text.replace("\uFEFF", "").trim()
-                if (cleanText.startsWith("<!DOCTYPE html", ignoreCase = true) ||
-                    cleanText.startsWith("<html", ignoreCase = true) ||
-                    (cleanText.contains("<html", ignoreCase = true) && (
-                        cleanText.contains("<head", ignoreCase = true) ||
-                        cleanText.contains("<body", ignoreCase = true) ||
-                        cleanText.contains("<title", ignoreCase = true) ||
-                        cleanText.contains("</html>", ignoreCase = true) ||
-                        cleanText.contains("</head>", ignoreCase = true) ||
-                        cleanText.contains("</body>", ignoreCase = true)
-                    ))
-                ) {
-                    return "html"
-                }
-                if (text.startsWith("#") || text.contains("**") || text.contains("* ")) {
-                    return "md"
-                }
-                return "txt"
-            }
-        } catch (e: Exception) {
-            // Ignore
-        }
+        return detectTextExtension(file) ?: "bin"
+    }
 
-        return "bin"
+    private fun ByteArray.matchesAt(
+        offset: Int,
+        vararg expected: Int,
+    ): Boolean {
+        if (offset + expected.size > size) return false
+        for (i in expected.indices) {
+            if (this[offset + i] != expected[i].toByte()) return false
+        }
+        return true
+    }
+
+    private fun detectMagicExtension(file: File): String? {
+        val header = ByteArray(12)
+        val bytesRead =
+            try {
+                file.inputStream().use { it.read(header) }
+            } catch (_: IOException) {
+                return null
+            }
+        if (bytesRead < 4) return null
+        val slice = header.copyOf(bytesRead)
+        return when {
+            slice.matchesAt(0, 0x89, 0x50, 0x4E, 0x47) -> "png"
+            slice.matchesAt(0, 0xFF, 0xD8, 0xFF) -> "jpg"
+            slice.matchesAt(0, 0x47, 0x49, 0x46) -> "gif"
+            slice.matchesAt(0, 0x52, 0x49, 0x46, 0x46) && slice.matchesAt(8, 0x57, 0x45, 0x42, 0x50) -> "webp"
+            slice.matchesAt(0, 0x42, 0x4D) -> "bmp"
+            slice.matchesAt(0, 0x4F, 0x67, 0x67, 0x53) -> "ogg"
+            slice.matchesAt(0, 0x49, 0x44, 0x33) ||
+                (slice[0] == 0xFF.toByte() && (slice[1].toInt() and 0xE0) == 0xE0) -> "mp3"
+            slice.matchesAt(4, 0x66, 0x74, 0x79, 0x70) -> "m4a"
+            else -> null
+        }
+    }
+
+    private fun detectTextExtension(file: File): String? {
+        // Stream only first 4KB to avoid large memory allocations
+        val headerBytes = ByteArray(4096)
+        val bytesRead =
+            try {
+                file.inputStream().use { it.read(headerBytes) }
+            } catch (_: IOException) {
+                return null
+            }
+        if (bytesRead <= 0) return null
+
+        val textLen = trimIncompleteUtf8Tail(headerBytes, bytesRead)
+        if (containsControlBytes(headerBytes, textLen)) return "bin"
+
+        val text =
+            try {
+                StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(headerBytes, 0, textLen))
+                    .toString()
+            } catch (_: CharacterCodingException) {
+                return null
+            }
+
+        val cleanText = text.replace("\uFEFF", "").trim()
+        return when {
+            isHtmlDocument(cleanText) -> "html"
+            text.startsWith("#") || text.contains("**") || text.contains("* ") -> "md"
+            else -> "txt"
+        }
+    }
+
+    private fun trimIncompleteUtf8Tail(
+        bytes: ByteArray,
+        bytesRead: Int,
+    ): Int {
+        if (bytesRead < bytes.size) return bytesRead
+        var i = bytesRead - 1
+        while (i >= 0 && (bytes[i].toInt() and 0xC0) == 0x80) {
+            i--
+        }
+        return if (i >= 0 && (bytes[i].toInt() and 0x80) != 0) i else bytesRead
+    }
+
+    private fun containsControlBytes(
+        bytes: ByteArray,
+        length: Int,
+    ): Boolean {
+        for (i in 0 until length) {
+            val b = bytes[i].toInt() and 0xFF
+            if (b == 0 || b < 0x09 || b in 0x0E..0x1F) return true
+        }
+        return false
+    }
+
+    private fun isHtmlDocument(cleanText: String): Boolean {
+        if (cleanText.startsWith("<!DOCTYPE html", ignoreCase = true) ||
+            cleanText.startsWith("<html", ignoreCase = true)
+        ) {
+            return true
+        }
+        return cleanText.contains("<html", ignoreCase = true) &&
+            htmlBodyMarkers.any { cleanText.contains(it, ignoreCase = true) }
     }
 
     fun isImagePayload(filePath: String): Boolean {

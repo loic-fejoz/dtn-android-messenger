@@ -96,10 +96,15 @@ fun parseMarkdownInline(text: String): AnnotatedString {
 
 private sealed class MarkdownBlock {
     data class CodeBlock(val content: String) : MarkdownBlock()
+
     data object Divider : MarkdownBlock()
+
     data class Heading(val level: Int, val text: String) : MarkdownBlock()
+
     data class BulletItem(val content: String) : MarkdownBlock()
+
     data class Paragraph(val line: String) : MarkdownBlock()
+
     data object BlankLine : MarkdownBlock()
 }
 
@@ -175,27 +180,30 @@ fun MarkdownText(text: String) {
                 }
                 is MarkdownBlock.Heading -> {
                     when (block.level) {
-                        1 -> Text(
-                            text = parseMarkdownInline(block.text),
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = NeonCyan,
-                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-                        )
-                        2 -> Text(
-                            text = parseMarkdownInline(block.text),
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NeonPurple,
-                            modifier = Modifier.padding(top = 6.dp, bottom = 3.dp),
-                        )
-                        else -> Text(
-                            text = parseMarkdownInline(block.text),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
-                        )
+                        1 ->
+                            Text(
+                                text = parseMarkdownInline(block.text),
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = NeonCyan,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                            )
+                        2 ->
+                            Text(
+                                text = parseMarkdownInline(block.text),
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NeonPurple,
+                                modifier = Modifier.padding(top = 6.dp, bottom = 3.dp),
+                            )
+                        else ->
+                            Text(
+                                text = parseMarkdownInline(block.text),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+                            )
                     }
                 }
                 is MarkdownBlock.BulletItem -> {
@@ -223,32 +231,37 @@ fun MarkdownText(text: String) {
 }
 
 @Composable
-fun MarkdownImage(imageUrl: String, altText: String) {
-    val model: Any? = remember(imageUrl) {
-        if (imageUrl.startsWith("data:", ignoreCase = true)) {
-            MarkdownImageParser.decodeBase64DataUri(imageUrl)
-        } else {
-            imageUrl
+fun MarkdownImage(
+    imageUrl: String,
+    altText: String,
+) {
+    val model: Any? =
+        remember(imageUrl) {
+            if (imageUrl.startsWith("data:", ignoreCase = true)) {
+                MarkdownImageParser.decodeBase64DataUri(imageUrl)
+            } else {
+                imageUrl
+            }
         }
-    }
 
     if (model != null) {
         AsyncImage(
             model = model,
             contentDescription = altText.ifEmpty { "Markdown Image" },
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 240.dp)
-                .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
-                .padding(4.dp),
-            contentScale = ContentScale.Fit
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 240.dp)
+                    .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                    .padding(4.dp),
+            contentScale = ContentScale.Fit,
         )
     } else {
         Text(
             text = "[Image could not be loaded: $altText]",
             color = Color.Red,
             fontSize = 12.sp,
-            fontStyle = FontStyle.Italic
+            fontStyle = FontStyle.Italic,
         )
     }
 }

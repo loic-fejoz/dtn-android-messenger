@@ -35,7 +35,10 @@ object PreferencesHelper {
         return prefs.getBoolean(PREF_ONBOARDING_COMPLETED, false)
     }
 
-    fun setOnboardingCompleted(context: Context, completed: Boolean) {
+    fun setOnboardingCompleted(
+        context: Context,
+        completed: Boolean,
+    ) {
         val prefs = getEncryptedSharedPreferences(context)
         prefs.edit().putBoolean(PREF_ONBOARDING_COMPLETED, completed).apply()
     }

@@ -1,6 +1,5 @@
 package io.github.loic_fejoz.dtn_android_messenger.ui
 
-import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background

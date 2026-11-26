@@ -69,7 +69,7 @@ fun AudioPlayerCard(
             if (isPrepared) {
                 try {
                     player.seekTo(0)
-                } catch (e: Exception) {
+                } catch (_: IllegalStateException) {
                 }
             }
         }
@@ -79,7 +79,7 @@ fun AudioPlayerCard(
             isPlaying = false
             try {
                 player.stop()
-            } catch (e: Exception) {
+            } catch (_: IllegalStateException) {
             }
             player.release()
             mediaPlayer = null

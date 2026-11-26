@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 
 class MarkdownImageParserTest {
-
     @Test
     fun testParseLineWithoutImages() {
         val line = "This is a simple line without images."

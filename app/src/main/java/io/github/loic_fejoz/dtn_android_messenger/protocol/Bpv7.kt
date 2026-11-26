@@ -61,8 +61,8 @@ data class Eid(val uri: String) {
 
     companion object {
         fun fromCbor(cbor: CBORObject): Eid {
-            if (cbor.type != CBORType.Array || cbor.size() < 2) {
-                throw IllegalArgumentException("Invalid CBOR format for EID: expected array with size >= 2")
+            require(cbor.type == CBORType.Array && cbor.size() >= 2) {
+                "Invalid CBOR format for EID: expected array with size >= 2"
             }
             val schemeCode = cbor[0].AsInt32()
             val sspObj = cbor[1]
@@ -74,8 +74,8 @@ data class Eid(val uri: String) {
                 }
             val ssp =
                 if (sspObj.type == CBORType.Array) {
-                    if (sspObj.size() < 2) {
-                        throw IllegalArgumentException("Invalid CBOR format for IPN EID: expected array with size >= 2")
+                    require(sspObj.size() >= 2) {
+                        "Invalid CBOR format for IPN EID: expected array with size >= 2"
                     }
                     "${sspObj[0].AsInt64Value()}.${sspObj[1].AsInt64Value()}"
                 } else if (sspObj.isNumber) {
@@ -85,7 +85,13 @@ data class Eid(val uri: String) {
                 }
             val uri =
                 if (scheme == "dtn") {
-                    if (ssp == "none" || ssp == "0") "dtn:none" else if (ssp.startsWith("//")) "$scheme:$ssp" else "$scheme://$ssp"
+                    if (ssp == "none" || ssp == "0") {
+                        "dtn:none"
+                    } else if (ssp.startsWith("//")) {
+                        "$scheme:$ssp"
+                    } else {
+                        "$scheme://$ssp"
+                    }
                 } else {
                     "$scheme:$ssp"
                 }
@@ -123,7 +129,9 @@ data class PrimaryBlock(
         if (crc != null) {
             if (other.crc == null) return false
             if (!crc.contentEquals(other.crc)) return false
-        } else if (other.crc != null) return false
+        } else if (other.crc != null) {
+            return false
+        }
         return true
     }
 
@@ -232,32 +240,36 @@ object CrcHelper {
     // CRC-32C (Castagnoli)
     // Poly: 0x1EDC6F41 (reversed: 0x82F63B78)
     // Init: 0xFFFFFFFF, RefIn: true, RefOut: true, XorOut: 0xFFFFFFFF
-    private val CRC32C_TABLE = IntArray(256) { i ->
-        var crc = i
-        for (j in 0 until 8) {
-            crc = if ((crc and 1) != 0) {
-                (crc ushr 1) xor 0x82F63B78.toInt()
-            } else {
-                crc ushr 1
+    private val CRC32C_TABLE =
+        IntArray(256) { i ->
+            var crc = i
+            for (j in 0 until 8) {
+                crc =
+                    if ((crc and 1) != 0) {
+                        (crc ushr 1) xor 0x82F63B78.toInt()
+                    } else {
+                        crc ushr 1
+                    }
             }
+            crc
         }
-        crc
-    }
 
     // CRC-16 (X.25 / CRC-16-IBM-SDLC)
     // Poly: 0x1021 (reversed: 0x8408)
     // Init: 0xFFFF, RefIn: true, RefOut: true, XorOut: 0xFFFF
-    private val CRC16_TABLE = IntArray(256) { i ->
-        var crc = i
-        for (j in 0 until 8) {
-            crc = if ((crc and 1) != 0) {
-                (crc ushr 1) xor 0x8408
-            } else {
-                crc ushr 1
+    private val CRC16_TABLE =
+        IntArray(256) { i ->
+            var crc = i
+            for (j in 0 until 8) {
+                crc =
+                    if ((crc and 1) != 0) {
+                        (crc ushr 1) xor 0x8408
+                    } else {
+                        crc ushr 1
+                    }
             }
+            crc and 0xFFFF
         }
-        crc and 0xFFFF
-    }
 
     fun computeCrc32c(data: ByteArray): ByteArray {
         var crc = 0xFFFFFFFF.toInt()
@@ -290,6 +302,7 @@ object CrcHelper {
 
 object Bpv7Parser {
     fun computeCrc32c(data: ByteArray): ByteArray = CrcHelper.computeCrc32c(data)
+
     fun computeCrc16(data: ByteArray): ByteArray = CrcHelper.computeCrc16(data)
 
     fun serializePrimaryBlock(primary: PrimaryBlock): CBORObject {
@@ -310,10 +323,11 @@ object Bpv7Parser {
 
         when (primary.crcType) {
             1 -> {
-                val crcBytes = primary.crc ?: run {
-                    array.Add(CBORObject.FromObject(ByteArray(2)))
-                    computeCrc16(array.EncodeToBytes())
-                }
+                val crcBytes =
+                    primary.crc ?: run {
+                        array.Add(CBORObject.FromObject(ByteArray(2)))
+                        computeCrc16(array.EncodeToBytes())
+                    }
                 if (array.size() > 8) {
                     array.set(8, CBORObject.FromObject(crcBytes))
                 } else {
@@ -321,10 +335,11 @@ object Bpv7Parser {
                 }
             }
             2 -> {
-                val crcBytes = primary.crc ?: run {
-                    array.Add(CBORObject.FromObject(ByteArray(4)))
-                    computeCrc32c(array.EncodeToBytes())
-                }
+                val crcBytes =
+                    primary.crc ?: run {
+                        array.Add(CBORObject.FromObject(ByteArray(4)))
+                        computeCrc32c(array.EncodeToBytes())
+                    }
                 if (array.size() > 8) {
                     array.set(8, CBORObject.FromObject(crcBytes))
                 } else {
@@ -337,12 +352,12 @@ object Bpv7Parser {
     }
 
     fun deserializePrimaryBlock(cbor: CBORObject): PrimaryBlock {
-        if (cbor.type != CBORType.Array || cbor.size() < 8) {
-            throw IllegalArgumentException("Invalid PrimaryBlock CBOR: expected array with size >= 8, got size ${if (cbor.type == CBORType.Array) cbor.size() else "non-array"}")
+        require(cbor.type == CBORType.Array && cbor.size() >= 8) {
+            "Invalid PrimaryBlock CBOR: expected array with size >= 8, got size ${if (cbor.type == CBORType.Array) cbor.size() else "non-array"}"
         }
         val version = cbor[0].AsInt32()
-        if (version != 7) {
-            throw IllegalArgumentException("Unsupported BP version: $version. Only BPv7 (version 7) is supported.")
+        require(version == 7) {
+            "Unsupported BP version: $version. Only BPv7 (version 7) is supported."
         }
         val flags = cbor[1].AsInt64Value()
         val crcType = cbor[2].AsInt32()
@@ -351,8 +366,8 @@ object Bpv7Parser {
         val reportTo = Eid.fromCbor(cbor[5])
 
         val timestampArray = cbor[6]
-        if (timestampArray.type != CBORType.Array || timestampArray.size() < 2) {
-            throw IllegalArgumentException("Invalid PrimaryBlock timestamp CBOR: expected array with size >= 2")
+        require(timestampArray.type == CBORType.Array && timestampArray.size() >= 2) {
+            "Invalid PrimaryBlock timestamp CBOR: expected array with size >= 2"
         }
         val creationTime = timestampArray[0].AsInt64Value()
         val seq = timestampArray[1].AsInt64Value()
@@ -361,16 +376,16 @@ object Bpv7Parser {
 
         var crcBytes: ByteArray? = null
         if (crcType != 0) {
-            if (crcType !in 1..2) {
-                throw IllegalArgumentException("Unsupported CRC type in PrimaryBlock: $crcType")
+            require(crcType in 1..2) {
+                "Unsupported CRC type in PrimaryBlock: $crcType"
             }
-            if (cbor.size() < 9) {
-                throw IllegalArgumentException("Missing CRC field in PrimaryBlock: expected 9 elements for crcType $crcType, got ${cbor.size()}")
+            require(cbor.size() >= 9) {
+                "Missing CRC field in PrimaryBlock: expected 9 elements for crcType $crcType, got ${cbor.size()}"
             }
             crcBytes = cbor[8].GetByteString()
             val expectedLen = if (crcType == 1) 2 else 4
-            if (crcBytes.size != expectedLen) {
-                throw IllegalArgumentException("Invalid CRC length in PrimaryBlock: expected $expectedLen bytes, got ${crcBytes.size}")
+            require(crcBytes.size == expectedLen) {
+                "Invalid CRC length in PrimaryBlock: expected $expectedLen bytes, got ${crcBytes.size}"
             }
 
             val verifyArray = CBORObject.NewArray()
@@ -428,15 +443,15 @@ object Bpv7Parser {
     }
 
     fun deserializeHopCountBlock(cbor: CBORObject): HopCountBlock {
-        if (cbor.type != CBORType.Array || cbor.size() < 5) {
-            throw IllegalArgumentException("Invalid HopCountBlock CBOR: expected array with size >= 5")
+        require(cbor.type == CBORType.Array && cbor.size() >= 5) {
+            "Invalid HopCountBlock CBOR: expected array with size >= 5"
         }
         val number = cbor[1].AsInt32()
         val flags = cbor[2].AsInt64Value()
         val dataBytes = cbor[4].GetByteString()
         val hcData = CBORObject.DecodeFromBytes(dataBytes)
-        if (hcData.type != CBORType.Array || hcData.size() < 2) {
-            throw IllegalArgumentException("Invalid HopCountBlock data CBOR: expected array with size >= 2")
+        require(hcData.type == CBORType.Array && hcData.size() >= 2) {
+            "Invalid HopCountBlock data CBOR: expected array with size >= 2"
         }
         val hopLimit = hcData[0].AsInt32()
         val hopCount = hcData[1].AsInt32()
@@ -506,16 +521,16 @@ object Bpv7Parser {
     private fun verifyCanonicalBlockCrc(blockCbor: CBORObject) {
         val crcType = blockCbor[3].AsInt32()
         if (crcType == 0) return
-        if (crcType !in 1..2) {
-            throw IllegalArgumentException("Unsupported CRC type in canonical block: $crcType")
+        require(crcType in 1..2) {
+            "Unsupported CRC type in canonical block: $crcType"
         }
-        if (blockCbor.size() < 6) {
-            throw IllegalArgumentException("Missing CRC field in canonical block for crcType $crcType")
+        require(blockCbor.size() >= 6) {
+            "Missing CRC field in canonical block for crcType $crcType"
         }
         val crcBytes = blockCbor[5].GetByteString()
         val expectedLen = if (crcType == 1) 2 else 4
-        if (crcBytes.size != expectedLen) {
-            throw IllegalArgumentException("Invalid CRC length in canonical block: expected $expectedLen bytes, got ${crcBytes.size}")
+        require(crcBytes.size == expectedLen) {
+            "Invalid CRC length in canonical block: expected $expectedLen bytes, got ${crcBytes.size}"
         }
         val verifyArray = CBORObject.NewArray()
         for (i in 0 until 5) {
@@ -523,14 +538,14 @@ object Bpv7Parser {
         }
         verifyArray.Add(CBORObject.FromObject(ByteArray(expectedLen)))
         val computed = if (crcType == 1) computeCrc16(verifyArray.EncodeToBytes()) else computeCrc32c(verifyArray.EncodeToBytes())
-        if (!computed.contentEquals(crcBytes)) {
-            throw IllegalArgumentException("Canonical block CRC mismatch for crcType $crcType")
+        require(computed.contentEquals(crcBytes)) {
+            "Canonical block CRC mismatch for crcType $crcType"
         }
     }
 
     fun deserializeBibBlock(cbor: CBORObject): BibBlock {
-        if (cbor.type != CBORType.Array || cbor.size() < 5) {
-            throw IllegalArgumentException("Invalid BibBlock CBOR: expected array with size >= 5")
+        require(cbor.type == CBORType.Array && cbor.size() >= 5) {
+            "Invalid BibBlock CBOR: expected array with size >= 5"
         }
         val number = cbor[1].AsInt32()
         val flags = cbor[2].AsInt64Value()
@@ -618,8 +633,8 @@ object Bpv7Parser {
 
     fun deserialize(bytes: ByteArray): Bundle {
         val array = CBORObject.DecodeFromBytes(bytes)
-        if (array.type != CBORType.Array || array.size() < 2) {
-            throw IllegalArgumentException("Invalid Bundle CBOR: expected array with size >= 2")
+        require(array.type == CBORType.Array && array.size() >= 2) {
+            "Invalid Bundle CBOR: expected array with size >= 2"
         }
         val primary = deserializePrimaryBlock(array[0])
         var payload: PayloadBlock? = null

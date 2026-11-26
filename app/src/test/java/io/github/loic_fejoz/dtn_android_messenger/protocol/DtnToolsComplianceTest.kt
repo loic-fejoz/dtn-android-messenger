@@ -5,29 +5,24 @@ import org.junit.jupiter.api.Test
 import java.io.InputStream
 
 class DtnToolsComplianceTest {
-
     private fun loadFixture(filename: String): ByteArray {
         val path = "/fixtures/dtn_tools/$filename"
-        val stream: InputStream = javaClass.getResourceAsStream(path)
-            ?: throw IllegalArgumentException("Fixture file not found: $path")
+        val stream: InputStream =
+            javaClass.getResourceAsStream(path)
+                ?: throw IllegalArgumentException("Fixture file not found: $path")
         return stream.readBytes()
     }
 
     @Test
     fun testNominalBasicBundle() {
-        try {
-            val bytes = loadFixture("nominal_basic.bundle")
-            val bundle = Bpv7Parser.deserialize(bytes)
+        val bytes = loadFixture("nominal_basic.bundle")
+        val bundle = Bpv7Parser.deserialize(bytes)
 
-            assertNotNull(bundle)
-            assertEquals(7, bundle.primaryBlock.version)
-            assertEquals("dtn://node-b/chat", bundle.primaryBlock.destination.uri)
-            assertEquals("dtn://node-a/chat", bundle.primaryBlock.source.uri)
-            assertEquals("Hello DTN Tools Nominal Payload", bundle.payloadBlock.data.toString(Charsets.UTF_8))
-        } catch (e: Exception) {
-            e.printStackTrace()
-            throw e
-        }
+        assertNotNull(bundle)
+        assertEquals(7, bundle.primaryBlock.version)
+        assertEquals("dtn://node-b/chat", bundle.primaryBlock.destination.uri)
+        assertEquals("dtn://node-a/chat", bundle.primaryBlock.source.uri)
+        assertEquals("Hello DTN Tools Nominal Payload", bundle.payloadBlock.data.toString(Charsets.UTF_8))
     }
 
     @Test

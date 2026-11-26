@@ -212,17 +212,19 @@ class SenmlParserTest {
         assertEquals("0", jsonRecords[2].value)
 
         val cborArray = CBORObject.NewArray()
-        val r1 = CBORObject.NewMap().apply {
-            set(CBORObject.FromObject(-2), CBORObject.FromObject("cbor/"))
-            set(CBORObject.FromObject(-5), CBORObject.FromObject(10.0)) // bv
-            set(CBORObject.FromObject(-6), CBORObject.FromObject(20.0)) // bs
-            set(CBORObject.FromObject(0), CBORObject.FromObject("v1"))
-            set(CBORObject.FromObject(2), CBORObject.FromObject(5.5))
-        }
-        val r2 = CBORObject.NewMap().apply {
-            set(CBORObject.FromObject(0), CBORObject.FromObject("s1"))
-            set(CBORObject.FromObject(5), CBORObject.FromObject(3.5)) // s
-        }
+        val r1 =
+            CBORObject.NewMap().apply {
+                set(CBORObject.FromObject(-2), CBORObject.FromObject("cbor/"))
+                set(CBORObject.FromObject(-5), CBORObject.FromObject(10.0)) // bv
+                set(CBORObject.FromObject(-6), CBORObject.FromObject(20.0)) // bs
+                set(CBORObject.FromObject(0), CBORObject.FromObject("v1"))
+                set(CBORObject.FromObject(2), CBORObject.FromObject(5.5))
+            }
+        val r2 =
+            CBORObject.NewMap().apply {
+                set(CBORObject.FromObject(0), CBORObject.FromObject("s1"))
+                set(CBORObject.FromObject(5), CBORObject.FromObject(3.5)) // s
+            }
         cborArray.Add(r1)
         cborArray.Add(r2)
         val cborRecords = SenmlParser.parse(cborArray.EncodeToBytes(), fallbackTimestampMs = 1000L)

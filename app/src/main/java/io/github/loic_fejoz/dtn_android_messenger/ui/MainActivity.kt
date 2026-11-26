@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -75,15 +76,24 @@ class MainActivity : ComponentActivity() {
                     ) {
                         val text = intent.getStringExtra(android.content.Intent.EXTRA_TEXT) ?: ""
                         val dest = intent.getStringExtra("dest") ?: ""
-                        var streamUri = ""
-
-                        if (intent.action == android.content.Intent.ACTION_SEND) {
-                            val uri = intent.getParcelableExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM) ?: intent.data
-                            streamUri = uri?.toString() ?: ""
-                        } else {
-                            val uris = intent.getParcelableArrayListExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM)
-                            streamUri = uris?.firstOrNull()?.toString() ?: ""
-                        }
+                        val streamUri =
+                            if (intent.action == android.content.Intent.ACTION_SEND) {
+                                val uri =
+                                    IntentCompat.getParcelableExtra(
+                                        intent,
+                                        android.content.Intent.EXTRA_STREAM,
+                                        android.net.Uri::class.java,
+                                    ) ?: intent.data
+                                uri?.toString() ?: ""
+                            } else {
+                                val uris =
+                                    IntentCompat.getParcelableArrayListExtra(
+                                        intent,
+                                        android.content.Intent.EXTRA_STREAM,
+                                        android.net.Uri::class.java,
+                                    )
+                                uris?.firstOrNull()?.toString() ?: ""
+                            }
 
                         navController.navigate(
                             "send_bundle?dest=${android.net.Uri.encode(
@@ -95,21 +105,22 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                val isOnboardingDone = remember {
-                    val completed = PreferencesHelper.isOnboardingCompleted(this@MainActivity)
-                    if (!completed) {
-                        val prefs = PreferencesHelper.getEncryptedSharedPreferences(this@MainActivity)
-                        val nodeName = prefs.getString("local_node_name", "")
-                        if (!nodeName.isNullOrBlank() && nodeName != "dtn://my-node") {
-                            PreferencesHelper.setOnboardingCompleted(this@MainActivity, true)
-                            true
+                val isOnboardingDone =
+                    remember {
+                        val completed = PreferencesHelper.isOnboardingCompleted(this@MainActivity)
+                        if (!completed) {
+                            val prefs = PreferencesHelper.getEncryptedSharedPreferences(this@MainActivity)
+                            val nodeName = prefs.getString("local_node_name", "")
+                            if (!nodeName.isNullOrBlank() && nodeName != "dtn://my-node") {
+                                PreferencesHelper.setOnboardingCompleted(this@MainActivity, true)
+                                true
+                            } else {
+                                false
+                            }
                         } else {
-                            false
+                            true
                         }
-                    } else {
-                        true
                     }
-                }
 
                 var startDest by remember { mutableStateOf(if (isOnboardingDone) "registry" else "onboarding") }
 

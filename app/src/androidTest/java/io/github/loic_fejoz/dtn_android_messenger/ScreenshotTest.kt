@@ -23,15 +23,15 @@ import java.io.FileOutputStream
 
 @RunWith(AndroidJUnit4::class)
 class ScreenshotTest {
-
     @get:Rule
-    val permissionRule: GrantPermissionRule = GrantPermissionRule.grant(
-        Manifest.permission.POST_NOTIFICATIONS,
-        Manifest.permission.RECORD_AUDIO,
-        Manifest.permission.BLUETOOTH_CONNECT,
-        Manifest.permission.READ_EXTERNAL_STORAGE,
-        Manifest.permission.WRITE_EXTERNAL_STORAGE
-    )
+    val permissionRule: GrantPermissionRule =
+        GrantPermissionRule.grant(
+            Manifest.permission.POST_NOTIFICATIONS,
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+        )
 
     @get:Rule
     val localeTestRule = LocaleTestRule()
@@ -39,7 +39,8 @@ class ScreenshotTest {
     private fun sleep(ms: Long = 1500) {
         try {
             Thread.sleep(ms)
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
     }
 
     @Before
@@ -58,39 +59,40 @@ class ScreenshotTest {
                     serviceEid = "dtn://my-node/chat",
                     displayName = "Default Chat Service",
                     viewerType = ViewerType.CHAT,
-                    defaultDestinationEid = "dtn://f4jxq-2/chat"
-                )
+                    defaultDestinationEid = "dtn://f4jxq-2/chat",
+                ),
             )
             localServiceDao.insert(
                 LocalService(
                     serviceEid = "dtn://my-node/files",
                     displayName = "File Exchange",
-                    viewerType = ViewerType.BUNDLE_LIST
-                )
+                    viewerType = ViewerType.BUNDLE_LIST,
+                ),
             )
             localServiceDao.insert(
                 LocalService(
                     serviceEid = "dtn://my-node/sensor",
                     displayName = "SENML Sensor Monitor",
-                    viewerType = ViewerType.SENML_LAST
-                )
+                    viewerType = ViewerType.SENML_LAST,
+                ),
             )
 
             // 1. Markdown payload file
-            val payloadFileMarkdown = File(context.filesDir, "payload_markdown.md").apply {
-                writeText(
-                    """
-                    # DTN BPv7 Telemetry Report
-                    
-                    **Status**: *OPERATIONAL*
-                    - Node EID: `dtn://my-node/chat`
-                    - Transport: TCPCLv4 / Bluetooth Classic
-                    - Security: BPSec BIB HMAC-SHA256
-                    
-                    > *Delay-tolerant store-and-forward bundle payload.*
-                    """.trimIndent()
-                )
-            }
+            val payloadFileMarkdown =
+                File(context.filesDir, "payload_markdown.md").apply {
+                    writeText(
+                        """
+                        # DTN BPv7 Telemetry Report
+                        
+                        **Status**: *OPERATIONAL*
+                        - Node EID: `dtn://my-node/chat`
+                        - Transport: TCPCLv4 / Bluetooth Classic
+                        - Security: BPSec BIB HMAC-SHA256
+                        
+                        > *Delay-tolerant store-and-forward bundle payload.*
+                        """.trimIndent(),
+                    )
+                }
 
             // 2. Image payload file (icon.png from test assets)
             val testContext = InstrumentationRegistry.getInstrumentation().context
@@ -103,54 +105,58 @@ class ScreenshotTest {
 
             // 3. Audio / Vocal payload file (MP3 ID3 magic header)
             val payloadFileVocal = File(context.filesDir, "payload_vocal.mp3")
-            val mp3Bytes = byteArrayOf(
-                0x49.toByte(), 0x44.toByte(), 0x33.toByte(), 0x03.toByte(), 0x00.toByte(), 0x00.toByte(),
-                0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte()
-            )
+            val mp3Bytes =
+                byteArrayOf(
+                    0x49.toByte(), 0x44.toByte(), 0x33.toByte(), 0x03.toByte(), 0x00.toByte(), 0x00.toByte(),
+                    0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(),
+                )
             FileOutputStream(payloadFileVocal).use { it.write(mp3Bytes) }
 
             // Insert Bundles (sorted DESC by creationTimestamp: Vocal=newest, Image=middle, Markdown=oldest)
-            val bundleMarkdown = BundleRecord(
-                bundleId = "bundle-md-001",
-                destinationEid = "dtn://my-node/files",
-                sourceEid = "dtn://f4jxq-2/files",
-                creationTimestamp = System.currentTimeMillis() - 120000,
-                sequenceNumber = 201,
-                lifetimeMs = 3600000,
-                payloadFilePath = payloadFileMarkdown.absolutePath,
-                state = BundleState.RECEIVED,
-                isRead = true,
-                bpsecStatus = BpsecStatus.VALID,
-                hopCount = 1
-            )
+            val bundleMarkdown =
+                BundleRecord(
+                    bundleId = "bundle-md-001",
+                    destinationEid = "dtn://my-node/files",
+                    sourceEid = "dtn://f4jxq-2/files",
+                    creationTimestamp = System.currentTimeMillis() - 120000,
+                    sequenceNumber = 201,
+                    lifetimeMs = 3600000,
+                    payloadFilePath = payloadFileMarkdown.absolutePath,
+                    state = BundleState.RECEIVED,
+                    isRead = true,
+                    bpsecStatus = BpsecStatus.VALID,
+                    hopCount = 1,
+                )
 
-            val bundleImage = BundleRecord(
-                bundleId = "bundle-img-002",
-                destinationEid = "dtn://my-node/files",
-                sourceEid = "dtn://f4jxq-2/files",
-                creationTimestamp = System.currentTimeMillis() - 90000,
-                sequenceNumber = 202,
-                lifetimeMs = 3600000,
-                payloadFilePath = payloadFileImage.absolutePath,
-                state = BundleState.RECEIVED,
-                isRead = true,
-                bpsecStatus = BpsecStatus.VALID,
-                hopCount = 1
-            )
+            val bundleImage =
+                BundleRecord(
+                    bundleId = "bundle-img-002",
+                    destinationEid = "dtn://my-node/files",
+                    sourceEid = "dtn://f4jxq-2/files",
+                    creationTimestamp = System.currentTimeMillis() - 90000,
+                    sequenceNumber = 202,
+                    lifetimeMs = 3600000,
+                    payloadFilePath = payloadFileImage.absolutePath,
+                    state = BundleState.RECEIVED,
+                    isRead = true,
+                    bpsecStatus = BpsecStatus.VALID,
+                    hopCount = 1,
+                )
 
-            val bundleVocal = BundleRecord(
-                bundleId = "bundle-voc-003",
-                destinationEid = "dtn://my-node/files",
-                sourceEid = "dtn://f4jxq-2/files",
-                creationTimestamp = System.currentTimeMillis() - 60000,
-                sequenceNumber = 203,
-                lifetimeMs = 3600000,
-                payloadFilePath = payloadFileVocal.absolutePath,
-                state = BundleState.RECEIVED,
-                isRead = true,
-                bpsecStatus = BpsecStatus.VALID,
-                hopCount = 1
-            )
+            val bundleVocal =
+                BundleRecord(
+                    bundleId = "bundle-voc-003",
+                    destinationEid = "dtn://my-node/files",
+                    sourceEid = "dtn://f4jxq-2/files",
+                    creationTimestamp = System.currentTimeMillis() - 60000,
+                    sequenceNumber = 203,
+                    lifetimeMs = 3600000,
+                    payloadFilePath = payloadFileVocal.absolutePath,
+                    state = BundleState.RECEIVED,
+                    isRead = true,
+                    bpsecStatus = BpsecStatus.VALID,
+                    hopCount = 1,
+                )
 
             bundleRecordDao.insert(bundleMarkdown)
             bundleRecordDao.insert(bundleImage)
@@ -164,8 +170,8 @@ class ScreenshotTest {
                     customLabel = "Ambient Temperature",
                     value = "21.5",
                     unit = "Cel",
-                    timestamp = System.currentTimeMillis()
-                )
+                    timestamp = System.currentTimeMillis(),
+                ),
             )
             senmlEntryDao.insertOrUpdate(
                 SenmlEntry(
@@ -174,8 +180,8 @@ class ScreenshotTest {
                     customLabel = "Relative Humidity",
                     value = "45.0",
                     unit = "%RH",
-                    timestamp = System.currentTimeMillis()
-                )
+                    timestamp = System.currentTimeMillis(),
+                ),
             )
             senmlEntryDao.insertOrUpdate(
                 SenmlEntry(
@@ -184,8 +190,8 @@ class ScreenshotTest {
                     customLabel = "Battery Voltage",
                     value = "12.4",
                     unit = "V",
-                    timestamp = System.currentTimeMillis()
-                )
+                    timestamp = System.currentTimeMillis(),
+                ),
             )
 
             // Convergence Profiles
@@ -195,24 +201,24 @@ class ScreenshotTest {
                     name = "Hardy Instance f4jxq-2 (TCPCL)",
                     triggerType = TriggerType.PERIODIC_INTERNET,
                     targetAddress = "10.0.2.2:4556",
-                    triggerCondition = "120"
-                )
+                    triggerCondition = "120",
+                ),
             )
             convergenceProfileDao.insert(
                 ConvergenceProfile(
                     profileId = "dtn://node-bt",
                     name = "Bluetooth Node",
                     triggerType = TriggerType.BLUETOOTH_ALWAYS,
-                    targetAddress = "00:11:22:33:44:55"
-                )
+                    targetAddress = "00:11:22:33:44:55",
+                ),
             )
 
             // Routing Rules
             routingRuleDao.insert(
                 RoutingRule(
                     destinationEidPattern = "dtn://f4jxq-2/*",
-                    nextHopEid = "dtn://f4jxq-2"
-                )
+                    nextHopEid = "dtn://f4jxq-2",
+                ),
             )
         }
     }
@@ -224,8 +230,9 @@ class ScreenshotTest {
 
         // Dismiss permissions dialog if present
         sleep(2000)
-        val allowBtn = device.findObject(By.textContains("Allow"))
-            ?: device.findObject(By.textContains("Autoriser"))
+        val allowBtn =
+            device.findObject(By.textContains("Allow"))
+                ?: device.findObject(By.textContains("Autoriser"))
         allowBtn?.click()
         sleep(1000)
 
