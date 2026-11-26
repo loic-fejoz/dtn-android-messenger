@@ -916,22 +916,14 @@ class DtnEngineService : Service() {
                 val isExpired = (record.creationTimestamp + record.lifetimeMs) < timeProvider.currentTimeMillis()
                 if (isExpired) {
                     log("INFO", "Bundle ${record.bundleId} expired. Deleting payload and record.")
-                    try {
-                        val fileObj = File(record.payloadFilePath)
-                        if (fileObj.exists()) fileObj.delete()
-                    } catch (_: SecurityException) {
-                    }
+                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadFileHelper.safeDelete(record.payloadFilePath)
                     bundleRecordDao.delete(record)
                     continue
                 }
 
                 if (record.hopCount + 1 >= record.hopLimit) {
                     log("WARN", "Bundle ${record.bundleId} exceeded hop limit (${record.hopLimit}) during forwarding. Discarding.")
-                    try {
-                        val fileObj = File(record.payloadFilePath)
-                        if (fileObj.exists()) fileObj.delete()
-                    } catch (_: SecurityException) {
-                    }
+                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadFileHelper.safeDelete(record.payloadFilePath)
                     bundleRecordDao.delete(record)
                     continue
                 }
@@ -1146,16 +1138,8 @@ class DtnEngineService : Service() {
             }
             val requiredSsid = profile.triggerCondition?.trim().orEmpty()
             if (requiredSsid.isEmpty()) return true
-            val currentSsid =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    (capabilities.transportInfo as? android.net.wifi.WifiInfo)?.ssid
-                } else {
-                    @Suppress("DEPRECATION")
-                    val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
-                    @Suppress("DEPRECATION")
-                    wm?.connectionInfo?.ssid
-                }?.trim('"')
-            if (currentSsid.isNullOrEmpty() || currentSsid == "<unknown ssid>") {
+            val currentSsid = io.github.loic_fejoz.dtn_android_messenger.util.WifiUtils.getConnectedWifiSsid(this)
+            if (currentSsid == null) {
                 // SSID may be redacted without location permission; Wi-Fi transport is active
                 true
             } else {
@@ -1325,8 +1309,8 @@ class DtnEngineService : Service() {
             )
 
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("DTN Engine Active")
-            .setContentText("Delay-Tolerant Node Service is running...")
+            .setContentTitle(getString(R.string.engine_notification_title))
+            .setContentText(getString(R.string.engine_notification_text))
             .setSmallIcon(android.R.drawable.ic_menu_share)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -1338,13 +1322,13 @@ class DtnEngineService : Service() {
             val engineChannel =
                 NotificationChannel(
                     CHANNEL_ID,
-                    "DTN Background Engine",
+                    getString(R.string.engine_channel_name),
                     NotificationManager.IMPORTANCE_LOW,
                 )
             val chatChannel =
                 NotificationChannel(
                     CHAT_CHANNEL_ID,
-                    "DTN Chat Messaging",
+                    getString(R.string.chat_channel_name),
                     NotificationManager.IMPORTANCE_HIGH,
                 ).apply {
                     enableLights(true)

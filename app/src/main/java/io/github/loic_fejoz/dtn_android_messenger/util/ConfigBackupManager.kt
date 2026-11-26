@@ -59,16 +59,7 @@ object ConfigBackupManager {
 
     fun hexToBytes(hex: String): ByteArray = HexUtils.hexToBytes(hex)
 
-    private fun base64Decode(encoded: String): ByteArray {
-        return try {
-            android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
-        } catch (e: Throwable) {
-            val getDecoder = Class.forName("java.util.Base64").getMethod("getDecoder")
-            val decoder = getDecoder.invoke(null)
-            val decode = decoder.javaClass.getMethod("decode", String::class.java)
-            decode.invoke(decoder, encoded) as ByteArray
-        }
-    }
+    private fun base64Decode(encoded: String): ByteArray = Base64Utils.decode(encoded)
 
     private fun deriveKey(
         passphrase: String,

@@ -67,4 +67,16 @@
     <string name="file_cla_sync_now">Sync File-CLA now</string>
     <string name="file_cla_syncing_toast">Syncing File-CLA \'%s\' (RX &amp; TX)&#8230;</string>
     <string name="file_cla_poll_display">Poll: %ss</string>
+
+    <!-- Settings & Engine -->
+    <string name="settings_title">SETTINGS</string>
+    <string name="settings_tab_profiles">CLA Profiles</string>
+    <string name="settings_tab_routing">Routing</string>
+    <string name="settings_tab_bpsec">BPSec</string>
+    <string name="settings_tab_services">Services</string>
+    <string name="settings_tab_backup">Backup</string>
+    <string name="engine_notification_title">DTN Engine Active</string>
+    <string name="engine_notification_text">Delay-Tolerant Node Service is running&#8230;</string>
+    <string name="engine_channel_name">DTN Background Engine</string>
+    <string name="chat_channel_name">DTN Chat Messaging</string>
 </resources>

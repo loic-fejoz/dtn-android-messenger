@@ -169,31 +169,5 @@ object PayloadUtils {
         return c.startsWith(normalizedParent)
     }
 
-    fun base64Encode(bytes: ByteArray): String {
-        val table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-        val sb = StringBuilder((bytes.size * 4 + 2) / 3)
-        var i = 0
-        while (i < bytes.size) {
-            val b0 = bytes[i].toInt() and 0xFF
-            val b1 = if (i + 1 < bytes.size) bytes[i + 1].toInt() and 0xFF else -1
-            val b2 = if (i + 2 < bytes.size) bytes[i + 2].toInt() and 0xFF else -1
-
-            sb.append(table[b0 ushr 2])
-            if (b1 != -1) {
-                sb.append(table[((b0 and 0x03) shl 4) or (b1 ushr 4)])
-                if (b2 != -1) {
-                    sb.append(table[((b1 and 0x0F) shl 2) or (b2 ushr 6)])
-                    sb.append(table[b2 and 0x3F])
-                } else {
-                    sb.append(table[(b1 and 0x0F) shl 2])
-                    sb.append('=')
-                }
-            } else {
-                sb.append(table[(b0 and 0x03) shl 4])
-                sb.append("==")
-            }
-            i += 3
-        }
-        return sb.toString()
-    }
+    fun base64Encode(bytes: ByteArray): String = Base64Utils.encode(bytes)
 }

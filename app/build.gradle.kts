@@ -13,7 +13,7 @@ android {
         minSdk = 23
         targetSdk = 35
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -111,14 +111,8 @@ dependencies {
     // Ktor Network for TCPCLv4
     implementation("io.ktor:ktor-network:2.3.10")
 
-    // Okio for payload handling
-    implementation("com.squareup.okio:okio:3.9.0")
-
     // CBOR Upokecenter
     implementation("com.upokecenter:cbor:4.5.1")
-
-    // WorkManager
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Jetpack Security Crypto for EncryptedSharedPreferences
     implementation("androidx.security:security-crypto:1.0.0")

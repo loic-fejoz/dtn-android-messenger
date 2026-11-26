@@ -1,5 +1,7 @@
 package io.github.loic_fejoz.dtn_android_messenger.ui
 
+import io.github.loic_fejoz.dtn_android_messenger.util.Base64Utils
+
 sealed class MarkdownLineElement {
     data class Text(val content: String) : MarkdownLineElement()
 
@@ -17,20 +19,9 @@ object MarkdownImageParser {
         if (!header.contains(";base64", ignoreCase = true)) return null
         val base64Data = uri.substring(commaIndex + 1).trim()
         return try {
-            decodeBase64(base64Data)
+            Base64Utils.decode(base64Data)
         } catch (e: Exception) {
             null
-        }
-    }
-
-    private fun decodeBase64(base64Str: String): ByteArray {
-        return try {
-            android.util.Base64.decode(base64Str, android.util.Base64.DEFAULT)
-        } catch (e: Throwable) {
-            val getDecoder = Class.forName("java.util.Base64").getMethod("getDecoder")
-            val decoder = getDecoder.invoke(null)
-            val decode = decoder.javaClass.getMethod("decode", String::class.java)
-            decode.invoke(decoder, base64Str) as ByteArray
         }
     }
 
