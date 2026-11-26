@@ -816,5 +816,39 @@ class ConfigBackupManagerTest {
                     )
                 }
             }
+
+            val badSalt = JSONObject(encryptedJson).put("salt", "AAAA").toString()
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    ConfigBackupManager.importConfigJson(
+                        jsonString = badSalt,
+                        context = fakeContext,
+                        localServiceDao = fakeServiceDao,
+                        convergenceProfileDao = fakeProfileDao,
+                        routingRuleDao = fakeRuleDao,
+                        bpsecKeyDao = fakeKeyDao,
+                        senmlEntryDao = fakeSenmlDao,
+                        prefs = fakePrefs,
+                        passphrase = "secret",
+                    )
+                }
+            }
+
+            val badIv = JSONObject(encryptedJson).put("iv", "AAAA").toString()
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    ConfigBackupManager.importConfigJson(
+                        jsonString = badIv,
+                        context = fakeContext,
+                        localServiceDao = fakeServiceDao,
+                        convergenceProfileDao = fakeProfileDao,
+                        routingRuleDao = fakeRuleDao,
+                        bpsecKeyDao = fakeKeyDao,
+                        senmlEntryDao = fakeSenmlDao,
+                        prefs = fakePrefs,
+                        passphrase = "secret",
+                    )
+                }
+            }
         }
 }

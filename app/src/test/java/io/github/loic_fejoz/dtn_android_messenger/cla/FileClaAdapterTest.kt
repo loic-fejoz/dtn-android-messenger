@@ -457,4 +457,20 @@ class FileClaAdapterTest {
             assertEquals(0, adapter.scanIncoming(basePath, "Foo") { true })
             assertEquals(1, logs.count { it.first == "WARN" })
         }
+
+    @Test
+    fun localClaFile_renameTo_rejectsPathTraversal() {
+        val factory = LocalFileClaDirectoryFactory()
+        val rootDir = factory.fromLocation(tempDir.toAbsolutePath().toString())
+        assertNotNull(rootDir)
+        val file = rootDir!!.createFile("application/octet-stream", "sample.bundle")
+        assertNotNull(file)
+        assertTrue(file!!.writeBytes("payload".toByteArray()))
+
+        assertFalse(file.renameTo("../escape.bundle"))
+        assertFalse(file.renameTo("sub/escape.bundle"))
+        assertFalse(file.renameTo(""))
+        assertTrue(File(tempDir.toFile(), "sample.bundle").exists())
+        assertFalse(File(tempDir.toFile().parentFile, "escape.bundle").exists())
+    }
 }

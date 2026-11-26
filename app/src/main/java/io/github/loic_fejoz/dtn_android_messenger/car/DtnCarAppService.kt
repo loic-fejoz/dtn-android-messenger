@@ -14,6 +14,7 @@ import io.github.loic_fejoz.dtn_android_messenger.BuildConfig
 import io.github.loic_fejoz.dtn_android_messenger.R
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BundleRecordDao
 import io.github.loic_fejoz.dtn_android_messenger.data.model.BundleRecord
+import io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -22,7 +23,6 @@ import kotlinx.coroutines.withContext
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
-import java.nio.charset.StandardCharsets
 
 class DtnCarAppService : CarAppService() {
     override fun createHostValidator(): HostValidator {
@@ -72,7 +72,12 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
                                                     val header = ByteArray(512)
                                                     val bytesRead = file.inputStream().use { it.read(header) }
                                                     if (bytesRead > 0) {
-                                                        String(header, 0, bytesRead, StandardCharsets.UTF_8).take(120)
+                                                        DtnEngineService.formatNotificationPreview(
+                                                            data = header.copyOf(bytesRead),
+                                                            filePath = bundle.payloadFilePath,
+                                                        ).take(120).ifEmpty {
+                                                            carContext.getString(R.string.car_empty_content)
+                                                        }
                                                     } else {
                                                         carContext.getString(R.string.car_empty_content)
                                                     }

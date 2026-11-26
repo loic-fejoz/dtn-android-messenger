@@ -114,12 +114,18 @@ object ConfigBackupManager {
         }
         val salt = base64Decode(envelope.getString("salt"))
         val iv = base64Decode(envelope.getString("iv"))
+        require(salt.size == SALT_BYTES) { "Invalid backup salt length: ${salt.size}" }
+        require(iv.size == IV_BYTES) { "Invalid backup IV length: ${iv.size}" }
         val ciphertext = base64Decode(envelope.getString("ciphertext"))
         val key = deriveKey(passphrase, salt, iterations)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
         val plaintext = cipher.doFinal(ciphertext)
-        return String(plaintext, Charsets.UTF_8)
+        return try {
+            String(plaintext, Charsets.UTF_8)
+        } finally {
+            plaintext.fill(0)
+        }
     }
 
     fun isEncryptedBackup(jsonString: String): Boolean {

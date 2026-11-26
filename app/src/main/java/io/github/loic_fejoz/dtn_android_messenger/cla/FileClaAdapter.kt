@@ -144,8 +144,13 @@ class SafClaDirectoryFactory(private val context: Context) : ClaDirectoryFactory
             }
         }
 
-        override fun findFile(name: String): ClaFile? =
-            doc.findFile(name)?.let { SafClaFile(contentResolver, it) }
+        override fun findFile(name: String): ClaFile? {
+            val fastList = queryChildrenViaDocumentsContract()
+            if (fastList != null) {
+                return fastList.firstOrNull { it.name == name }
+            }
+            return doc.findFile(name)?.let { SafClaFile(contentResolver, it) }
+        }
 
         override fun findOrCreateDirectory(name: String): ClaDirectory? {
             val existing = doc.findFile(name)
@@ -308,13 +313,23 @@ class LocalFileClaDirectoryFactory : ClaDirectoryFactory {
             }
 
         override fun renameTo(displayName: String): Boolean {
-            val parent = file.parentFile ?: return false
-            val target = File(parent, displayName)
-            val renamed = file.renameTo(target)
-            if (renamed) {
-                file = target
+            if (displayName.isBlank() || displayName.contains('/') || displayName.contains('\\') || displayName.contains("..")) {
+                return false
             }
-            return renamed
+            val parent = file.parentFile ?: return false
+            return try {
+                val target = File(parent, displayName)
+                if (target.canonicalFile.parentFile != parent.canonicalFile) {
+                    return false
+                }
+                val renamed = file.renameTo(target)
+                if (renamed) {
+                    file = target
+                }
+                renamed
+            } catch (_: java.io.IOException) {
+                false
+            }
         }
 
         override fun delete(): Boolean = file.delete()
