@@ -27,19 +27,28 @@ class BundleOutboxRepository(
             PreferencesHelper.getEncryptedSharedPreferences(context).getLong("outbox_seq_counter", 0L)
         }.getOrDefault(0L)
 
+    private fun nextSequenceLocked(): Long {
+        val seq = ++sequenceCounter
+        runCatching {
+            PreferencesHelper.getEncryptedSharedPreferences(context)
+                .edit()
+                .putLong("outbox_seq_counter", seq)
+                .apply()
+        }
+        return seq
+    }
+
+    fun nextSequenceNumber(): Long =
+        synchronized(sequenceLock) {
+            nextSequenceLocked()
+        }
+
     private fun nextTimestampAndSequence(): Pair<Long, Long> =
         synchronized(sequenceLock) {
             val now = timeProvider.currentTimeMillis()
             val timestamp = maxOf(now, lastTimestampMs)
             lastTimestampMs = timestamp
-            val seq = ++sequenceCounter
-            runCatching {
-                PreferencesHelper.getEncryptedSharedPreferences(context)
-                    .edit()
-                    .putLong("outbox_seq_counter", seq)
-                    .apply()
-            }
-            Pair(timestamp, seq)
+            Pair(timestamp, nextSequenceLocked())
         }
 
     suspend fun enqueueTextBundle(

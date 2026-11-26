@@ -43,6 +43,7 @@ class DtnEngineService : Service() {
     private val bpsecKeyDao: BpsecKeyDao by inject()
     private val logDao: SystemLogDao by inject()
     private val senmlEntryDao: SenmlEntryDao by inject()
+    private val outboxRepository: io.github.loic_fejoz.dtn_android_messenger.data.repository.BundleOutboxRepository by inject()
     private val timeProvider: io.github.loic_fejoz.dtn_android_messenger.util.TimeProvider by inject()
 
     private lateinit var tcpClAdapter: TcpClAdapter
@@ -57,7 +58,6 @@ class DtnEngineService : Service() {
     private var periodicFlushJob: Job? = null
     private val lastPullTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val lastFilePollTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private val bibeSeqCounter = java.util.concurrent.atomic.AtomicLong(1L)
 
     private val isAndroidAutoActiveFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
     private var carConnectionTypeLiveData: androidx.lifecycle.LiveData<Int>? = null
@@ -883,6 +883,12 @@ class DtnEngineService : Service() {
 
             log("INFO", "Flushing queue, ${allOutgoing.size} outgoing bundle(s)")
             var anySuccess = false
+            val maxSizeBytes = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getMaxBundleSizeBytes(this@DtnEngineService)
+            val prefs = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getEncryptedSharedPreferences(this@DtnEngineService)
+            val localNodeBase = (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim()
+            val routingRules = routingRuleDao.getAllList()
+            val allProfiles = convergenceProfileDao.getAllList()
+            val allBpsecKeys = bpsecKeyDao.getAllList()
 
             data class OutgoingBatchItem(
                 val record: BundleRecord,
@@ -905,7 +911,6 @@ class DtnEngineService : Service() {
                     bundleRecordDao.delete(record)
                     continue
                 }
-                val maxSizeBytes = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getMaxBundleSizeBytes(this@DtnEngineService)
                 if (file.length() > maxSizeBytes) {
                     val maxMb = maxSizeBytes / (1024 * 1024)
                     log("WARN", "Bundle ${record.bundleId} payload size (${file.length()} bytes) exceeds maximum configured limit of $maxMb MB. Skipping.")
@@ -929,7 +934,7 @@ class DtnEngineService : Service() {
                 }
 
                 // Resolve next hop
-                var nextHop = resolveNextHop(record.destinationEid)
+                var nextHop = selectNextHop(record.destinationEid, routingRules)
                 var useBibe = false
                 var bibeGateway: String? = null
                 if (nextHop.startsWith("bibe:")) {
@@ -938,7 +943,7 @@ class DtnEngineService : Service() {
                     nextHop = bibeGateway
                 }
 
-                val profile = findProfileForNextHop(nextHop, allowPausedProfileId = forceProfileId)
+                val profile = findProfileForNextHop(nextHop, allProfiles, allowPausedProfileId = forceProfileId)
                 if (profile == null) {
                     if (forceProfileId == null) {
                         log("WARN", "No convergence profile found to reach next-hop $nextHop (dest: ${record.destinationEid})")
@@ -950,13 +955,11 @@ class DtnEngineService : Service() {
                 }
 
                 // Load BPSec Key if present to sign bundle (peer key or local node signing key)
-                val prefs = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getEncryptedSharedPreferences(this@DtnEngineService)
-                val localNodeBase = (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim()
                 val keyRecord =
-                    findBpsecKey(record.destinationEid)
-                        ?: findBpsecKey(nextHop)
-                        ?: findBpsecKey(record.sourceEid)
-                        ?: findBpsecKey(localNodeBase)
+                    selectBpsecKey(record.destinationEid, allBpsecKeys)
+                        ?: selectBpsecKey(nextHop, allBpsecKeys)
+                        ?: selectBpsecKey(record.sourceEid, allBpsecKeys)
+                        ?: selectBpsecKey(localNodeBase, allBpsecKeys)
 
                 // Build blocks
                 val primary =
@@ -1025,7 +1028,7 @@ class DtnEngineService : Service() {
                             bibeGateway = bibeGateway,
                             localNodeBase = localNodeBase,
                             creationTimeMillis = timeProvider.currentTimeMillis(),
-                            sequenceNumber = bibeSeqCounter.getAndIncrement(),
+                            sequenceNumber = outboxRepository.nextSequenceNumber(),
                             lifetimeMs = record.lifetimeMs,
                             hopCount = record.hopCount + 1,
                         )
@@ -1130,15 +1133,13 @@ class DtnEngineService : Service() {
         if (profile.isPaused) return false
         if (profile.triggerType != TriggerType.WIFI_SSID) return true
         return try {
-            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-            val activeNetwork = cm.activeNetwork ?: return false
-            val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return false
-            if (!capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) {
+            val wifiInfo = io.github.loic_fejoz.dtn_android_messenger.util.WifiUtils.getConnectedWifiInfo(this)
+            if (!wifiInfo.isWifiActive) {
                 return false
             }
             val requiredSsid = profile.triggerCondition?.trim().orEmpty()
             if (requiredSsid.isEmpty()) return true
-            val currentSsid = io.github.loic_fejoz.dtn_android_messenger.util.WifiUtils.getConnectedWifiSsid(this)
+            val currentSsid = wifiInfo.ssid
             if (currentSsid == null) {
                 // SSID may be redacted without location permission; Wi-Fi transport is active
                 true
@@ -1153,9 +1154,18 @@ class DtnEngineService : Service() {
     private suspend fun findProfileForNextHop(
         nextHop: String,
         allowPausedProfileId: String? = null,
-    ): ConvergenceProfile? {
-        val profiles = convergenceProfileDao.getAllList()
+    ): ConvergenceProfile? =
+        findProfileForNextHop(
+            nextHop = nextHop,
+            profiles = convergenceProfileDao.getAllList(),
+            allowPausedProfileId = allowPausedProfileId,
+        )
 
+    private fun findProfileForNextHop(
+        nextHop: String,
+        profiles: List<ConvergenceProfile>,
+        allowPausedProfileId: String? = null,
+    ): ConvergenceProfile? {
         fun isEligible(profile: ConvergenceProfile): Boolean =
             (allowPausedProfileId != null && profile.profileId == allowPausedProfileId) || isProfileEligible(profile)
 
