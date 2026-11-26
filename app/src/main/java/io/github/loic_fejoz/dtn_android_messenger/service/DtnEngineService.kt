@@ -177,6 +177,55 @@ class DtnEngineService : Service() {
             return Bundle(outerPrimary, outerPayload, outerHopCount, null)
         }
 
+        internal fun formatNotificationPreview(
+            data: ByteArray,
+            filePath: String?,
+        ): String {
+            if (filePath != null) {
+                if (io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isImagePayload(filePath)) {
+                    return "[Image]"
+                }
+                if (io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isAudioPayload(filePath)) {
+                    return "[Audio]"
+                }
+            }
+            if (data.isEmpty()) return ""
+            val maxPrefixBytes = 512
+            val prefixLen = data.size.coerceAtMost(maxPrefixBytes)
+            var validLen = prefixLen
+            if (prefixLen == maxPrefixBytes && data.size > maxPrefixBytes) {
+                var i = prefixLen - 1
+                while (i >= 0 && (data[i].toInt() and 0xC0) == 0x80) {
+                    i--
+                }
+                if (i >= 0 && (data[i].toInt() and 0x80) != 0) {
+                    validLen = i
+                }
+            }
+            for (i in 0 until validLen) {
+                val b = data[i].toInt() and 0xFF
+                if (b == 0 || b < 0x09 || b in 0x0E..0x1F) {
+                    return "[Binary Payload]"
+                }
+            }
+            val decoded =
+                try {
+                    java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                        .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                        .decode(java.nio.ByteBuffer.wrap(data, 0, validLen))
+                        .toString()
+                } catch (_: java.nio.charset.CharacterCodingException) {
+                    return "[Binary Payload]"
+                }
+            val maxChars = 200
+            return if (decoded.length > maxChars || data.size > maxPrefixBytes) {
+                decoded.take(maxChars) + "…"
+            } else {
+                decoded
+            }
+        }
+
         @Volatile
         var isRunning = false
     }
@@ -205,11 +254,21 @@ class DtnEngineService : Service() {
         log("INFO", "DtnEngineService creating")
         createNotificationChannels()
         try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                var fgsType = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                val hasBluetoothPermission =
+                    Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                        androidx.core.content.ContextCompat.checkSelfPermission(
+                            this,
+                            android.Manifest.permission.BLUETOOTH_CONNECT,
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (hasBluetoothPermission) {
+                    fgsType = fgsType or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                }
                 startForeground(
                     NOTIFICATION_ID,
                     buildForegroundNotification(),
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
+                    fgsType,
                 )
             } else {
                 startForeground(NOTIFICATION_ID, buildForegroundNotification())
@@ -700,14 +759,12 @@ class DtnEngineService : Service() {
         record: BundleRecord,
         data: ByteArray,
     ) {
-        val messageText =
-            try {
-                String(data, Charsets.UTF_8)
-            } catch (e: Exception) {
-                "Binary Payload"
-            }
+        val messageText = formatNotificationPreview(data, record.payloadFilePath)
 
-        val intent = packageManager.getLaunchIntentForPackage(packageName)
+        val intent =
+            Intent(this, io.github.loic_fejoz.dtn_android_messenger.ui.MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
         val pendingIntent =
             PendingIntent.getActivity(
                 this,
@@ -1233,7 +1290,10 @@ class DtnEngineService : Service() {
 
     private fun buildForegroundNotification(): Notification {
         val channelId = CHANNEL_ID
-        val intent = packageManager.getLaunchIntentForPackage(packageName)
+        val intent =
+            Intent(this, io.github.loic_fejoz.dtn_android_messenger.ui.MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
         val pendingIntent =
             PendingIntent.getActivity(
                 this,

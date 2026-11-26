@@ -46,10 +46,8 @@ class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher =
         registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions(),
-        ) { permissions ->
-            if (permissions.values.all { it }) {
-                startEngineService()
-            }
+        ) { _ ->
+            startEngineService()
         }
 
     private val currentIntentState = mutableStateOf<android.content.Intent?>(null)
@@ -59,10 +57,7 @@ class MainActivity : ComponentActivity() {
 
         currentIntentState.value = intent
         checkAndRequestPermissions()
-
-        if (hasRequiredPermissions()) {
-            startEngineService()
-        }
+        startEngineService()
 
         setContent {
             DtnTheme {
@@ -319,12 +314,6 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         currentIntentState.value = intent
-    }
-
-    private fun hasRequiredPermissions(): Boolean {
-        return getRequiredPermissions().all {
-            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
-        }
     }
 
     private fun startEngineService() {
