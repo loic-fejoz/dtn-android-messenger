@@ -403,4 +403,96 @@ class TcpClv4Test {
                 scope.cancel()
             }
         }
+
+    @Test
+    fun testOutboundMultiSegmentRespectsPeerSegmentMru() =
+        runBlocking {
+            val server = ServerSocket(0)
+            val port = server.localPort
+            val receivedFlags = mutableListOf<Int>()
+            val reassembled = java.io.ByteArrayOutputStream()
+            val serverDone = CountDownLatch(1)
+
+            val serverThread =
+                Thread {
+                    server.use { srv ->
+                        srv.accept().use { sock ->
+                            sock.soTimeout = 5000
+                            val dis = DataInputStream(sock.getInputStream())
+                            val dos = DataOutputStream(sock.getOutputStream())
+
+                            // Contact header
+                            dis.readFully(ByteArray(6))
+                            dos.write(byteArrayOf('d'.code.toByte(), 't'.code.toByte(), 'n'.code.toByte(), '!'.code.toByte(), 4, 0))
+                            dos.flush()
+
+                            // Client SESS_INIT
+                            assertEquals(7, dis.readByte().toInt())
+                            dis.readShort()
+                            dis.readLong()
+                            dis.readLong()
+                            val cliNodeLen = dis.readUnsignedShort()
+                            dis.readFully(ByteArray(cliNodeLen))
+                            val cliExtLen = dis.readInt()
+                            if (cliExtLen > 0) dis.readFully(ByteArray(cliExtLen))
+
+                            // Server SESS_INIT with small segmentMru = 8, transferMru = 1024
+                            val srvNode = "dtn://mock-peer/".toByteArray(Charsets.UTF_8)
+                            dos.writeByte(7)
+                            dos.writeShort(30)
+                            dos.writeLong(8L)
+                            dos.writeLong(1024L)
+                            dos.writeShort(srvNode.size)
+                            dos.write(srvNode)
+                            dos.writeInt(0)
+                            dos.flush()
+
+                            // Read segments until END flag
+                            var cumulative = 0L
+                            while (true) {
+                                val msgType = dis.readByte().toInt()
+                                assertEquals(1, msgType)
+                                val flags = dis.readByte().toInt() and 0xFF
+                                receivedFlags.add(flags)
+                                val xferId = dis.readLong()
+                                if ((flags and XFER_FLAG_START) != 0) {
+                                    val extLen = dis.readInt()
+                                    if (extLen > 0) dis.readFully(ByteArray(extLen))
+                                }
+                                val segLen = dis.readLong().toInt()
+                                val seg = ByteArray(segLen)
+                                dis.readFully(seg)
+                                reassembled.write(seg)
+                                cumulative += segLen
+
+                                // Send XFER_ACK
+                                dos.writeByte(2)
+                                dos.writeByte(flags)
+                                dos.writeLong(xferId)
+                                dos.writeLong(cumulative)
+                                dos.flush()
+
+                                if ((flags and XFER_FLAG_END) != 0) break
+                            }
+                            serverDone.countDown()
+                        }
+                    }
+                }
+            serverThread.start()
+
+            val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
+            try {
+                val payload = "Hello-Multi-Seg-Client".toByteArray(Charsets.UTF_8) // 22 bytes -> 8 + 8 + 6
+                var acked = false
+                val ok = adapter.sendBundle(payload, "127.0.0.1:$port") { acked = true }
+                assertTrue(ok)
+                assertTrue(acked)
+                assertTrue(serverDone.await(5, TimeUnit.SECONDS))
+                assertEquals(listOf(XFER_FLAG_START, 0, XFER_FLAG_END), receivedFlags)
+                assertArrayEquals(payload, reassembled.toByteArray())
+            } finally {
+                adapter.stop()
+                serverThread.join(2000)
+            }
+        }
 }

@@ -70,9 +70,18 @@ private const val REASON_BUSY: Byte = 0x03
 private const val REASON_CONTACT_FAILURE: Byte = 0x04
 private const val REASON_RESOURCE_EXHAUSTION: Byte = 0x05
 
-private suspend fun readSessInitPayload(input: ByteReadChannel) {
+private data class SessInitParams(
+    val keepaliveIntervalSec: Int,
+    val segmentMru: Long,
+    val transferMru: Long,
+)
+
+private suspend fun readSessInitPayload(input: ByteReadChannel): SessInitParams {
     val staticBody = ByteArray(20)
     input.readFully(staticBody, 0, 20)
+    val keepaliveIntervalSec = ByteBuffer.wrap(staticBody, 0, 2).short.toInt() and 0xFFFF
+    val segmentMru = ByteBuffer.wrap(staticBody, 2, 8).long
+    val transferMru = ByteBuffer.wrap(staticBody, 10, 8).long
     val nodeIdLen = ByteBuffer.wrap(staticBody, 18, 2).short.toInt() and 0xFFFF
     if (nodeIdLen > 0) {
         val nodeIdBytes = ByteArray(nodeIdLen)
@@ -88,6 +97,7 @@ private suspend fun readSessInitPayload(input: ByteReadChannel) {
         val extBytes = ByteArray(extLen)
         input.readFully(extBytes, 0, extLen)
     }
+    return SessInitParams(keepaliveIntervalSec, segmentMru, transferMru)
 }
 
 private suspend fun writeXferAck(
@@ -233,7 +243,29 @@ class TcpClAdapter(
     private var listener: (suspend (ByteArray) -> Boolean)? = null
 
     private var adapterScope: CoroutineScope? = null
+    private var internalScope: CoroutineScope? = null
     private val peerLocks = HashMap<String, Mutex>()
+
+    private fun getOrCreateSessionScope(): CoroutineScope {
+        adapterScope?.let { return it }
+        synchronized(selectorLock) {
+            return internalScope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO).also { internalScope = it }
+        }
+    }
+
+    private suspend fun enqueueBatch(
+        session: ActiveTcpclSession,
+        bundles: List<Pair<ByteArray, (suspend () -> Unit)?>>,
+    ): Boolean {
+        var allOk = true
+        for ((bytes, onAck) in bundles) {
+            if (bytes.isNotEmpty()) {
+                val ok = session.enqueueBundle(bytes, onAck)
+                if (!ok) allOk = false
+            }
+        }
+        return allOk
+    }
 
     private fun getOrCreateSelector(): ActorSelectorManager =
         synchronized(selectorLock) {
@@ -438,6 +470,8 @@ class TcpClAdapter(
             } catch (_: Exception) {
             }
             selectorManager = null
+            internalScope?.cancel()
+            internalScope = null
         }
     }
 
@@ -459,14 +493,7 @@ class TcpClAdapter(
             var existingSession = synchronized(activeSessions) { activeSessions[targetAddress] }
             if (existingSession != null && !existingSession.isClosing) {
                 log("INFO", "Reusing active TCPCL session for $targetAddress to transmit ${bundles.size} bundle(s)")
-                var allOk = true
-                for ((bytes, onAck) in bundles) {
-                    if (bytes.isNotEmpty()) {
-                        val ok = existingSession.enqueueBundle(bytes, onAck)
-                        if (!ok) allOk = false
-                    }
-                }
-                return@withContext allOk
+                return@withContext enqueueBatch(existingSession, bundles)
             }
 
             val parts = targetAddress.split(":")
@@ -490,14 +517,7 @@ class TcpClAdapter(
                 // If another coroutine is connecting, check if the session is now ready
                 existingSession = synchronized(activeSessions) { activeSessions[targetAddress] }
                 if (existingSession != null && !existingSession.isClosing) {
-                    var allOk = true
-                    for ((bytes, onAck) in bundles) {
-                        if (bytes.isNotEmpty()) {
-                            val ok = existingSession.enqueueBundle(bytes, onAck)
-                            if (!ok) allOk = false
-                        }
-                    }
-                    return@withContext allOk
+                    return@withContext enqueueBatch(existingSession, bundles)
                 }
                 log("INFO", "Connection to $targetAddress is already active, skipping duplicate pull connection")
                 return@withContext true
@@ -508,14 +528,7 @@ class TcpClAdapter(
                 // Check once more under the lock
                 existingSession = synchronized(activeSessions) { activeSessions[targetAddress] }
                 if (existingSession != null && !existingSession.isClosing) {
-                    var allOk = true
-                    for ((bytes, onAck) in bundles) {
-                        if (bytes.isNotEmpty()) {
-                            val ok = existingSession.enqueueBundle(bytes, onAck)
-                            if (!ok) allOk = false
-                        }
-                    }
-                    return@withContext allOk
+                    return@withContext enqueueBatch(existingSession, bundles)
                 }
 
                 log("INFO", "Connecting to $host:$destPort")
@@ -530,39 +543,40 @@ class TcpClAdapter(
                 val output = connectedSocket.openWriteChannel(autoFlush = true)
 
                 // Handshake phase
-                withTimeout(15000) {
-                    val clientHeader =
-                        byteArrayOf(
-                            'd'.code.toByte(),
-                            't'.code.toByte(),
-                            'n'.code.toByte(),
-                            '!'.code.toByte(),
-                            4,
-                            0,
-                        )
-                    output.writeFully(clientHeader, 0, 6)
+                val peerParams =
+                    withTimeout(15000) {
+                        val clientHeader =
+                            byteArrayOf(
+                                'd'.code.toByte(),
+                                't'.code.toByte(),
+                                'n'.code.toByte(),
+                                '!'.code.toByte(),
+                                4,
+                                0,
+                            )
+                        output.writeFully(clientHeader, 0, 6)
 
-                    val serverHeader = ByteArray(6)
-                    input.readFully(serverHeader, 0, 6)
-                    if (serverHeader[0] != 'd'.code.toByte() || serverHeader[1] != 't'.code.toByte() ||
-                        serverHeader[2] != 'n'.code.toByte() || serverHeader[3] != '!'.code.toByte() ||
-                        serverHeader[4] != 4.toByte()
-                    ) {
-                        throw java.io.IOException("Invalid contact header version from server")
+                        val serverHeader = ByteArray(6)
+                        input.readFully(serverHeader, 0, 6)
+                        if (serverHeader[0] != 'd'.code.toByte() || serverHeader[1] != 't'.code.toByte() ||
+                            serverHeader[2] != 'n'.code.toByte() || serverHeader[3] != '!'.code.toByte() ||
+                            serverHeader[4] != 4.toByte()
+                        ) {
+                            throw java.io.IOException("Invalid contact header version from server")
+                        }
+
+                        val sessInit = buildSessInit(getLocalNodeName())
+                        output.writeFully(sessInit, 0, sessInit.size)
+
+                        val sessInitType = input.readByte().toInt()
+                        if (sessInitType != MSG_SESS_INIT) {
+                            throw java.io.IOException("Expected SESS_INIT from server, got type $sessInitType")
+                        }
+                        readSessInitPayload(input)
                     }
-
-                    val sessInit = buildSessInit(getLocalNodeName())
-                    output.writeFully(sessInit, 0, sessInit.size)
-
-                    val sessInitType = input.readByte().toInt()
-                    if (sessInitType != MSG_SESS_INIT) {
-                        throw java.io.IOException("Expected SESS_INIT from server, got type $sessInitType")
-                    }
-                    readSessInitPayload(input)
-                }
 
                 val maxSizeBytes = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getMaxBundleSizeBytes(context)
-                val sessionScope = adapterScope ?: CoroutineScope(Dispatchers.IO)
+                val sessionScope = getOrCreateSessionScope()
                 lateinit var newSession: ActiveTcpclSession
                 newSession =
                     ActiveTcpclSession(
@@ -574,6 +588,8 @@ class TcpClAdapter(
                         log = { lvl, msg -> log(lvl, msg) },
                         listener = listener,
                         maxSizeBytes = maxSizeBytes,
+                        peerSegmentMru = peerParams.segmentMru,
+                        peerTransferMru = peerParams.transferMru,
                         onSessionClosed = {
                             synchronized(activeSessions) {
                                 if (activeSessions[targetAddress] === newSession) {
@@ -589,14 +605,7 @@ class TcpClAdapter(
                 newSession.start()
                 socket = null // Ownership transferred to ActiveTcpclSession
 
-                var allOk = true
-                for ((bytes, onAck) in bundles) {
-                    if (bytes.isNotEmpty()) {
-                        val ok = newSession.enqueueBundle(bytes, onAck)
-                        if (!ok) allOk = false
-                    }
-                }
-                return@withContext allOk
+                return@withContext enqueueBatch(newSession, bundles)
             } catch (e: Exception) {
                 runCatching { socket?.close() }
                 log("ERROR", "Failed to communicate with $targetAddress: ${e.message}")
@@ -620,7 +629,6 @@ private suspend fun sendSessTerm(
 private class OutboundTransfer(
     val bundleBytes: ByteArray,
     val onAcknowledged: (suspend () -> Unit)?,
-    val ackDeferred: CompletableDeferred<Boolean>,
     val completionDeferred: CompletableDeferred<Boolean>,
 )
 
@@ -633,6 +641,8 @@ private class ActiveTcpclSession(
     private val log: (String, String) -> Unit,
     private val listener: (suspend (ByteArray) -> Boolean)?,
     private val maxSizeBytes: Long,
+    private val peerSegmentMru: Long,
+    private val peerTransferMru: Long,
     private val onSessionClosed: () -> Unit,
 ) {
     val outgoingChannel = kotlinx.coroutines.channels.Channel<OutboundTransfer>(kotlinx.coroutines.channels.Channel.UNLIMITED)
@@ -660,15 +670,11 @@ private class ActiveTcpclSession(
             outgoingChannel.close()
             while (true) {
                 val pending = outgoingChannel.tryReceive().getOrNull() ?: break
-                pending.ackDeferred.complete(false)
                 pending.completionDeferred.complete(false)
             }
             writerJob.cancel()
             idleJob.cancel()
-            try {
-                socket.close()
-            } catch (_: Exception) {
-            }
+            runCatching { socket.close() }
             onSessionClosed()
         }
     }
@@ -676,62 +682,100 @@ private class ActiveTcpclSession(
     private suspend fun writeLoop() {
         for (task in outgoingChannel) {
             if (isClosing) {
-                task.ackDeferred.complete(false)
                 task.completionDeferred.complete(false)
                 continue
             }
+            val totalSize = task.bundleBytes.size
+            if (peerTransferMru > 0 && totalSize.toLong() > peerTransferMru) {
+                log("WARN", "Bundle ($totalSize bytes) exceeds peer Transfer MRU ($peerTransferMru bytes) for $targetAddress")
+                task.completionDeferred.complete(false)
+                continue
+            }
+            val effectiveSegMru =
+                minOf(
+                    if (peerSegmentMru > 0) peerSegmentMru else Long.MAX_VALUE,
+                    maxSizeBytes,
+                    Int.MAX_VALUE.toLong(),
+                ).toInt().coerceAtLeast(1)
+
             val transferId =
                 synchronized(acksLock) {
-                    val tid = transferIdSeq++
-                    pendingAcks[tid] = task.ackDeferred
-                    tid
+                    transferIdSeq++
                 }
             try {
-                withTimeout(20000) {
-                    val xferHeader = ByteArray(22)
+                var offset = 0
+                var allSegmentsAcked = true
+                while (offset < totalSize) {
+                    val segLen = minOf(effectiveSegMru, totalSize - offset)
+                    val isStart = (offset == 0)
+                    val isEnd = (offset + segLen >= totalSize)
+                    val flags = (if (isStart) XFER_FLAG_START else 0) or (if (isEnd) XFER_FLAG_END else 0)
+                    val headerSize = if (isStart) 22 else 18
+                    val xferHeader = ByteArray(headerSize)
                     xferHeader[0] = MSG_XFER_SEGMENT.toByte()
-                    xferHeader[1] = 3 // START (1) | END (2)
-                    java.nio.ByteBuffer.wrap(xferHeader, 2, 8).putLong(transferId)
-                    xferHeader[10] = 0
-                    xferHeader[11] = 0
-                    xferHeader[12] = 0
-                    xferHeader[13] = 0
-                    java.nio.ByteBuffer.wrap(xferHeader, 14, 8).putLong(task.bundleBytes.size.toLong())
-
-                    writeLock.withLock {
-                        output.writeFully(xferHeader, 0, 22)
-                        output.writeFully(task.bundleBytes, 0, task.bundleBytes.size)
+                    xferHeader[1] = flags.toByte()
+                    ByteBuffer.wrap(xferHeader, 2, 8).putLong(transferId)
+                    if (isStart) {
+                        // 4-byte Transfer Extension Items length = 0
+                        ByteBuffer.wrap(xferHeader, 14, 8).putLong(segLen.toLong())
+                    } else {
+                        ByteBuffer.wrap(xferHeader, 10, 8).putLong(segLen.toLong())
                     }
-                    lastActivityTime = System.currentTimeMillis()
 
-                    val acked = task.ackDeferred.await()
-                    if (acked) {
-                        try {
-                            task.onAcknowledged?.invoke()
-                        } catch (e: Exception) {
-                            log("ERROR", "Error executing onAcknowledged callback: ${e.message}")
+                    val segAckDeferred = CompletableDeferred<Boolean>()
+                    synchronized(acksLock) {
+                        pendingAcks[transferId] = segAckDeferred
+                    }
+
+                    withTimeout(20000) {
+                        writeLock.withLock {
+                            output.writeFully(xferHeader, 0, headerSize)
+                            output.writeFully(task.bundleBytes, offset, segLen)
+                        }
+                        lastActivityTime = System.currentTimeMillis()
+                        val segAcked = segAckDeferred.await()
+                        if (!segAcked) {
+                            allSegmentsAcked = false
                         }
                     }
-                    task.completionDeferred.complete(acked)
+
+                    if (!allSegmentsAcked) {
+                        break
+                    }
+                    offset += segLen
                 }
+
+                if (allSegmentsAcked) {
+                    try {
+                        task.onAcknowledged?.invoke()
+                    } catch (e: Exception) {
+                        log("ERROR", "Error executing onAcknowledged callback: ${e.message}")
+                    }
+                }
+                task.completionDeferred.complete(allSegmentsAcked)
             } catch (e: Exception) {
                 log("ERROR", "Failed sending transfer $transferId to $targetAddress: ${e.message}")
                 synchronized(acksLock) {
-                    pendingAcks.remove(transferId)
+                    pendingAcks.remove(transferId)?.complete(false)
                 }
-                task.ackDeferred.complete(false)
                 task.completionDeferred.complete(false)
+                isClosing = true
+                runCatching { socket.close() }
+                break
             }
         }
     }
 
     private suspend fun readLoop() {
         val inFlightTransfers = HashMap<Long, java.io.ByteArrayOutputStream>()
+        val readTimeoutMs = maxOf(TCPCL_IDLE_TIMEOUT_MS + 15_000L, 45_000L)
         try {
             while (socket.isActive && !isClosing) {
                 val msgType =
                     try {
-                        input.readByte().toInt()
+                        withTimeout(readTimeoutMs) {
+                            input.readByte().toInt()
+                        }
                     } catch (e: java.io.EOFException) {
                         log("INFO", "Connection closed by remote peer $targetAddress")
                         break
@@ -821,6 +865,12 @@ private class ActiveTcpclSession(
             if (!isClosing) {
                 log("INFO", "Session read error for $targetAddress: ${e.message}")
             }
+        } finally {
+            inFlightTransfers.clear()
+            synchronized(acksLock) {
+                pendingAcks.values.forEach { it.complete(false) }
+                pendingAcks.clear()
+            }
         }
     }
 
@@ -840,6 +890,8 @@ private class ActiveTcpclSession(
                     }
                 } catch (_: Exception) {
                 }
+                delay(TCPCL_GRACE_TIMEOUT_MS)
+                runCatching { socket.close() }
                 break
             }
         }
@@ -850,9 +902,8 @@ private class ActiveTcpclSession(
         onAcknowledged: (suspend () -> Unit)?,
     ): Boolean {
         if (isClosing) return false
-        val ackDeferred = CompletableDeferred<Boolean>()
         val completionDeferred = CompletableDeferred<Boolean>()
-        val task = OutboundTransfer(bundleBytes, onAcknowledged, ackDeferred, completionDeferred)
+        val task = OutboundTransfer(bundleBytes, onAcknowledged, completionDeferred)
         val sendResult = outgoingChannel.trySend(task)
         if (sendResult.isFailure) return false
         return completionDeferred.await()
