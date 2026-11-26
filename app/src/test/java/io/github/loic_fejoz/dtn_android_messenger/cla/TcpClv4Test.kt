@@ -15,6 +15,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -490,6 +491,82 @@ class TcpClv4Test {
                 assertTrue(serverDone.await(5, TimeUnit.SECONDS))
                 assertEquals(listOf(XFER_FLAG_START, 0, XFER_FLAG_END), receivedFlags)
                 assertArrayEquals(payload, reassembled.toByteArray())
+            } finally {
+                adapter.stop()
+                serverThread.join(2000)
+            }
+        }
+
+    @Test
+    fun testOutboundRejectsShortXferAckLength() =
+        runBlocking {
+            val serverSocket = ServerSocket(0)
+            val port = serverSocket.localPort
+            val serverDone = CountDownLatch(1)
+
+            val serverThread =
+                Thread {
+                    serverSocket.use { srv ->
+                        srv.accept().use { sock ->
+                            sock.soTimeout = 5000
+                            val dis = DataInputStream(sock.getInputStream())
+                            val dos = DataOutputStream(sock.getOutputStream())
+
+                            dis.readFully(ByteArray(6))
+                            dos.write(byteArrayOf('d'.code.toByte(), 't'.code.toByte(), 'n'.code.toByte(), '!'.code.toByte(), 4, 0))
+                            dos.flush()
+
+                            assertEquals(7, dis.readByte().toInt())
+                            dis.readShort()
+                            dis.readLong()
+                            dis.readLong()
+                            val cliNodeLen = dis.readUnsignedShort()
+                            dis.readFully(ByteArray(cliNodeLen))
+                            val cliExtLen = dis.readInt()
+                            if (cliExtLen > 0) dis.readFully(ByteArray(cliExtLen))
+
+                            val srvNode = "dtn://mock-peer/".toByteArray(Charsets.UTF_8)
+                            dos.writeByte(7)
+                            dos.writeShort(30)
+                            dos.writeLong(1024L)
+                            dos.writeLong(1024L)
+                            dos.writeShort(srvNode.size)
+                            dos.write(srvNode)
+                            dos.writeInt(0)
+                            dos.flush()
+
+                            val msgType = dis.readByte().toInt()
+                            assertEquals(1, msgType)
+                            val flags = dis.readByte().toInt() and 0xFF
+                            val xferId = dis.readLong()
+                            if ((flags and XFER_FLAG_START) != 0) {
+                                val extLen = dis.readInt()
+                                if (extLen > 0) dis.readFully(ByteArray(extLen))
+                            }
+                            val segLen = dis.readLong().toInt()
+                            dis.readFully(ByteArray(segLen))
+
+                            // Deliberately send a truncated/short acknowledgedLength
+                            dos.writeByte(2)
+                            dos.writeByte(flags)
+                            dos.writeLong(xferId)
+                            dos.writeLong((segLen - 1).toLong().coerceAtLeast(0L))
+                            dos.flush()
+
+                            serverDone.countDown()
+                        }
+                    }
+                }
+            serverThread.start()
+
+            val adapter = TcpClAdapter(context = fakeContext, port = 0, logDao = fakeLogDao)
+            try {
+                val payload = "ShortAckTestPayload".toByteArray(Charsets.UTF_8)
+                var acked = false
+                val ok = adapter.sendBundle(payload, "127.0.0.1:$port") { acked = true }
+                assertFalse(ok)
+                assertFalse(acked)
+                assertTrue(serverDone.await(5, TimeUnit.SECONDS))
             } finally {
                 adapter.stop()
                 serverThread.join(2000)

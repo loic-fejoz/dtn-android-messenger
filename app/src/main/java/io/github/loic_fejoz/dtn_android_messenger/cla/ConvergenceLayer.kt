@@ -12,6 +12,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.nio.ByteBuffer
+import kotlin.coroutines.cancellation.CancellationException
 
 interface ConvergenceLayerAdapter {
     val name: String
@@ -67,6 +68,7 @@ private data class SessInitParams(
     val keepaliveIntervalSec: Int,
     val segmentMru: Long,
     val transferMru: Long,
+    val nodeId: String = "",
 )
 
 private suspend fun readSessInitPayload(input: ByteReadChannel): SessInitParams {
@@ -76,10 +78,14 @@ private suspend fun readSessInitPayload(input: ByteReadChannel): SessInitParams 
     val segmentMru = ByteBuffer.wrap(staticBody, 2, 8).long
     val transferMru = ByteBuffer.wrap(staticBody, 10, 8).long
     val nodeIdLen = ByteBuffer.wrap(staticBody, 18, 2).short.toInt() and 0xFFFF
-    if (nodeIdLen > 0) {
-        val nodeIdBytes = ByteArray(nodeIdLen)
-        input.readFully(nodeIdBytes, 0, nodeIdLen)
-    }
+    val nodeId =
+        if (nodeIdLen > 0) {
+            val nodeIdBytes = ByteArray(nodeIdLen)
+            input.readFully(nodeIdBytes, 0, nodeIdLen)
+            String(nodeIdBytes, Charsets.UTF_8)
+        } else {
+            ""
+        }
     val extLenBytes = ByteArray(4)
     input.readFully(extLenBytes, 0, 4)
     val extLen = ByteBuffer.wrap(extLenBytes).int
@@ -90,7 +96,7 @@ private suspend fun readSessInitPayload(input: ByteReadChannel): SessInitParams 
         val extBytes = ByteArray(extLen)
         input.readFully(extBytes, 0, extLen)
     }
-    return SessInitParams(keepaliveIntervalSec, segmentMru, transferMru)
+    return SessInitParams(keepaliveIntervalSec, segmentMru, transferMru, nodeId)
 }
 
 private suspend fun writeXferAck(
@@ -280,7 +286,7 @@ class TcpClAdapter(
         level: String,
         msg: String,
     ) {
-        adapterScope?.launch(Dispatchers.IO) {
+        (adapterScope ?: getOrCreateSessionScope()).launch(Dispatchers.IO) {
             logDao.insert(SystemLog(timestamp = System.currentTimeMillis(), level = level, message = "[TCPCL] $msg"))
         }
     }
@@ -355,6 +361,7 @@ class TcpClAdapter(
         val input = socket.openReadChannel()
         val output = socket.openWriteChannel(autoFlush = true)
         val inFlightTransfers = HashMap<Long, java.io.ByteArrayOutputStream>()
+        var readTimeoutMs = 45_000L
         try {
             // Handshake phase with 10s timeout
             withTimeout(10000) {
@@ -384,7 +391,11 @@ class TcpClAdapter(
                 if (sessInitType != MSG_SESS_INIT) {
                     throw java.io.IOException("Expected SESS_INIT from client, got type $sessInitType")
                 }
-                readSessInitPayload(input)
+                val peerParams = readSessInitPayload(input)
+                log("INFO", "Inbound SESS_INIT from ${peerParams.nodeId} (keepalive=${peerParams.keepaliveIntervalSec}s, segMru=${peerParams.segmentMru})")
+                if (peerParams.keepaliveIntervalSec > 0) {
+                    readTimeoutMs = maxOf(peerParams.keepaliveIntervalSec * 2000L, 45_000L)
+                }
 
                 // Send SESS_INIT back
                 val serverSessInit = buildSessInit(getLocalNodeName())
@@ -393,7 +404,7 @@ class TcpClAdapter(
 
             // Message transmission phase
             while (socket.isActive) {
-                val msgType = withTimeout(45000) { input.readByte().toInt() }
+                val msgType = withTimeout(readTimeoutMs) { input.readByte().toInt() }
                 when (msgType) {
                     MSG_XFER_SEGMENT -> {
                         withTimeout(15000) {
@@ -434,6 +445,8 @@ class TcpClAdapter(
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             log("WARN", "Incoming connection error: ${e.message}")
         } finally {
@@ -639,7 +652,7 @@ private class ActiveTcpclSession(
     private val onSessionClosed: () -> Unit,
 ) {
     val outgoingChannel = kotlinx.coroutines.channels.Channel<OutboundTransfer>(kotlinx.coroutines.channels.Channel.UNLIMITED)
-    private val pendingAcks = HashMap<Long, CompletableDeferred<Boolean>>()
+    private val pendingAcks = HashMap<Long, CompletableDeferred<Long>>()
     private val acksLock = Any()
     private val writeLock = Mutex()
 
@@ -715,7 +728,8 @@ private class ActiveTcpclSession(
                         ByteBuffer.wrap(xferHeader, 10, 8).putLong(segLen.toLong())
                     }
 
-                    val segAckDeferred = CompletableDeferred<Boolean>()
+                    val expectedAckLen = (offset + segLen).toLong()
+                    val segAckDeferred = CompletableDeferred<Long>()
                     synchronized(acksLock) {
                         pendingAcks[transferId] = segAckDeferred
                     }
@@ -726,8 +740,9 @@ private class ActiveTcpclSession(
                             output.writeFully(task.bundleBytes, offset, segLen)
                         }
                         lastActivityTime = System.currentTimeMillis()
-                        val segAcked = segAckDeferred.await()
-                        if (!segAcked) {
+                        val ackedLen = segAckDeferred.await()
+                        if (ackedLen != expectedAckLen) {
+                            log("WARN", "XFER_ACK length mismatch for transfer $transferId: expected $expectedAckLen, got $ackedLen")
                             allSegmentsAcked = false
                         }
                     }
@@ -741,15 +756,23 @@ private class ActiveTcpclSession(
                 if (allSegmentsAcked) {
                     try {
                         task.onAcknowledged?.invoke()
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         log("ERROR", "Error executing onAcknowledged callback: ${e.message}")
                     }
                 }
                 task.completionDeferred.complete(allSegmentsAcked)
+            } catch (e: CancellationException) {
+                synchronized(acksLock) {
+                    pendingAcks.remove(transferId)?.complete(-1L)
+                }
+                task.completionDeferred.complete(false)
+                throw e
             } catch (e: Exception) {
                 log("ERROR", "Failed sending transfer $transferId to $targetAddress: ${e.message}")
                 synchronized(acksLock) {
-                    pendingAcks.remove(transferId)?.complete(false)
+                    pendingAcks.remove(transferId)?.complete(-1L)
                 }
                 task.completionDeferred.complete(false)
                 isClosing = true
@@ -772,6 +795,8 @@ private class ActiveTcpclSession(
                     } catch (e: java.io.EOFException) {
                         log("INFO", "Connection closed by remote peer $targetAddress")
                         break
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         if (!isClosing) {
                             log("INFO", "Connection closed or error from $targetAddress: ${e.message}")
@@ -792,7 +817,7 @@ private class ActiveTcpclSession(
                             synchronized(acksLock) {
                                 pendingAcks.remove(ackTransferId)
                             }
-                        deferred?.complete(true)
+                        deferred?.complete(ackLen)
                     }
                     MSG_XFER_REFUSE -> {
                         val refuseBody = ByteArray(9)
@@ -804,7 +829,7 @@ private class ActiveTcpclSession(
                             synchronized(acksLock) {
                                 pendingAcks.remove(refuseTransferId)
                             }
-                        deferred?.complete(false)
+                        deferred?.complete(-1L)
                     }
                     MSG_XFER_SEGMENT -> {
                         withTimeout(15000) {
@@ -854,6 +879,8 @@ private class ActiveTcpclSession(
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (!isClosing) {
                 log("INFO", "Session read error for $targetAddress: ${e.message}")
@@ -861,7 +888,7 @@ private class ActiveTcpclSession(
         } finally {
             inFlightTransfers.clear()
             synchronized(acksLock) {
-                pendingAcks.values.forEach { it.complete(false) }
+                pendingAcks.values.forEach { it.complete(-1L) }
                 pendingAcks.clear()
             }
         }
