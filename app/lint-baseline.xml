@@ -475,17 +475,6 @@
 
     <issue
         id="UseKtx"
-        message="Use the KTX extension function `String.toUri` instead?"
-        errorLine1="        val soundUri = service.notificationSoundUri?.let { Uri.parse(it) } ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)"
-        errorLine2="                                                           ~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/service/DtnEngineService.kt"
-            line="791"
-            column="60"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
         message="Use the KTX extension function `SharedPreferences.edit` instead?"
         errorLine1="        prefs.edit().putString(&quot;local_node_name&quot;, nodeEid).apply()"
         errorLine2="        ~~~~~~~~~~~~">

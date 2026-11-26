@@ -1,15 +1,10 @@
 package io.github.loic_fejoz.dtn_android_messenger.service
 
 import android.app.*
-import android.content.Context
 import android.content.Intent
-import android.media.RingtoneManager
-import android.net.Uri
 import android.os.Build
 import android.os.IBinder
-import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Observer
-import io.github.loic_fejoz.dtn_android_messenger.R
 import io.github.loic_fejoz.dtn_android_messenger.cla.BluetoothClassicAdapter
 import io.github.loic_fejoz.dtn_android_messenger.cla.ConvergenceLayerAdapter
 import io.github.loic_fejoz.dtn_android_messenger.cla.FileClaAdapter
@@ -25,7 +20,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.json.JSONArray
 import org.koin.android.ext.android.inject
 import java.io.File
 import java.io.FileOutputStream
@@ -33,7 +27,6 @@ import java.util.UUID
 
 class DtnEngineService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val flushMutex = Mutex()
     private val ingestionMutex = Mutex()
 
     private val localServiceDao: LocalServiceDao by inject()
@@ -49,6 +42,7 @@ class DtnEngineService : Service() {
     private lateinit var tcpClAdapter: TcpClAdapter
     private lateinit var bluetoothAdapter: BluetoothClassicAdapter
     private lateinit var fileClaAdapter: FileClaAdapter
+    private lateinit var outboxDispatcher: OutboxDispatcher
     private val adapters = mutableListOf<ConvergenceLayerAdapter>()
 
     private var flushJob: Job? = null
@@ -91,53 +85,22 @@ class DtnEngineService : Service() {
         internal fun selectNextHop(
             destination: String,
             rules: List<RoutingRule>,
-        ): String {
-            val sortedRules =
-                rules.sortedByDescending {
-                    it.destinationEidPattern.replace("*", "").trimEnd('/').length
-                }
-            for (rule in sortedRules) {
-                val pattern = rule.destinationEidPattern.replace("*", "").trimEnd('/')
-                if (io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(pattern, destination)) {
-                    return rule.nextHopEid
-                }
-            }
-            return destination
-        }
+        ): String = RoutingPolicy.selectNextHop(destination, rules)
 
         internal fun selectBpsecKey(
             targetEid: String,
             keys: List<BpsecKey>,
-        ): BpsecKey? {
-            if (!io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isValidEid(targetEid)) return null
-            return keys
-                .filter { key ->
-                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isValidEid(key.nodeEid) &&
-                        io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(key.nodeEid, targetEid)
-                }
-                .maxByOrNull { it.nodeEid.trim().trimEnd('/').length }
-        }
+        ): BpsecKey? = BpsecProcessor.selectBpsecKey(targetEid, keys)
 
-        internal fun shouldRejectUnsignedBundle(policy: String): Boolean = policy == "strict"
+        internal fun shouldRejectUnsignedBundle(policy: String): Boolean =
+            BpsecProcessor.shouldRejectUnsignedBundle(policy)
 
         internal fun isLocalDestination(
             destinationEid: String,
             localNodeBase: String,
             localServices: List<LocalService>,
-        ): Pair<Boolean, List<LocalService>> {
-            if (!io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isValidEid(destinationEid)) {
-                return Pair(false, emptyList())
-            }
-            val isLocalNode =
-                io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isValidEid(localNodeBase) &&
-                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(localNodeBase, destinationEid)
-            val matchedLocalServices =
-                localServices.filter { service ->
-                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isValidEid(service.serviceEid) &&
-                        io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isPrefixMatch(service.serviceEid, destinationEid)
-                }
-            return Pair(isLocalNode || matchedLocalServices.isNotEmpty(), matchedLocalServices)
-        }
+        ): Pair<Boolean, List<LocalService>> =
+            RoutingPolicy.isLocalDestination(destinationEid, localNodeBase, localServices)
 
         internal fun buildBibeOuterBundle(
             innerBundleBytes: ByteArray,
@@ -148,86 +111,22 @@ class DtnEngineService : Service() {
             sequenceNumber: Long,
             lifetimeMs: Long,
             hopCount: Int,
-        ): Bundle {
-            val pduContent =
-                com.upokecenter.cbor.CBORObject.NewArray().apply {
-                    Add(innerBundleId.hashCode() and 0x7FFFFFFF) // transmission-id
-                    Add(0) // retransmission-time
-                    Add(innerBundleBytes) // encapsulated-bundle
-                }
-            val pdu =
-                com.upokecenter.cbor.CBORObject.NewArray().apply {
-                    Add(64443)
-                    Add(pduContent)
-                }
-            val outerPayloadBytes = pdu.EncodeToBytes()
-
-            val cleanGateway = bibeGateway.trim().trimEnd('/')
-            val gatewayBibeEid = if (cleanGateway.endsWith("/bibe")) cleanGateway else "$cleanGateway/bibe"
-            val localBibeEid = "${localNodeBase.trimEnd('/')}/bibe"
-
-            val outerPrimary =
-                PrimaryBlock(
-                    bundleControlFlags = PrimaryBlock.FLAG_ADMIN_RECORD,
-                    destination = Eid(gatewayBibeEid),
-                    source = Eid(localBibeEid),
-                    reportTo = Eid(localBibeEid),
-                    creationTimestamp = Pair(creationTimeMillis - 946684800000L, sequenceNumber),
-                    lifetimeMs = lifetimeMs,
-                )
-            val outerPayload = PayloadBlock(data = outerPayloadBytes)
-            val outerHopCount = HopCountBlock(hopLimit = 64, hopCount = hopCount)
-            return Bundle(outerPrimary, outerPayload, outerHopCount, null)
-        }
+        ): Bundle =
+            BibeCodec.buildBibeOuterBundle(
+                innerBundleBytes = innerBundleBytes,
+                innerBundleId = innerBundleId,
+                bibeGateway = bibeGateway,
+                localNodeBase = localNodeBase,
+                creationTimeMillis = creationTimeMillis,
+                sequenceNumber = sequenceNumber,
+                lifetimeMs = lifetimeMs,
+                hopCount = hopCount,
+            )
 
         internal fun formatNotificationPreview(
             data: ByteArray,
             filePath: String?,
-        ): String {
-            if (filePath != null) {
-                if (io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isImagePayload(filePath)) {
-                    return "[Image]"
-                }
-                if (io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isAudioPayload(filePath)) {
-                    return "[Audio]"
-                }
-            }
-            if (data.isEmpty()) return ""
-            val maxPrefixBytes = 512
-            val prefixLen = data.size.coerceAtMost(maxPrefixBytes)
-            var validLen = prefixLen
-            if (prefixLen == maxPrefixBytes && data.size > maxPrefixBytes) {
-                var i = prefixLen - 1
-                while (i >= 0 && (data[i].toInt() and 0xC0) == 0x80) {
-                    i--
-                }
-                if (i >= 0 && (data[i].toInt() and 0x80) != 0) {
-                    validLen = i
-                }
-            }
-            for (i in 0 until validLen) {
-                val b = data[i].toInt() and 0xFF
-                if (b == 0 || b < 0x09 || b in 0x0E..0x1F) {
-                    return "[Binary Payload]"
-                }
-            }
-            val decoded =
-                try {
-                    java.nio.charset.StandardCharsets.UTF_8.newDecoder()
-                        .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-                        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
-                        .decode(java.nio.ByteBuffer.wrap(data, 0, validLen))
-                        .toString()
-                } catch (_: java.nio.charset.CharacterCodingException) {
-                    return "[Binary Payload]"
-                }
-            val maxChars = 200
-            return if (decoded.length > maxChars || data.size > maxPrefixBytes) {
-                decoded.take(maxChars) + "…"
-            } else {
-                decoded
-            }
-        }
+        ): String = DtnNotificationHelper.formatNotificationPreview(data, filePath)
 
         @Volatile
         var isRunning = false
@@ -245,10 +144,6 @@ class DtnEngineService : Service() {
         serviceScope.launch {
             logDao.insert(SystemLog(timestamp = System.currentTimeMillis(), level = level, message = message))
         }
-    }
-
-    private suspend fun findBpsecKey(sourceEid: String): BpsecKey? {
-        return selectBpsecKey(sourceEid, bpsecKeyDao.getAllList())
     }
 
     override fun onCreate() {
@@ -290,6 +185,21 @@ class DtnEngineService : Service() {
         adapters.add(tcpClAdapter)
         adapters.add(bluetoothAdapter)
         adapters.add(fileClaAdapter)
+
+        outboxDispatcher =
+            OutboxDispatcher(
+                context = this,
+                bundleRecordDao = bundleRecordDao,
+                routingRuleDao = routingRuleDao,
+                convergenceProfileDao = convergenceProfileDao,
+                bpsecKeyDao = bpsecKeyDao,
+                outboxRepository = outboxRepository,
+                timeProvider = timeProvider,
+                fileClaAdapter = fileClaAdapter,
+                adapters = adapters,
+                log = { lvl, msg -> log(lvl, msg) },
+                onBundleUpdated = { updateTrigger.emit(Unit) },
+            )
 
         // Initialize CarConnection observer
         try {
@@ -518,92 +428,19 @@ class DtnEngineService : Service() {
             log("INFO", "Processing received bundle from ${primary.source.uri}")
 
             // Check BPSec BIB integrity
-            var bpsecStatus = BpsecStatus.UNVERIFIED
-            val bib = bundle.bibBlock
             val prefs = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getEncryptedSharedPreferences(this)
             val policy = prefs.getString("bpsec_policy", "none") ?: "none"
-
-            if (bib != null) {
-                val isSupportedBib =
-                    bib.securityContext == 1 &&
-                        bib.variant == 5 &&
-                        bib.targets.contains(payload.blockNumber)
-                if (!isSupportedBib) {
-                    log(
-                        "WARN",
-                        "Unsupported BIB parameters (context=${bib.securityContext}, variant=${bib.variant}, targets=${bib.targets}) from ${primary.source.uri}",
-                    )
-                    if (policy == "strict") {
-                        log("ERROR", "Unsupported BIB block under STRICT policy. Discarding bundle from ${primary.source.uri}.")
-                        return false
-                    }
-                } else {
-                    val keyRecord = findBpsecKey(bib.securitySource.uri) ?: findBpsecKey(primary.source.uri)
-                    if (keyRecord != null) {
-                        val decryptedKey =
-                            try {
-                                io.github.loic_fejoz.dtn_android_messenger.util.CryptoManager.decrypt(keyRecord.secretKey)
-                            } catch (e: Exception) {
-                                log("ERROR", "Failed to decrypt BPSec key for ${primary.source.uri}")
-                                return false
-                            }
-                        // Compute expected signature
-                        // For calculation, we need raw primary block bytes.
-                        val rawPrimaryBytes = primary.rawBytes ?: Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
-
-                        val computedSignature =
-                            try {
-                                Bpv7Parser.computeHmac(
-                                    secretKey = decryptedKey,
-                                    primaryBlockBytes = rawPrimaryBytes,
-                                    targetBlockType = 1,
-                                    targetBlockNumber = payload.blockNumber,
-                                    targetBlockFlags = payload.blockControlFlags,
-                                    securityBlockType = 11,
-                                    securityBlockNumber = bib.blockNumber,
-                                    securityBlockFlags = bib.blockControlFlags,
-                                    payloadBytes = payload.data,
-                                    scopeFlags = bib.scopeFlags,
-                                )
-                            } finally {
-                                decryptedKey.fill(0)
-                            }
-
-                        bpsecStatus =
-                            if (java.security.MessageDigest.isEqual(computedSignature, bib.signature)) {
-                                BpsecStatus.VALID
-                            } else {
-                                BpsecStatus.INVALID
-                            }
-                        log("INFO", "BPSec signature verification: $bpsecStatus")
-
-                        if (bpsecStatus == BpsecStatus.INVALID) {
-                            if (policy == "strict") {
-                                log("ERROR", "BPSec signature invalid under STRICT policy. Discarding bundle from ${primary.source.uri}.")
-                                return false
-                            } else if (policy == "warn") {
-                                log("WARN", "BPSec signature invalid under WARN policy for bundle from ${primary.source.uri}.")
-                            }
-                        }
-                    } else {
-                        log("WARN", "No BPSec key found for source ${bib.securitySource.uri} / ${primary.source.uri}, verification skipped")
-                        if (policy == "strict") {
-                            log("ERROR", "BPSec key missing under STRICT policy. Discarding bundle from ${primary.source.uri}.")
-                            return false
-                        }
-                    }
-                }
-            } else {
-                if (shouldRejectUnsignedBundle(policy)) {
-                    log("ERROR", "BPSec signature missing under STRICT policy. Discarding bundle from ${primary.source.uri}.")
-                    return false
-                }
-                // Check if a key exists for this node EID
-                val keyRecord = findBpsecKey(primary.source.uri)
-                if (keyRecord != null && policy == "warn") {
-                    log("WARN", "BPSec signature missing under WARN policy for bundle from ${primary.source.uri}.")
-                }
+            val verification =
+                BpsecProcessor.verifyIncomingBib(
+                    bundle = bundle,
+                    policy = policy,
+                    keys = bpsecKeyDao.getAllList(),
+                    log = { lvl, msg -> log(lvl, msg) },
+                )
+            if (!verification.accepted) {
+                return false
             }
+            val bpsecStatus = verification.status
 
             // Save payload to file
             val payloadsDir = File(filesDir, "payloads")
@@ -640,37 +477,7 @@ class DtnEngineService : Service() {
                             primary.destination.uri.trimEnd('/').endsWith("/bibe", ignoreCase = true)
                     )
             if (isBibeCandidate) {
-                var innerBytesToProcess: ByteArray? = null
-                // 1. Check if payload is a BIBE PDU (Administrative Record 64443)
-                try {
-                    val cbor = com.upokecenter.cbor.CBORObject.DecodeFromBytes(payload.data)
-                    if (cbor.type == com.upokecenter.cbor.CBORType.Array && cbor.size() >= 2) {
-                        val recordType = cbor[0].AsInt32()
-                        if (recordType == 64443) {
-                            val content = cbor[1]
-                            if (content.type == com.upokecenter.cbor.CBORType.Array && content.size() >= 3) {
-                                innerBytesToProcess = content[2].GetByteString()
-                                log("INFO", "Decapsulated BIBE PDU (type 64443). Re-processing inner bundle.")
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Not a CBOR administrative record
-                }
-
-                // 2. Fallback: Check if payload is a raw encapsulated bundle
-                if (innerBytesToProcess == null) {
-                    try {
-                        val innerBundle = Bpv7Parser.deserialize(payload.data)
-                        if (innerBundle.primaryBlock.version == 7) {
-                            innerBytesToProcess = payload.data
-                            log("INFO", "Decapsulated raw Bundle-in-Bundle. Re-processing inner bundle.")
-                        }
-                    } catch (e: Exception) {
-                        // Not a raw bundle
-                    }
-                }
-
+                val innerBytesToProcess = BibeCodec.extractInnerBundleBytes(payload.data) { lvl, msg -> log(lvl, msg) }
                 if (innerBytesToProcess != null) {
                     val innerAccepted = onBundleReceived(innerBytesToProcess, depth + 1)
                     if (!innerAccepted) {
@@ -773,335 +580,10 @@ class DtnEngineService : Service() {
         service: LocalService,
         record: BundleRecord,
         data: ByteArray,
-    ) {
-        val messageText = formatNotificationPreview(data, record.payloadFilePath)
-
-        val intent =
-            Intent(this, io.github.loic_fejoz.dtn_android_messenger.ui.MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-        val pendingIntent =
-            PendingIntent.getActivity(
-                this,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-
-        val soundUri = service.notificationSoundUri?.let { Uri.parse(it) } ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-
-        val builder =
-            NotificationCompat.Builder(this, CHAT_CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_notify_chat)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setContentIntent(pendingIntent)
-                .setAutoCancel(true)
-                .setSound(soundUri)
-
-        if (service.viewerType == ViewerType.CHAT) {
-            val user = androidx.core.app.Person.Builder().setName("Me").setKey("me").build()
-            val sender = androidx.core.app.Person.Builder().setName(record.sourceEid).setKey(record.sourceEid).build()
-            val messagingStyle =
-                NotificationCompat.MessagingStyle(user)
-                    .addMessage(messageText, record.creationTimestamp, sender)
-            builder.setStyle(messagingStyle)
-
-            val replyInput =
-                androidx.core.app.RemoteInput.Builder("extra_voice_reply")
-                    .setLabel("Reply")
-                    .build()
-
-            val replyIntent =
-                Intent(this, io.github.loic_fejoz.dtn_android_messenger.receiver.DtnMessageReceiver::class.java).apply {
-                    putExtra("dest_eid", service.serviceEid)
-                    putExtra("src_eid", record.sourceEid)
-                    putExtra("notification_id", record.bundleId.hashCode())
-                }
-            val replyPendingIntent =
-                PendingIntent.getBroadcast(
-                    this,
-                    record.bundleId.hashCode(),
-                    replyIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
-                )
-
-            val replyAction =
-                NotificationCompat.Action.Builder(
-                    android.R.drawable.ic_menu_send,
-                    "Reply",
-                    replyPendingIntent,
-                ).addRemoteInput(replyInput)
-                    .build()
-
-            builder.addAction(replyAction)
-        } else {
-            builder.setContentTitle(service.displayName)
-            builder.setContentText("${record.sourceEid}: $messageText")
-        }
-
-        // Parse custom vibration pattern if available
-        service.vibrationPatternJson?.let { patternStr ->
-            try {
-                val json = JSONArray(patternStr)
-                val pattern = LongArray(json.length())
-                for (i in 0 until json.length()) {
-                    pattern[i] = json.getLong(i)
-                }
-                builder.setVibrate(pattern)
-            } catch (e: Exception) {
-                builder.setDefaults(Notification.DEFAULT_VIBRATE)
-            }
-        } ?: builder.setDefaults(Notification.DEFAULT_VIBRATE)
-
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(record.bundleId.hashCode(), builder.build())
-    }
+    ) = DtnNotificationHelper.triggerMessageNotification(this, service, record, data)
 
     private suspend fun flushQueue(forceProfileId: String? = null): Boolean =
-        flushMutex.withLock {
-            val outbox = bundleRecordDao.getByState(BundleState.OUTBOX)
-            val transit = bundleRecordDao.getByState(BundleState.TRANSIT)
-            val allOutgoing = outbox + transit
-
-            if (allOutgoing.isEmpty()) {
-                if (forceProfileId != null) {
-                    return@withLock false
-                }
-                val profiles = convergenceProfileDao.getAllList()
-                for (profile in profiles) {
-                    if (profile.isPaused) continue
-                    if (profile.triggerType == TriggerType.PERIODIC_INTERNET) {
-                        val adapter = adapters.find { it.name.lowercase() == "tcpclv4" }
-                        if (adapter != null) {
-                            log("INFO", "Performing periodic pull connection to ${profile.targetAddress}")
-                            adapter.sendBundle(ByteArray(0), profile.targetAddress)
-                        }
-                    }
-                }
-                return@withLock false
-            }
-
-            log("INFO", "Flushing queue, ${allOutgoing.size} outgoing bundle(s)")
-            var anySuccess = false
-            val maxSizeBytes = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getMaxBundleSizeBytes(this@DtnEngineService)
-            val prefs = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getEncryptedSharedPreferences(this@DtnEngineService)
-            val localNodeBase = (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim()
-            val routingRules = routingRuleDao.getAllList()
-            val allProfiles = convergenceProfileDao.getAllList()
-            val allBpsecKeys = bpsecKeyDao.getAllList()
-
-            data class OutgoingBatchItem(
-                val record: BundleRecord,
-                val bundleBytes: ByteArray,
-                val profile: ConvergenceProfile,
-            )
-
-            val batchItems = mutableListOf<OutgoingBatchItem>()
-
-            for (record in allOutgoing) {
-                // Re-verify that record is still pending in case it was updated by a previous step
-                val current = bundleRecordDao.getById(record.bundleId)
-                if (current == null || (current.state != BundleState.OUTBOX && current.state != BundleState.TRANSIT)) {
-                    continue
-                }
-
-                val file = File(record.payloadFilePath)
-                if (!file.exists()) {
-                    log("WARN", "Payload file not found for bundle ${record.bundleId}, removing orphaned record from queue")
-                    bundleRecordDao.delete(record)
-                    continue
-                }
-                if (file.length() > maxSizeBytes) {
-                    val maxMb = maxSizeBytes / (1024 * 1024)
-                    log("WARN", "Bundle ${record.bundleId} payload size (${file.length()} bytes) exceeds maximum configured limit of $maxMb MB. Skipping.")
-                    continue
-                }
-                val payloadBytes = file.readBytes()
-
-                val isExpired = (record.creationTimestamp + record.lifetimeMs) < timeProvider.currentTimeMillis()
-                if (isExpired) {
-                    log("INFO", "Bundle ${record.bundleId} expired. Deleting payload and record.")
-                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadFileHelper.safeDelete(record.payloadFilePath)
-                    bundleRecordDao.delete(record)
-                    continue
-                }
-
-                if (record.hopCount + 1 >= record.hopLimit) {
-                    log("WARN", "Bundle ${record.bundleId} exceeded hop limit (${record.hopLimit}) during forwarding. Discarding.")
-                    io.github.loic_fejoz.dtn_android_messenger.util.PayloadFileHelper.safeDelete(record.payloadFilePath)
-                    bundleRecordDao.delete(record)
-                    continue
-                }
-
-                // Resolve next hop
-                var nextHop = selectNextHop(record.destinationEid, routingRules)
-                var useBibe = false
-                var bibeGateway: String? = null
-                if (nextHop.startsWith("bibe:")) {
-                    useBibe = true
-                    bibeGateway = nextHop.substring(5)
-                    nextHop = bibeGateway
-                }
-
-                val profile = findProfileForNextHop(nextHop, allProfiles, allowPausedProfileId = forceProfileId)
-                if (profile == null) {
-                    if (forceProfileId == null) {
-                        log("WARN", "No convergence profile found to reach next-hop $nextHop (dest: ${record.destinationEid})")
-                    }
-                    continue
-                }
-                if (forceProfileId != null && profile.profileId != forceProfileId) {
-                    continue
-                }
-
-                // Load BPSec Key if present to sign bundle (peer key or local node signing key)
-                val keyRecord =
-                    selectBpsecKey(record.destinationEid, allBpsecKeys)
-                        ?: selectBpsecKey(nextHop, allBpsecKeys)
-                        ?: selectBpsecKey(record.sourceEid, allBpsecKeys)
-                        ?: selectBpsecKey(localNodeBase, allBpsecKeys)
-
-                // Build blocks
-                val primary =
-                    PrimaryBlock(
-                        destination = Eid(record.destinationEid),
-                        source = Eid(record.sourceEid),
-                        reportTo = Eid(record.sourceEid),
-                        creationTimestamp = Pair(dtnTimeFromSystem(record.creationTimestamp), record.sequenceNumber),
-                        lifetimeMs = record.lifetimeMs,
-                    )
-
-                val payload = PayloadBlock(data = payloadBytes)
-                val hopCount = HopCountBlock(hopLimit = record.hopLimit, hopCount = record.hopCount + 1)
-
-                var bib: BibBlock? = null
-                if (keyRecord != null) {
-                    val decryptedKey =
-                        try {
-                            io.github.loic_fejoz.dtn_android_messenger.util.CryptoManager.decrypt(keyRecord.secretKey)
-                        } catch (e: Exception) {
-                            log("ERROR", "Failed to decrypt local BPSec key for signature")
-                            null
-                        }
-                    if (decryptedKey != null) {
-                        // Compute signature
-                        val bibBlockNumber = 2
-                        val bibBlockFlags = 0L
-                        val rawPrimary = Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes()
-                        val signature =
-                            try {
-                                Bpv7Parser.computeHmac(
-                                    secretKey = decryptedKey,
-                                    primaryBlockBytes = rawPrimary,
-                                    targetBlockType = 1,
-                                    targetBlockNumber = payload.blockNumber,
-                                    targetBlockFlags = payload.blockControlFlags,
-                                    securityBlockType = 11,
-                                    securityBlockNumber = bibBlockNumber,
-                                    securityBlockFlags = bibBlockFlags,
-                                    payloadBytes = payloadBytes,
-                                    scopeFlags = 7,
-                                )
-                            } finally {
-                                decryptedKey.fill(0)
-                            }
-                        bib =
-                            BibBlock(
-                                blockNumber = bibBlockNumber,
-                                blockControlFlags = bibBlockFlags,
-                                securitySource = Eid(record.sourceEid),
-                                signature = signature,
-                            )
-                        log("INFO", "Signed bundle ${record.bundleId} using key for EID: ${keyRecord.nodeEid}")
-                    }
-                }
-
-                val bundle = Bundle(primary, payload, hopCount, bib)
-                var bundleBytes = Bpv7Parser.serialize(bundle)
-
-                if (useBibe && bibeGateway != null) {
-                    log("INFO", "Encapsulating bundle ${record.bundleId} in a BIBE tunnel via gateway $bibeGateway")
-                    val outerBundle =
-                        buildBibeOuterBundle(
-                            innerBundleBytes = bundleBytes,
-                            innerBundleId = record.bundleId,
-                            bibeGateway = bibeGateway,
-                            localNodeBase = localNodeBase,
-                            creationTimeMillis = timeProvider.currentTimeMillis(),
-                            sequenceNumber = outboxRepository.nextSequenceNumber(),
-                            lifetimeMs = record.lifetimeMs,
-                            hopCount = record.hopCount + 1,
-                        )
-                    bundleBytes = Bpv7Parser.serialize(outerBundle)
-                }
-
-                batchItems.add(OutgoingBatchItem(record, bundleBytes, profile))
-            }
-
-            // Group by trigger type, target address, and (for FILE_CLA) profileId so separate File-CLAs stay isolated
-            val grouped =
-                batchItems.groupBy {
-                    Triple(
-                        it.profile.triggerType,
-                        it.profile.targetAddress,
-                        if (it.profile.triggerType == TriggerType.FILE_CLA) it.profile.profileId else "",
-                    )
-                }
-
-            for ((key, items) in grouped) {
-                val (triggerType, targetAddress, _) = key
-                if (triggerType == TriggerType.FILE_CLA) {
-                    val profileName = items.first().profile.name
-                    log("INFO", "Writing ${items.size} bundle(s) via FileCLA '$profileName' to TX")
-                    val namedBundles =
-                        items.map { item ->
-                            FileClaAdapter.NamedBundle(
-                                bundleId = item.record.bundleId,
-                                bundleBytes = item.bundleBytes,
-                                onAcknowledged = {
-                                    val nextState = BundleState.DELIVERED
-                                    bundleRecordDao.updateState(item.record.bundleId, nextState)
-                                    log("INFO", "Bundle ${item.record.bundleId} written to FileCLA '$profileName' TX! State updated to $nextState")
-                                    anySuccess = true
-                                    updateTrigger.emit(Unit)
-                                },
-                            )
-                        }
-                    val success = fileClaAdapter.sendNamedBundles(targetAddress, profileName, namedBundles)
-                    if (success) {
-                        anySuccess = true
-                    }
-                    continue
-                }
-
-                val adapter =
-                    adapters.find {
-                        it.name.lowercase() == (if (triggerType == TriggerType.BLUETOOTH_ALWAYS) "bluetooth" else "tcpclv4").lowercase()
-                    }
-                if (adapter == null) {
-                    log("ERROR", "No adapter found for profile type $triggerType")
-                    continue
-                }
-
-                log("INFO", "Transmitting ${items.size} bundle(s) via ${adapter.name} to $targetAddress in single session")
-                val bundlesPayload =
-                    items.map { item ->
-                        Pair<ByteArray, (suspend () -> Unit)?>(item.bundleBytes) {
-                            val nextState = BundleState.DELIVERED
-                            bundleRecordDao.updateState(item.record.bundleId, nextState)
-                            log("INFO", "Bundle ${item.record.bundleId} acknowledged by peer! State updated immediately to $nextState")
-                            anySuccess = true
-                            updateTrigger.emit(Unit)
-                        }
-                    }
-
-                val success = adapter.sendBundles(bundlesPayload, targetAddress)
-                if (success) {
-                    anySuccess = true
-                }
-            }
-            return@withLock anySuccess
-        }
+        outboxDispatcher.flushQueue(forceProfileId)
 
     private suspend fun scanFileClaProfile(
         profile: ConvergenceProfile,
@@ -1129,63 +611,19 @@ class DtnEngineService : Service() {
         return selectNextHop(destination, rules)
     }
 
-    private fun isProfileEligible(profile: ConvergenceProfile): Boolean {
-        if (profile.isPaused) return false
-        if (profile.triggerType != TriggerType.WIFI_SSID) return true
-        return try {
-            val wifiInfo = io.github.loic_fejoz.dtn_android_messenger.util.WifiUtils.getConnectedWifiInfo(this)
-            if (!wifiInfo.isWifiActive) {
-                return false
-            }
-            val requiredSsid = profile.triggerCondition?.trim().orEmpty()
-            if (requiredSsid.isEmpty()) return true
-            val currentSsid = wifiInfo.ssid
-            if (currentSsid == null) {
-                // SSID may be redacted without location permission; Wi-Fi transport is active
-                true
-            } else {
-                currentSsid.equals(requiredSsid, ignoreCase = true)
-            }
-        } catch (e: Exception) {
-            true
-        }
-    }
+    private fun isProfileEligible(profile: ConvergenceProfile): Boolean =
+        RoutingPolicy.isProfileEligible(this, profile)
 
     private suspend fun findProfileForNextHop(
         nextHop: String,
         allowPausedProfileId: String? = null,
     ): ConvergenceProfile? =
-        findProfileForNextHop(
+        RoutingPolicy.findProfileForNextHop(
+            context = this,
             nextHop = nextHop,
             profiles = convergenceProfileDao.getAllList(),
             allowPausedProfileId = allowPausedProfileId,
         )
-
-    private fun findProfileForNextHop(
-        nextHop: String,
-        profiles: List<ConvergenceProfile>,
-        allowPausedProfileId: String? = null,
-    ): ConvergenceProfile? {
-        fun isEligible(profile: ConvergenceProfile): Boolean =
-            (allowPausedProfileId != null && profile.profileId == allowPausedProfileId) || isProfileEligible(profile)
-
-        // Try direct profile ID or name match
-        var match = profiles.find { (it.profileId == nextHop || it.name == nextHop) && isEligible(it) }
-        if (match == null) {
-            // Check if profile ID matches node prefix correctly
-            val nextHopNode =
-                if (nextHop.startsWith("dtn://")) {
-                    val pathPart = nextHop.substring(6)
-                    "dtn://" + pathPart.substringBefore("/")
-                } else if (nextHop.startsWith("ipn:")) {
-                    "ipn:" + nextHop.substring(4).substringBefore("/")
-                } else {
-                    nextHop
-                }
-            match = profiles.find { (it.profileId == nextHopNode || it.name == nextHopNode) && isEligible(it) }
-        }
-        return match
-    }
 
     private suspend fun cleanupExpiredBundles() {
         val now = timeProvider.currentTimeMillis()
@@ -1207,10 +645,6 @@ class DtnEngineService : Service() {
         } catch (e: Exception) {
             // Keep going if pruning fails
         }
-    }
-
-    private fun dtnTimeFromSystem(systemMillis: Long): Long {
-        return systemMillis - 946684800000L
     }
 
     private fun systemTimeFromDtn(dtnMillis: Long): Long {
@@ -1312,49 +746,9 @@ class DtnEngineService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun buildForegroundNotification(): Notification {
-        val channelId = CHANNEL_ID
-        val intent =
-            Intent(this, io.github.loic_fejoz.dtn_android_messenger.ui.MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-        val pendingIntent =
-            PendingIntent.getActivity(
-                this,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
+    private fun buildForegroundNotification(): Notification =
+        DtnNotificationHelper.buildForegroundNotification(this)
 
-        return NotificationCompat.Builder(this, channelId)
-            .setContentTitle(getString(R.string.engine_notification_title))
-            .setContentText(getString(R.string.engine_notification_text))
-            .setSmallIcon(android.R.drawable.ic_menu_share)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .build()
-    }
-
-    private fun createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val engineChannel =
-                NotificationChannel(
-                    CHANNEL_ID,
-                    getString(R.string.engine_channel_name),
-                    NotificationManager.IMPORTANCE_LOW,
-                )
-            val chatChannel =
-                NotificationChannel(
-                    CHAT_CHANNEL_ID,
-                    getString(R.string.chat_channel_name),
-                    NotificationManager.IMPORTANCE_HIGH,
-                ).apply {
-                    enableLights(true)
-                    enableVibration(true)
-                }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(engineChannel)
-            manager.createNotificationChannel(chatChannel)
-        }
-    }
+    private fun createNotificationChannels() =
+        DtnNotificationHelper.createNotificationChannels(this)
 }
