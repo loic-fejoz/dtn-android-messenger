@@ -45,7 +45,7 @@ class Converters {
         SystemLog::class,
         SenmlEntry::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -110,6 +110,27 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                     db.execSQL("CREATE INDEX IF NOT EXISTS `index_bundle_records_state` ON `bundle_records` (`state`)")
                     db.execSQL("CREATE INDEX IF NOT EXISTS `index_bundle_records_destinationEid` ON `bundle_records` (`destinationEid`)")
+                }
+            }
+
+        val MIGRATION_7_8 =
+            object : Migration(7, 8) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        """
+                        DELETE FROM `bundle_records`
+                        WHERE rowid NOT IN (
+                            SELECT MIN(rowid)
+                            FROM `bundle_records`
+                            GROUP BY `sourceEid`, `creationTimestamp`, `sequenceNumber`
+                        )
+                        """.trimIndent(),
+                    )
+                    db.execSQL("DROP INDEX IF EXISTS `index_bundle_records_sourceEid_creationTimestamp_sequenceNumber`")
+                    db.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS `index_bundle_records_sourceEid_creationTimestamp_sequenceNumber` " +
+                            "ON `bundle_records` (`sourceEid`, `creationTimestamp`, `sequenceNumber`)",
+                    )
                 }
             }
     }

@@ -33,6 +33,9 @@ interface BundleRecordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(bundle: BundleRecord)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(bundle: BundleRecord): Long
+
     @Delete
     suspend fun delete(bundle: BundleRecord)
 

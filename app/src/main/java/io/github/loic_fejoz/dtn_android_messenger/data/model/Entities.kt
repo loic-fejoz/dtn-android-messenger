@@ -64,7 +64,7 @@ data class LocalService(
 @Entity(
     tableName = "bundle_records",
     indices = [
-        Index(value = ["sourceEid", "creationTimestamp", "sequenceNumber"]),
+        Index(value = ["sourceEid", "creationTimestamp", "sequenceNumber"], unique = true),
         Index(value = ["state"]),
         Index(value = ["destinationEid"]),
     ],

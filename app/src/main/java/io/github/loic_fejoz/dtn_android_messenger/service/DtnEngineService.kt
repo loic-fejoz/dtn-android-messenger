@@ -34,6 +34,7 @@ import java.util.UUID
 class DtnEngineService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val flushMutex = Mutex()
+    private val ingestionMutex = Mutex()
 
     private val localServiceDao: LocalServiceDao by inject()
     private val bundleRecordDao: BundleRecordDao by inject()
@@ -709,11 +710,19 @@ class DtnEngineService : Service() {
                     hopLimit = hopLimit,
                 )
 
-            try {
-                bundleRecordDao.insert(record)
-            } catch (e: Exception) {
+            val inserted =
+                ingestionMutex.withLock {
+                    val concurrentDup = bundleRecordDao.findDuplicate(primary.source.uri, creationTime, seqNo)
+                    if (concurrentDup != null) {
+                        false
+                    } else {
+                        bundleRecordDao.insertIgnore(record) != -1L
+                    }
+                }
+            if (!inserted) {
                 if (payloadFile.exists()) payloadFile.delete()
-                throw e
+                log("INFO", "Concurrent duplicate bundle from ${primary.source.uri} (timestamp=$creationTime, seq=$seqNo) discarded.")
+                return true
             }
             log("INFO", "Bundle $bundleId inserted. State: ${record.state}")
             updateTrigger.emit(Unit)
