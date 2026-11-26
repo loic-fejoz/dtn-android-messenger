@@ -85,23 +85,24 @@ fun KeystoreConfigTab(
 
     LaunchedEffect(localNodeName) {
         val targetNode = localNodeName.trim()
-        localKeyRecord = if (targetNode.isNotEmpty()) dao.getByKeyId(targetNode) else null
-        val decryptedBytes =
-            localKeyRecord?.let {
+        val record = if (targetNode.isNotEmpty()) dao.getByKeyId(targetNode) else null
+        localKeyRecord = record
+        if (record != null) {
+            val decryptedBytes =
                 try {
-                    CryptoManager.decrypt(it.secretKey)
+                    CryptoManager.decrypt(record.secretKey)
                 } catch (_: Exception) {
                     null
                 }
-            }
-        localKeyHex =
-            decryptedBytes?.let { bytes ->
-                try {
-                    HexUtils.bytesToHex(bytes)
-                } finally {
-                    bytes.fill(0)
-                }
-            } ?: ""
+            localKeyHex =
+                decryptedBytes?.let { bytes ->
+                    try {
+                        HexUtils.bytesToHex(bytes)
+                    } finally {
+                        bytes.fill(0)
+                    }
+                } ?: ""
+        }
     }
 
     val scrollState = rememberScrollState()
