@@ -368,4 +368,93 @@ class FileClaAdapterTest {
             assertEquals(0, adapter.scanIncoming(basePath, "Foo") { false })
             assertEquals(2, logs.count { it.first == "WARN" })
         }
+
+    @Test
+    fun sendNamedBundles_continuesBatchWhenOnAcknowledgedThrows() =
+        runBlocking {
+            val adapter = createAdapter()
+            val basePath = tempDir.toAbsolutePath().toString()
+            var secondAcked = false
+
+            val result =
+                adapter.sendNamedBundles(
+                    baseTreeUri = basePath,
+                    claName = "Foo",
+                    bundles =
+                        listOf(
+                            FileClaAdapter.NamedBundle("b1", createSampleBundleBytes("One")) {
+                                error("Simulated DB error")
+                            },
+                            FileClaAdapter.NamedBundle("b2", createSampleBundleBytes("Two")) {
+                                secondAcked = true
+                            },
+                        ),
+                )
+
+            assertTrue(result)
+            assertTrue(secondAcked)
+            assertTrue(File(tempDir.toFile(), "Foo/TX/b1.bundle").exists())
+            assertTrue(File(tempDir.toFile(), "Foo/TX/b2.bundle").exists())
+        }
+
+    @Test
+    fun scanIncoming_cachesUndeletableAcceptedFileToPreventDuplicateWarnings() =
+        runBlocking {
+            val logs = mutableListOf<Pair<String, String>>()
+            val localFactory = LocalFileClaDirectoryFactory()
+            val nonDeletingFactory =
+                ClaDirectoryFactory { location ->
+                    val base = localFactory.fromLocation(location) ?: return@ClaDirectoryFactory null
+                    object : ClaDirectory {
+                        private fun wrapDir(dir: ClaDirectory): ClaDirectory =
+                            object : ClaDirectory {
+                                override fun listFiles(): List<ClaFile> =
+                                    dir.listFiles().map { file ->
+                                        object : ClaFile by file {
+                                            override fun delete(): Boolean = false
+                                        }
+                                    }
+
+                                override fun findFile(name: String): ClaFile? = dir.findFile(name)
+
+                                override fun findOrCreateDirectory(name: String): ClaDirectory? =
+                                    dir.findOrCreateDirectory(name)?.let { wrapDir(it) }
+
+                                override fun createFile(
+                                    mimeType: String,
+                                    displayName: String,
+                                ): ClaFile? = dir.createFile(mimeType, displayName)
+                            }
+
+                        override fun listFiles(): List<ClaFile> = base.listFiles()
+
+                        override fun findFile(name: String): ClaFile? = base.findFile(name)
+
+                        override fun findOrCreateDirectory(name: String): ClaDirectory? =
+                            base.findOrCreateDirectory(name)?.let { wrapDir(it) }
+
+                        override fun createFile(
+                            mimeType: String,
+                            displayName: String,
+                        ): ClaFile? = base.createFile(mimeType, displayName)
+                    }
+                }
+
+            val adapter =
+                FileClaAdapter(
+                    directoryFactory = nonDeletingFactory,
+                    maxBundleSizeBytesProvider = { 10L * 1024L * 1024L },
+                    logger = { level, message -> logs.add(level to message) },
+                )
+            val basePath = tempDir.toAbsolutePath().toString()
+            assertTrue(adapter.ensureClaFolders(basePath, "Foo"))
+            File(tempDir.toFile(), "Foo/RX/readonly.bundle").writeBytes(createSampleBundleBytes("Hello"))
+
+            assertEquals(1, adapter.scanIncoming(basePath, "Foo") { true })
+            assertEquals(1, logs.count { it.first == "WARN" })
+
+            // Second scan must not re-ingest or emit duplicate warning
+            assertEquals(0, adapter.scanIncoming(basePath, "Foo") { true })
+            assertEquals(1, logs.count { it.first == "WARN" })
+        }
 }

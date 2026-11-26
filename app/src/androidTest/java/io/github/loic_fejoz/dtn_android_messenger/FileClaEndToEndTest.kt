@@ -297,6 +297,20 @@ class FileClaEndToEndTest {
             runBlocking { convergenceProfileDao.insert(profile.copy(isPaused = false)) }
         } finally {
             scenario.close()
+            runBlocking {
+                convergenceProfileDao.getAllList()
+                    .filter { it.profileId == peerProfileId }
+                    .forEach { convergenceProfileDao.delete(it) }
+                for (state in BundleState.values()) {
+                    for (record in bundleRecordDao.getByState(state)) {
+                        if (record.sourceEid == peerChatEid || record.destinationEid == peerChatEid) {
+                            File(record.payloadFilePath).delete()
+                            bundleRecordDao.delete(record)
+                        }
+                    }
+                }
+            }
+            device.executeShellCommand("rm -rf /sdcard/Documents/DtnExchange/Foo")
         }
     }
 

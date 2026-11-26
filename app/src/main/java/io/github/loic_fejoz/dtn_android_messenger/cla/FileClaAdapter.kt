@@ -2,6 +2,8 @@ package io.github.loic_fejoz.dtn_android_messenger.cla
 
 import android.content.ContentResolver
 import android.content.Context
+import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.SystemLogDao
@@ -75,7 +77,7 @@ class SafClaDirectoryFactory(private val context: Context) : ClaDirectoryFactory
             val uri = location.toUri()
             val doc = DocumentFile.fromTreeUri(context, uri)
             if (doc != null && doc.exists() && doc.isDirectory) {
-                SafClaDirectory(context.contentResolver, doc)
+                SafClaDirectory(context, context.contentResolver, uri, doc)
             } else {
                 null
             }
@@ -85,11 +87,62 @@ class SafClaDirectoryFactory(private val context: Context) : ClaDirectoryFactory
     }
 
     private class SafClaDirectory(
+        private val context: Context,
         private val contentResolver: ContentResolver,
+        private val treeUri: Uri,
         private val doc: DocumentFile,
     ) : ClaDirectory {
-        override fun listFiles(): List<ClaFile> =
-            doc.listFiles().map { SafClaFile(contentResolver, it) }
+        override fun listFiles(): List<ClaFile> {
+            val fastList = queryChildrenViaDocumentsContract()
+            if (fastList != null) return fastList
+            return doc.listFiles().map { SafClaFile(contentResolver, it) }
+        }
+
+        private fun queryChildrenViaDocumentsContract(): List<ClaFile>? {
+            return try {
+                val parentDocId = DocumentsContract.getDocumentId(doc.uri)
+                val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
+                val projection =
+                    arrayOf(
+                        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                        DocumentsContract.Document.COLUMN_MIME_TYPE,
+                        DocumentsContract.Document.COLUMN_SIZE,
+                        DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+                    )
+                val result = mutableListOf<ClaFile>()
+                contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                    val idCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                    val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                    val mimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                    val sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+                    val mtimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                    while (cursor.moveToNext()) {
+                        val childId = cursor.getString(idCol) ?: continue
+                        val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
+                        val childDoc = DocumentFile.fromSingleUri(context, childUri) ?: continue
+                        val name = if (nameCol >= 0) cursor.getString(nameCol).orEmpty() else childDoc.name.orEmpty()
+                        val mime = if (mimeCol >= 0) cursor.getString(mimeCol) else null
+                        val isDir = mime == DocumentsContract.Document.MIME_TYPE_DIR
+                        val size = if (sizeCol >= 0 && !cursor.isNull(sizeCol)) cursor.getLong(sizeCol) else 0L
+                        val mtime = if (mtimeCol >= 0 && !cursor.isNull(mtimeCol)) cursor.getLong(mtimeCol) else 0L
+                        result.add(
+                            SafClaFile(
+                                contentResolver = contentResolver,
+                                doc = childDoc,
+                                cachedName = name,
+                                cachedIsDirectory = isDir,
+                                cachedLength = size,
+                                cachedLastModified = mtime,
+                            ),
+                        )
+                    }
+                } ?: return null
+                result
+            } catch (_: Exception) {
+                null
+            }
+        }
 
         override fun findFile(name: String): ClaFile? =
             doc.findFile(name)?.let { SafClaFile(contentResolver, it) }
@@ -97,9 +150,9 @@ class SafClaDirectoryFactory(private val context: Context) : ClaDirectoryFactory
         override fun findOrCreateDirectory(name: String): ClaDirectory? {
             val existing = doc.findFile(name)
             if (existing != null) {
-                return if (existing.isDirectory) SafClaDirectory(contentResolver, existing) else null
+                return if (existing.isDirectory) SafClaDirectory(context, contentResolver, treeUri, existing) else null
             }
-            return doc.createDirectory(name)?.let { SafClaDirectory(contentResolver, it) }
+            return doc.createDirectory(name)?.let { SafClaDirectory(context, contentResolver, treeUri, it) }
         }
 
         override fun createFile(
@@ -111,18 +164,22 @@ class SafClaDirectoryFactory(private val context: Context) : ClaDirectoryFactory
     private class SafClaFile(
         private val contentResolver: ContentResolver,
         private val doc: DocumentFile,
+        private val cachedName: String? = null,
+        private val cachedIsDirectory: Boolean? = null,
+        private val cachedLength: Long? = null,
+        private val cachedLastModified: Long? = null,
     ) : ClaFile {
         override val name: String
-            get() = doc.name.orEmpty()
+            get() = cachedName ?: doc.name.orEmpty()
 
         override val isDirectory: Boolean
-            get() = doc.isDirectory
+            get() = cachedIsDirectory ?: doc.isDirectory
 
         override val length: Long
-            get() = doc.length()
+            get() = cachedLength ?: doc.length()
 
         override val lastModified: Long
-            get() = doc.lastModified()
+            get() = cachedLastModified ?: doc.lastModified()
 
         override fun readBytes(maxBytes: Long): ByteArray? {
             if (length > maxBytes) return null
@@ -177,16 +234,27 @@ class LocalFileClaDirectoryFactory : ClaDirectoryFactory {
     }
 
     private class LocalClaDirectory(private val dir: File) : ClaDirectory {
+        private fun resolveChild(name: String): File? {
+            if (name.isBlank()) return null
+            return try {
+                val baseCanonical = dir.canonicalFile
+                val target = File(baseCanonical, name).canonicalFile
+                if (target.parentFile == baseCanonical) target else null
+            } catch (_: Exception) {
+                null
+            }
+        }
+
         override fun listFiles(): List<ClaFile> =
             dir.listFiles()?.map { LocalClaFile(it) } ?: emptyList()
 
         override fun findFile(name: String): ClaFile? {
-            val target = File(dir, name)
+            val target = resolveChild(name) ?: return null
             return if (target.exists()) LocalClaFile(target) else null
         }
 
         override fun findOrCreateDirectory(name: String): ClaDirectory? {
-            val target = File(dir, name)
+            val target = resolveChild(name) ?: return null
             if (target.exists()) {
                 return if (target.isDirectory) LocalClaDirectory(target) else null
             }
@@ -197,7 +265,7 @@ class LocalFileClaDirectoryFactory : ClaDirectoryFactory {
             mimeType: String,
             displayName: String,
         ): ClaFile? {
-            val target = File(dir, displayName)
+            val target = resolveChild(displayName) ?: return null
             return try {
                 if (target.exists() || target.createNewFile()) LocalClaFile(target) else null
             } catch (_: Exception) {
@@ -444,9 +512,12 @@ class FileClaAdapter(
             }
 
         if (accepted) {
-            failedFileSignatures.remove(failureKey)
-            if (!snap.file.delete()) {
+            if (snap.file.delete()) {
+                failedFileSignatures.remove(failureKey)
+            } else {
                 log("WARN", "File-CLA '$folderName' ingested '$fileName' but could not delete it from RX")
+                failedFileSignatures[failureKey] = signature
+                seenFailureKeys.add(failureKey)
             }
             return true
         }
@@ -468,13 +539,14 @@ class FileClaAdapter(
             val folderName = dirs.folderName
             val txDir = dirs.txDir
 
+            val existingTxFiles = txDir.listFiles().associateBy { it.name }.toMutableMap()
             var anySuccess = false
             for (bundle in bundles) {
                 val safeId = sanitizeFolderName(bundle.bundleId).ifBlank { UUID.randomUUID().toString() }
                 val finalName = "$safeId.bundle"
                 val tmpName = "$safeId.bundle.tmp"
 
-                txDir.findFile(tmpName)?.delete()
+                existingTxFiles.remove(tmpName)?.delete()
 
                 val tmpFile = txDir.createFile(BUNDLE_MIME_TYPE, tmpName)
                 if (tmpFile == null) {
@@ -489,10 +561,11 @@ class FileClaAdapter(
                 }
 
                 // Delete pre-existing finalName only after .tmp has been completely written
-                txDir.findFile(finalName)?.delete()
+                existingTxFiles.remove(finalName)?.delete()
 
                 val finalized =
                     if (tmpFile.renameTo(finalName)) {
+                        existingTxFiles[finalName] = tmpFile
                         true
                     } else {
                         // Some SAF providers do not support renameTo; fall back to direct creation.
@@ -501,6 +574,8 @@ class FileClaAdapter(
                         tmpFile.delete()
                         if (!wroteDirect) {
                             directFile?.delete()
+                        } else if (directFile != null) {
+                            existingTxFiles[finalName] = directFile
                         }
                         wroteDirect
                     }
@@ -510,7 +585,13 @@ class FileClaAdapter(
                     continue
                 }
 
-                bundle.onAcknowledged?.invoke()
+                try {
+                    bundle.onAcknowledged?.invoke()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log("ERROR", "File-CLA '$folderName' onAcknowledged failed for '${bundle.bundleId}': ${e.message}")
+                }
                 anySuccess = true
             }
             anySuccess

@@ -21,6 +21,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -373,33 +375,37 @@ class DtnEngineService : Service() {
         // Reactive, battery-efficient File-CLA RX polling scheduler
         fileClaPollJob =
             serviceScope.launch {
-                convergenceProfileDao.getAll().collectLatest { profiles ->
-                    lastFilePollTimes.keys.retainAll(profiles.mapTo(hashSetOf()) { it.profileId })
-                    val activeFileProfiles = profiles.filter { it.triggerType == TriggerType.FILE_CLA && !it.isPaused }
-                    if (activeFileProfiles.isEmpty()) return@collectLatest
-                    while (isActive) {
-                        val now = android.os.SystemClock.elapsedRealtime()
-                        var minRemainingMs = Long.MAX_VALUE
-                        for (profile in activeFileProfiles) {
-                            val intervalSec =
-                                (profile.triggerCondition?.trim()?.toLongOrNull() ?: FileClaAdapter.DEFAULT_POLL_INTERVAL_SECONDS)
-                                    .coerceAtLeast(FileClaAdapter.MIN_POLL_INTERVAL_SECONDS)
-                            val intervalMs = intervalSec * 1000L
-                            val lastPoll = lastFilePollTimes[profile.profileId]
-                            val elapsed = if (lastPoll == null) intervalMs else now - lastPoll
-                            if (elapsed < 0 || elapsed >= intervalMs) {
-                                lastFilePollTimes[profile.profileId] = now
-                                scanFileClaProfile(profile, contextLabel = "RX poll")
-                                if (intervalMs < minRemainingMs) minRemainingMs = intervalMs
-                            } else {
-                                val remaining = intervalMs - elapsed
-                                if (remaining < minRemainingMs) minRemainingMs = remaining
-                            }
-                        }
-                        val sleepMs = if (minRemainingMs == Long.MAX_VALUE) 60_000L else minRemainingMs.coerceAtLeast(1000L)
-                        delay(sleepMs)
+                convergenceProfileDao.getAll()
+                    .map { profiles ->
+                        lastFilePollTimes.keys.retainAll(profiles.mapTo(hashSetOf()) { it.profileId })
+                        profiles.filter { it.triggerType == TriggerType.FILE_CLA && !it.isPaused }
                     }
-                }
+                    .distinctUntilChanged()
+                    .collectLatest { activeFileProfiles ->
+                        if (activeFileProfiles.isEmpty()) return@collectLatest
+                        while (isActive) {
+                            val now = android.os.SystemClock.elapsedRealtime()
+                            var minRemainingMs = Long.MAX_VALUE
+                            for (profile in activeFileProfiles) {
+                                val intervalSec =
+                                    (profile.triggerCondition?.trim()?.toLongOrNull() ?: FileClaAdapter.DEFAULT_POLL_INTERVAL_SECONDS)
+                                        .coerceAtLeast(FileClaAdapter.MIN_POLL_INTERVAL_SECONDS)
+                                val intervalMs = intervalSec * 1000L
+                                val lastPoll = lastFilePollTimes[profile.profileId]
+                                val elapsed = if (lastPoll == null) intervalMs else now - lastPoll
+                                if (elapsed < 0 || elapsed >= intervalMs) {
+                                    lastFilePollTimes[profile.profileId] = now
+                                    scanFileClaProfile(profile, contextLabel = "RX poll")
+                                    if (intervalMs < minRemainingMs) minRemainingMs = intervalMs
+                                } else {
+                                    val remaining = intervalMs - elapsed
+                                    if (remaining < minRemainingMs) minRemainingMs = remaining
+                                }
+                            }
+                            val sleepMs = if (minRemainingMs == Long.MAX_VALUE) 60_000L else minRemainingMs.coerceAtLeast(1000L)
+                            delay(sleepMs)
+                        }
+                    }
             }
 
         // Periodic Internet Pull scheduler: checks profile configurations every 30 seconds
@@ -1246,9 +1252,16 @@ class DtnEngineService : Service() {
                 if (address != null) {
                     serviceScope.launch {
                         log("INFO", "Forced connection triggered to $address.")
+                        val matchingProfile =
+                            convergenceProfileDao.getAllList()
+                                .find { it.targetAddress == address && !it.isPaused }
                         val flushed =
                             try {
-                                flushQueue()
+                                if (matchingProfile != null) {
+                                    flushQueue(forceProfileId = matchingProfile.profileId)
+                                } else {
+                                    false
+                                }
                             } catch (e: Exception) {
                                 log("WARN", "Forced queue flush error: ${e.message}")
                                 false

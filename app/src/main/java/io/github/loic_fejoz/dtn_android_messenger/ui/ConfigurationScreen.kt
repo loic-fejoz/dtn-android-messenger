@@ -293,6 +293,7 @@ fun ProfilesConfigTab(
     var address by remember { mutableStateOf("") }
     var condition by remember { mutableStateOf("") }
     var profileId by remember { mutableStateOf("") }
+    var editingProfileId by remember { mutableStateOf<String?>(null) }
     var editingIsPaused by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
 
@@ -468,8 +469,11 @@ fun ProfilesConfigTab(
                             return@Button
                         }
                         val trimmedId = profileId.trim()
+                        val previousTargetAddress =
+                            profiles.firstOrNull { it.profileId == trimmedId && it.triggerType == TriggerType.FILE_CLA }?.targetAddress
                         val preservedPaused =
-                            editingIsPaused || profiles.any { it.profileId == trimmedId && it.isPaused }
+                            (editingProfileId == trimmedId && editingIsPaused) ||
+                                profiles.any { it.profileId == trimmedId && it.isPaused }
                         if (type == TriggerType.FILE_CLA) {
                             val sanitized = FileClaAdapter.sanitizeFolderName(name)
                             if (sanitized.isBlank()) {
@@ -511,6 +515,23 @@ fun ProfilesConfigTab(
                                             isPaused = preservedPaused,
                                         ),
                                     )
+                                    if (previousTargetAddress != null && previousTargetAddress != address) {
+                                        val allProfiles = dao.getAllList()
+                                        val stillReferenced =
+                                            allProfiles.any {
+                                                it.triggerType == TriggerType.FILE_CLA && it.targetAddress == previousTargetAddress
+                                            }
+                                        if (!stillReferenced) {
+                                            runCatching {
+                                                val flags =
+                                                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                                context.contentResolver.releasePersistableUriPermission(
+                                                    previousTargetAddress.toUri(),
+                                                    flags,
+                                                )
+                                            }
+                                        }
+                                    }
                                     Toast.makeText(
                                         context,
                                         context.getString(R.string.file_cla_folders_created, sanitized),
@@ -520,6 +541,7 @@ fun ProfilesConfigTab(
                                     address = ""
                                     condition = ""
                                     profileId = ""
+                                    editingProfileId = null
                                     editingIsPaused = false
                                 } finally {
                                     isSaving = false
@@ -543,6 +565,7 @@ fun ProfilesConfigTab(
                                     address = ""
                                     condition = ""
                                     profileId = ""
+                                    editingProfileId = null
                                     editingIsPaused = false
                                 } finally {
                                     isSaving = false
@@ -566,6 +589,7 @@ fun ProfilesConfigTab(
                         .fillMaxWidth()
                         .clickable {
                             profileId = profile.profileId
+                            editingProfileId = profile.profileId
                             name = profile.name
                             type = profile.triggerType
                             condition = profile.triggerCondition ?: ""
@@ -715,10 +739,10 @@ fun ProfilesConfigTab(
                             scope.launch {
                                 dao.delete(profile)
                                 if (profile.triggerType == TriggerType.FILE_CLA) {
+                                    val remainingProfiles = dao.getAllList()
                                     val stillReferenced =
-                                        profiles.any {
-                                            it.profileId != profile.profileId &&
-                                                it.triggerType == TriggerType.FILE_CLA &&
+                                        remainingProfiles.any {
+                                            it.triggerType == TriggerType.FILE_CLA &&
                                                 it.targetAddress == profile.targetAddress
                                         }
                                     if (!stillReferenced) {
