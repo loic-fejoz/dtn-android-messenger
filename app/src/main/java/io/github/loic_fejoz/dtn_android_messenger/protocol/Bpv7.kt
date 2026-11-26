@@ -200,6 +200,7 @@ data class BibBlock(
     // all included
     val scopeFlags: Int = 7,
     val signature: ByteArray,
+    val signaturesByTarget: Map<Int, ByteArray> = emptyMap(),
 ) {
     var rawBytes: ByteArray? = null
 
@@ -238,6 +239,7 @@ data class Bundle(
     val payloadBlock: PayloadBlock,
     val hopCountBlock: HopCountBlock? = null,
     val bibBlock: BibBlock? = null,
+    val bibBlocks: List<BibBlock> = listOfNotNull(bibBlock),
 )
 
 object CrcHelper {
@@ -577,7 +579,6 @@ object Bpv7Parser {
 
         var variant = 5
         var scopeFlags = 7
-        var signature = ByteArray(0)
 
         // 5. Parameters (present if bit 0 of flags is set)
         if ((securityContextFlags and 1L) != 0L) {
@@ -597,22 +598,35 @@ object Bpv7Parser {
 
         // 6. Results
         val resultsArray = readRequiredCbor(stream, "results")
+        val signaturesByTarget = LinkedHashMap<Int, ByteArray>()
         if (resultsArray.type == CBORType.Array && resultsArray.size() > 0) {
-            val targetResults = resultsArray[0]
-            if (targetResults.type == CBORType.Array) {
-                for (i in 0 until targetResults.size()) {
-                    val r = targetResults[i]
-                    if (r.type == CBORType.Array && r.size() >= 2) {
-                        val rId = r[0].AsInt32()
-                        if (rId == 1) {
-                            signature = r[1].GetByteString()
+            for (idx in 0 until resultsArray.size()) {
+                val targetBlockNum = targets.getOrNull(idx) ?: continue
+                val targetResults = resultsArray[idx]
+                if (targetResults.type == CBORType.Array) {
+                    for (i in 0 until targetResults.size()) {
+                        val r = targetResults[i]
+                        if (r.type == CBORType.Array && r.size() >= 2 && r[0].AsInt32() == 1) {
+                            signaturesByTarget[targetBlockNum] = r[1].GetByteString()
                         }
                     }
                 }
             }
         }
+        val signature = signaturesByTarget[1] ?: signaturesByTarget[targets.firstOrNull()] ?: ByteArray(0)
 
-        return BibBlock(number, flags, targets, securityContext, securityContextFlags, securitySource, variant, scopeFlags, signature)
+        return BibBlock(
+            blockNumber = number,
+            blockControlFlags = flags,
+            targets = targets,
+            securityContext = securityContext,
+            securityContextFlags = securityContextFlags,
+            securitySource = securitySource,
+            variant = variant,
+            scopeFlags = scopeFlags,
+            signature = signature,
+            signaturesByTarget = signaturesByTarget,
+        )
     }
 
     fun serialize(bundle: Bundle): ByteArray {
@@ -620,7 +634,7 @@ object Bpv7Parser {
         out.write(0x9F) // RFC 9171 §4.2.1: CBOR indefinite-length array start
         out.write(serializePrimaryBlock(bundle.primaryBlock).EncodeToBytes())
         bundle.hopCountBlock?.let { out.write(serializeHopCountBlock(it).EncodeToBytes()) }
-        bundle.bibBlock?.let { out.write(serializeBibBlock(it).EncodeToBytes()) }
+        bundle.bibBlocks.forEach { out.write(serializeBibBlock(it).EncodeToBytes()) }
         // RFC 9171 §4.3.1: Payload block MUST be the last block in the bundle
         out.write(
             serializeCanonicalBlock(
@@ -643,22 +657,22 @@ object Bpv7Parser {
         val primary = deserializePrimaryBlock(array[0])
         var payload: PayloadBlock? = null
         var hopCount: HopCountBlock? = null
-        var bib: BibBlock? = null
+        val bibBlocks = mutableListOf<BibBlock>()
 
         for (i in 1 until array.size()) {
             val blockCbor = array[i]
-            if (blockCbor.type != CBORType.Array || blockCbor.size() < 5) {
-                continue
+            require(blockCbor.type == CBORType.Array && blockCbor.size() >= 5) {
+                "Invalid canonical block CBOR at index $i"
             }
             verifyCanonicalBlockCrc(blockCbor)
             val type = blockCbor[0].AsInt32()
+            val blockFlags = blockCbor[2].AsInt64Value()
             when (type) {
                 1 -> {
                     val number = blockCbor[1].AsInt32()
-                    val flags = blockCbor[2].AsInt64Value()
                     val data = blockCbor[4].GetByteString()
                     payload =
-                        PayloadBlock(number, flags, data).apply {
+                        PayloadBlock(number, blockFlags, data).apply {
                             rawBytes = blockCbor.EncodeToBytes()
                         }
                 }
@@ -666,24 +680,38 @@ object Bpv7Parser {
                     hopCount = deserializeHopCountBlock(blockCbor)
                 }
                 11 -> {
-                    bib =
+                    bibBlocks.add(
                         deserializeBibBlock(blockCbor).apply {
                             rawBytes = blockCbor.EncodeToBytes()
-                        }
+                        },
+                    )
                 }
                 12 -> {
                     throw IllegalArgumentException(
                         "BPSec BCB (Block Type 12) is excluded for amateur radio cleartext compliance (ITU Article 25)",
                     )
                 }
+                else -> {
+                    if ((blockFlags and 0x04L) != 0L) {
+                        throw IllegalArgumentException(
+                            "Unknown canonical block type $type requires bundle deletion (block flag 0x04)",
+                        )
+                    }
+                }
             }
         }
 
+        val resolvedPayload = payload ?: throw IllegalArgumentException("Missing Payload Block in bundle")
+        val payloadBib =
+            bibBlocks.firstOrNull { it.targets.contains(resolvedPayload.blockNumber) }
+                ?: bibBlocks.firstOrNull()
+
         return Bundle(
             primaryBlock = primary,
-            payloadBlock = payload ?: throw IllegalArgumentException("Missing Payload Block in bundle"),
+            payloadBlock = resolvedPayload,
             hopCountBlock = hopCount,
-            bibBlock = bib,
+            bibBlock = payloadBib,
+            bibBlocks = bibBlocks,
         )
     }
 

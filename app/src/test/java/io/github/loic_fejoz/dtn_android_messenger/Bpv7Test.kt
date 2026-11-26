@@ -649,4 +649,112 @@ class Bpv7Test {
             Eid.fromCbor(unknownSchemeCbor)
         }
     }
+
+    @Test
+    fun testMalformedCanonicalBlockAndUnknownDeleteFlag() {
+        val primary =
+            PrimaryBlock(
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn:none"),
+                creationTimestamp = Pair(1000L, 1L),
+                lifetimeMs = 3600000L,
+            )
+        val payload = Bpv7Parser.serializeCanonicalBlock(1, 1, 0L, 0, "ok".toByteArray())
+
+        // Malformed canonical block (non-array) must throw
+        val malformedOut = java.io.ByteArrayOutputStream()
+        malformedOut.write(0x9F)
+        malformedOut.write(Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes())
+        malformedOut.write(com.upokecenter.cbor.CBORObject.FromObject(42).EncodeToBytes())
+        malformedOut.write(payload.EncodeToBytes())
+        malformedOut.write(0xFF)
+        assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserialize(malformedOut.toByteArray())
+        }
+
+        // Unknown block WITH flag 0x04 ("delete bundle if unprocessable") must throw
+        val unknownFatal = Bpv7Parser.serializeCanonicalBlock(99, 3, 0x04L, 0, byteArrayOf(1, 2))
+        val fatalOut = java.io.ByteArrayOutputStream()
+        fatalOut.write(0x9F)
+        fatalOut.write(Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes())
+        fatalOut.write(unknownFatal.EncodeToBytes())
+        fatalOut.write(payload.EncodeToBytes())
+        fatalOut.write(0xFF)
+        assertThrows(IllegalArgumentException::class.java) {
+            Bpv7Parser.deserialize(fatalOut.toByteArray())
+        }
+
+        // Unknown block WITHOUT flag 0x04 should be ignored gracefully
+        val unknownSafe = Bpv7Parser.serializeCanonicalBlock(99, 3, 0L, 0, byteArrayOf(1, 2))
+        val safeOut = java.io.ByteArrayOutputStream()
+        safeOut.write(0x9F)
+        safeOut.write(Bpv7Parser.serializePrimaryBlock(primary).EncodeToBytes())
+        safeOut.write(unknownSafe.EncodeToBytes())
+        safeOut.write(payload.EncodeToBytes())
+        safeOut.write(0xFF)
+        val parsed = Bpv7Parser.deserialize(safeOut.toByteArray())
+        assertEquals("ok", String(parsed.payloadBlock.data))
+    }
+
+    @Test
+    fun testMultiTargetBibAndMultipleBibBlocks() {
+        val stream = java.io.ByteArrayOutputStream()
+        val targets =
+            com.upokecenter.cbor.CBORObject.NewArray().apply {
+                Add(10)
+                Add(1)
+            }
+        targets.WriteTo(stream)
+        com.upokecenter.cbor.CBORObject.FromObject(1).WriteTo(stream)
+        com.upokecenter.cbor.CBORObject.FromObject(0L).WriteTo(stream)
+        Eid("dtn://node-a/chat").toCbor().WriteTo(stream)
+
+        val hopSig = byteArrayOf(0xAA.toByte(), 0xBB.toByte())
+        val payloadSig = byteArrayOf(0x11, 0x22, 0x33)
+        val r0 =
+            com.upokecenter.cbor.CBORObject.NewArray().apply {
+                Add(
+                    com.upokecenter.cbor.CBORObject.NewArray().apply {
+                        Add(1)
+                        Add(hopSig)
+                    },
+                )
+            }
+        val r1 =
+            com.upokecenter.cbor.CBORObject.NewArray().apply {
+                Add(
+                    com.upokecenter.cbor.CBORObject.NewArray().apply {
+                        Add(1)
+                        Add(payloadSig)
+                    },
+                )
+            }
+        com.upokecenter.cbor.CBORObject.NewArray().apply {
+            Add(r0)
+            Add(r1)
+        }.WriteTo(stream)
+
+        val bibCbor = Bpv7Parser.serializeCanonicalBlock(11, 2, 0L, 0, stream.toByteArray())
+        val deserializedBib = Bpv7Parser.deserializeBibBlock(bibCbor)
+        assertArrayEquals(payloadSig, deserializedBib.signature)
+        assertArrayEquals(hopSig, deserializedBib.signaturesByTarget[10])
+        assertArrayEquals(payloadSig, deserializedBib.signaturesByTarget[1])
+
+        // Bundle with two BIB blocks: payload BIB (targets [1]) + hop-count BIB (targets [10])
+        val primary =
+            PrimaryBlock(
+                destination = Eid("dtn://node-b/chat"),
+                source = Eid("dtn://node-a/chat"),
+                reportTo = Eid("dtn:none"),
+                creationTimestamp = Pair(1000L, 1L),
+                lifetimeMs = 3600000L,
+            )
+        val payloadBib = BibBlock(blockNumber = 2, targets = listOf(1), securitySource = Eid("dtn://node-a/chat"), signature = payloadSig)
+        val hopBib = BibBlock(blockNumber = 3, targets = listOf(10), securitySource = Eid("dtn://node-a/chat"), signature = hopSig)
+        val bundle = Bundle(primary, PayloadBlock(data = "hello".toByteArray()), HopCountBlock(hopLimit = 64, hopCount = 1), payloadBib, listOf(payloadBib, hopBib))
+        val parsedBundle = Bpv7Parser.deserialize(Bpv7Parser.serialize(bundle))
+        assertEquals(2, parsedBundle.bibBlocks.size)
+        assertArrayEquals(payloadSig, parsedBundle.bibBlock?.signature)
+    }
 }
