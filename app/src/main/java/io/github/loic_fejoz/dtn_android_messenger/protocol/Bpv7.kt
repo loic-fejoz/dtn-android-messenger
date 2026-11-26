@@ -314,6 +314,12 @@ object CrcHelper {
 }
 
 object Bpv7Parser {
+    const val DTN_EPOCH_OFFSET_MS = 946684800000L
+
+    fun toDtnTimeMillis(systemMillis: Long): Long = systemMillis - DTN_EPOCH_OFFSET_MS
+
+    fun fromDtnTimeMillis(dtnMillis: Long): Long = dtnMillis + DTN_EPOCH_OFFSET_MS
+
     fun computeCrc32c(data: ByteArray): ByteArray = CrcHelper.computeCrc32c(data)
 
     fun computeCrc16(data: ByteArray): ByteArray = CrcHelper.computeCrc16(data)

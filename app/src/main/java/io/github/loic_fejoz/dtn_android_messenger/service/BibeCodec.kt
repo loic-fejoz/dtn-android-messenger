@@ -45,7 +45,7 @@ internal object BibeCodec {
                 destination = Eid(gatewayBibeEid),
                 source = Eid(localBibeEid),
                 reportTo = Eid(localBibeEid),
-                creationTimestamp = Pair(creationTimeMillis - 946684800000L, sequenceNumber),
+                creationTimestamp = Pair(Bpv7Parser.toDtnTimeMillis(creationTimeMillis), sequenceNumber),
                 lifetimeMs = lifetimeMs,
             )
         val outerPayload = PayloadBlock(data = outerPayloadBytes)

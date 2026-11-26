@@ -417,7 +417,7 @@ class DtnEngineService : Service() {
             }
 
             // Duplicate check
-            val creationTime = systemTimeFromDtn(primary.creationTimestamp.first)
+            val creationTime = Bpv7Parser.fromDtnTimeMillis(primary.creationTimestamp.first)
             val seqNo = primary.creationTimestamp.second
             val duplicate = bundleRecordDao.findDuplicate(primary.source.uri, creationTime, seqNo)
             if (duplicate != null) {
@@ -443,20 +443,8 @@ class DtnEngineService : Service() {
             val bpsecStatus = verification.status
 
             // Save payload to file
-            val payloadsDir = File(filesDir, "payloads")
-            if (!payloadsDir.exists()) payloadsDir.mkdirs()
-
             val bundleId = UUID.randomUUID().toString()
-            val tempFile = File(payloadsDir, "temp_$bundleId.bin")
-            FileOutputStream(tempFile).use { fos ->
-                fos.write(payload.data)
-            }
-            val extension = io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.getPayloadFileExtension(tempFile.absolutePath)
-            val payloadFile = File(payloadsDir, "$bundleId.$extension")
-            if (!tempFile.renameTo(payloadFile)) {
-                tempFile.copyTo(payloadFile, overwrite = true)
-                tempFile.delete()
-            }
+            val payloadFile = persistPayloadFile(bundleId, payload.data)
 
             // Verify if it is for local services on our node (supporting prefix/multicast match for multiple services)
             val localNodeBase = (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim()
@@ -535,15 +523,7 @@ class DtnEngineService : Service() {
             updateTrigger.emit(Unit)
 
             if (isLocal && !isBibeDecapsulated) {
-                // Post notification and process payload for matched local services
-                matchedLocalServices.forEach { service ->
-                    if (service.viewerType == ViewerType.SENML_LAST) {
-                        processSenmlPayload(service.serviceEid, payload.data, creationTime)
-                    }
-                    if (service.isNotificationEnabled) {
-                        triggerMessageNotification(service, record, payload.data)
-                    }
-                }
+                notifyLocalServices(matchedLocalServices, record, payload.data, creationTime)
             }
 
             if (shouldForward) {
@@ -558,6 +538,42 @@ class DtnEngineService : Service() {
         } catch (e: Exception) {
             log("ERROR", "Error handling received bundle: " + android.util.Log.getStackTraceString(e))
             return false
+        }
+    }
+
+    private fun persistPayloadFile(
+        bundleId: String,
+        data: ByteArray,
+    ): File {
+        val payloadsDir = File(filesDir, "payloads")
+        if (!payloadsDir.exists()) payloadsDir.mkdirs()
+
+        val tempFile = File(payloadsDir, "temp_$bundleId.bin")
+        FileOutputStream(tempFile).use { fos ->
+            fos.write(data)
+        }
+        val extension = io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.getPayloadFileExtension(tempFile.absolutePath)
+        val payloadFile = File(payloadsDir, "$bundleId.$extension")
+        if (!tempFile.renameTo(payloadFile)) {
+            tempFile.copyTo(payloadFile, overwrite = true)
+            tempFile.delete()
+        }
+        return payloadFile
+    }
+
+    private suspend fun notifyLocalServices(
+        matchedLocalServices: List<LocalService>,
+        record: BundleRecord,
+        payloadData: ByteArray,
+        creationTime: Long,
+    ) {
+        matchedLocalServices.forEach { service ->
+            if (service.viewerType == ViewerType.SENML_LAST) {
+                processSenmlPayload(service.serviceEid, payloadData, creationTime)
+            }
+            if (service.isNotificationEnabled) {
+                triggerMessageNotification(service, record, payloadData)
+            }
         }
     }
 
@@ -645,10 +661,6 @@ class DtnEngineService : Service() {
         } catch (e: Exception) {
             // Keep going if pruning fails
         }
-    }
-
-    private fun systemTimeFromDtn(dtnMillis: Long): Long {
-        return dtnMillis + 946684800000L
     }
 
     override fun onStartCommand(
