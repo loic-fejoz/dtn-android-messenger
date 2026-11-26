@@ -656,6 +656,10 @@ class DtnEngineService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
+        if (!::outboxDispatcher.isInitialized) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         when (intent?.action) {
             "FLUSH_QUEUE" -> {
                 serviceScope.launch {
