@@ -10,9 +10,12 @@ import io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.io.InputStream
@@ -20,6 +23,7 @@ import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.util.Collections
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
 
 class BluetoothClassicAdapter(
     private val context: Context,
@@ -34,7 +38,18 @@ class BluetoothClassicAdapter(
     private var listener: (suspend (ByteArray) -> Boolean)? = null
 
     private val activeSockets = Collections.synchronizedList(mutableListOf<BluetoothSocket>())
+    private val peerLocks = HashMap<String, Mutex>()
     private var adapterScope: CoroutineScope? = null
+
+    companion object {
+        private const val INBOUND_READ_TIMEOUT_MS = 30_000L
+    }
+
+    private fun getPeerLock(targetAddress: String): Mutex {
+        synchronized(peerLocks) {
+            return peerLocks.getOrPut(targetAddress) { Mutex() }
+        }
+    }
 
     private fun log(
         level: String,
@@ -108,37 +123,58 @@ class BluetoothClassicAdapter(
             inputStream = socket.inputStream
             val sizeBuf = ByteArray(4)
             while (socket.isConnected) {
-                var bytesRead = 0
-                while (bytesRead < 4) {
-                    val read = inputStream.read(sizeBuf, bytesRead, 4 - bytesRead)
-                    if (read == -1) throw IOException("Stream closed")
-                    bytesRead += read
-                }
-                val length = ByteBuffer.wrap(sizeBuf).int
-                val maxSizeBytes = PreferencesHelper.getMaxBundleSizeBytes(context)
-                if (length <= 0 || length > maxSizeBytes) {
-                    log("WARN", "Invalid RFCOMM packet length: $length (exceeds max $maxSizeBytes bytes)")
-                    break
-                }
+                val firstByte = inputStream.read()
+                if (firstByte == -1) throw IOException("Stream closed")
+                sizeBuf[0] = firstByte.toByte()
 
                 val bundleBytes =
-                    try {
-                        ByteArray(length)
-                    } catch (_: OutOfMemoryError) {
-                        log("WARN", "Memory allocation failed for RFCOMM packet length: $length")
-                        break
-                    }
-                var bodyRead = 0
-                while (bodyRead < length) {
-                    val read = inputStream.read(bundleBytes, bodyRead, length - bodyRead)
-                    if (read == -1) throw IOException("Stream closed")
-                    bodyRead += read
-                }
-                log("INFO", "Received bundle via RFCOMM ($length bytes)")
+                    coroutineScope {
+                        val watchdog =
+                            launch {
+                                delay(INBOUND_READ_TIMEOUT_MS)
+                                log("WARN", "RFCOMM inbound frame read timed out after ${INBOUND_READ_TIMEOUT_MS}ms; closing socket")
+                                runCatching { socket.close() }
+                            }
+                        try {
+                            var bytesRead = 1
+                            while (bytesRead < 4) {
+                                val read = inputStream.read(sizeBuf, bytesRead, 4 - bytesRead)
+                                if (read == -1) throw IOException("Stream closed")
+                                bytesRead += read
+                            }
+                            val length = ByteBuffer.wrap(sizeBuf).int
+                            val maxSizeBytes = PreferencesHelper.getMaxBundleSizeBytes(context)
+                            if (length <= 0 || length > maxSizeBytes) {
+                                log("WARN", "Invalid RFCOMM packet length: $length (exceeds max $maxSizeBytes bytes)")
+                                return@coroutineScope null
+                            }
+
+                            val payload =
+                                try {
+                                    ByteArray(length)
+                                } catch (_: OutOfMemoryError) {
+                                    log("WARN", "Memory allocation failed for RFCOMM packet length: $length")
+                                    return@coroutineScope null
+                                }
+                            var bodyRead = 0
+                            while (bodyRead < length) {
+                                val read = inputStream.read(payload, bodyRead, length - bodyRead)
+                                if (read == -1) throw IOException("Stream closed")
+                                bodyRead += read
+                            }
+                            payload
+                        } finally {
+                            watchdog.cancel()
+                        }
+                    } ?: break
+
+                log("INFO", "Received bundle via RFCOMM (${bundleBytes.size} bytes)")
 
                 val accepted =
                     try {
                         listener?.invoke(bundleBytes) ?: false
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         log("ERROR", "Error ingesting received RFCOMM bundle: ${e.message}")
                         false
@@ -153,6 +189,8 @@ class BluetoothClassicAdapter(
                     log("WARN", "RFCOMM bundle ingestion failed or rejected; withholding ACK")
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             log("INFO", "RFCOMM session finished or failed: ${e.message}")
         } finally {
@@ -174,62 +212,70 @@ class BluetoothClassicAdapter(
                 return@withContext false
             }
 
-            var socket: BluetoothSocket? = null
-            var outputStream: OutputStream? = null
-            var allSuccess = true
-            try {
-                val device = bluetoothAdapter.getRemoteDevice(targetAddress)
-                log("INFO", "Attempting RFCOMM connection to ${device.name ?: targetAddress} for ${nonEmpty.size} bundle(s)")
-                socket = device.createRfcommSocketToServiceRecord(sppUuid)
-                socket.connect()
+            getPeerLock(targetAddress).withLock {
+                var socket: BluetoothSocket? = null
+                var outputStream: OutputStream? = null
+                var allSuccess = true
+                try {
+                    val device = bluetoothAdapter.getRemoteDevice(targetAddress)
+                    log("INFO", "Attempting RFCOMM connection to ${device.name ?: targetAddress} for ${nonEmpty.size} bundle(s)")
+                    socket = device.createRfcommSocketToServiceRecord(sppUuid)
+                    socket.connect()
 
-                outputStream = socket.outputStream
-                val inputStream = socket.inputStream
+                    outputStream = socket.outputStream
+                    val inputStream = socket.inputStream
 
-                for ((bundleBytes, onAcknowledged) in nonEmpty) {
-                    val sizeBuf = ByteBuffer.allocate(4).putInt(bundleBytes.size).array()
-                    outputStream.write(sizeBuf)
-                    outputStream.write(bundleBytes)
-                    outputStream.flush()
+                    for ((bundleBytes, onAcknowledged) in nonEmpty) {
+                        val sizeBuf = ByteBuffer.allocate(4).putInt(bundleBytes.size).array()
+                        outputStream.write(sizeBuf)
+                        outputStream.write(bundleBytes)
+                        outputStream.flush()
 
-                    val activeSocket = socket
-                    val timeoutJob =
-                        launch {
-                            delay(5000)
-                            runCatching { activeSocket.close() }
+                        val activeSocket = socket
+                        val timeoutJob =
+                            launch {
+                                delay(5000)
+                                runCatching { activeSocket.close() }
+                            }
+                        val ackByte =
+                            try {
+                                inputStream.read()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                -1
+                            } finally {
+                                timeoutJob.cancel()
+                            }
+
+                        if (ackByte != 1) {
+                            log("WARN", "No valid RFCOMM ACK received from $targetAddress (got $ackByte); withholding delivery confirmation")
+                            allSuccess = false
+                            break
                         }
-                    val ackByte =
+
                         try {
-                            inputStream.read()
-                        } catch (_: Exception) {
-                            -1
-                        } finally {
-                            timeoutJob.cancel()
+                            onAcknowledged?.invoke()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            log("ERROR", "Error executing onAcknowledged callback: ${e.message}")
                         }
-
-                    if (ackByte != 1) {
-                        log("WARN", "No valid RFCOMM ACK received from $targetAddress (got $ackByte); withholding delivery confirmation")
-                        allSuccess = false
-                        break
+                        log("INFO", "Successfully sent and acknowledged bundle of size ${bundleBytes.size} to $targetAddress")
                     }
-
-                    try {
-                        onAcknowledged?.invoke()
-                    } catch (e: Exception) {
-                        log("ERROR", "Error executing onAcknowledged callback: ${e.message}")
-                    }
-                    log("INFO", "Successfully sent and acknowledged bundle of size ${bundleBytes.size} to $targetAddress")
+                    allSuccess
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: SecurityException) {
+                    log("ERROR", "Bluetooth permission denied for outbound connection: ${e.message}")
+                    false
+                } catch (e: Exception) {
+                    log("ERROR", "Failed to send bundle(s) to $targetAddress: ${e.message}")
+                    false
+                } finally {
+                    runCatching { outputStream?.close() }
+                    runCatching { socket?.close() }
                 }
-                allSuccess
-            } catch (e: SecurityException) {
-                log("ERROR", "Bluetooth permission denied for outbound connection: ${e.message}")
-                false
-            } catch (e: Exception) {
-                log("ERROR", "Failed to send bundle(s) to $targetAddress: ${e.message}")
-                false
-            } finally {
-                runCatching { outputStream?.close() }
-                runCatching { socket?.close() }
             }
         }
 
