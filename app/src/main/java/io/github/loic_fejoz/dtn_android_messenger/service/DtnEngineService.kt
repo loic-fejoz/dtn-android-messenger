@@ -1272,6 +1272,14 @@ class DtnEngineService : Service() {
         return START_STICKY
     }
 
+    override fun onTimeout(
+        startId: Int,
+        fgsType: Int,
+    ) {
+        log("WARN", "Foreground service timeout reached (fgsType=$fgsType); stopping gracefully")
+        stopSelf(startId)
+    }
+
     override fun onDestroy() {
         log("INFO", "DtnEngineService destroying")
         isRunning = false

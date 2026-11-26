@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,7 +38,7 @@ fun AudioPlayerCard(
     var isPlaying by remember(filePath) { mutableStateOf(false) }
     var duration by remember(filePath) { mutableStateOf(0) }
     var currentPosition by remember(filePath) { mutableStateOf(0) }
-    var focusRequest by remember(filePath) { mutableStateOf<AudioFocusRequest?>(null) }
+    var focusToken by remember(filePath) { mutableStateOf<Any?>(null) }
 
     val focusChangeListener =
         remember(filePath) {
@@ -54,38 +55,15 @@ fun AudioPlayerCard(
 
     fun abandonFocus() {
         val am = audioManager ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            focusRequest?.let { am.abandonAudioFocusRequest(it) }
-            focusRequest = null
-        } else {
-            @Suppress("DEPRECATION")
-            am.abandonAudioFocus(focusChangeListener)
-        }
+        AudioFocusHelper.abandonFocus(am, focusChangeListener, focusToken)
+        focusToken = null
     }
 
     fun requestFocus(): Boolean {
         val am = audioManager ?: return true
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val req =
-                AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                    .setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build(),
-                    )
-                    .setOnAudioFocusChangeListener(focusChangeListener)
-                    .build()
-            focusRequest = req
-            am.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        } else {
-            @Suppress("DEPRECATION")
-            am.requestAudioFocus(
-                focusChangeListener,
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT,
-            ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        }
+        val (granted, token) = AudioFocusHelper.requestFocus(am, focusChangeListener)
+        focusToken = token
+        return granted
     }
 
     // Initialize MediaPlayer
@@ -180,9 +158,10 @@ fun AudioPlayerCard(
                         isPlaying = false
                         abandonFocus()
                     } else {
-                        requestFocus()
-                        player.start()
-                        isPlaying = true
+                        if (requestFocus()) {
+                            player.start()
+                            isPlaying = true
+                        }
                     }
                 },
                 modifier = Modifier.size(40.dp),
@@ -242,4 +221,66 @@ private fun formatMs(ms: Int): String {
     val mins = totalSecs / 60
     val secs = totalSecs % 60
     return String.format(Locale.US, "%02d:%02d", mins, secs)
+}
+
+private object AudioFocusHelper {
+    fun requestFocus(
+        audioManager: AudioManager,
+        listener: AudioManager.OnAudioFocusChangeListener,
+    ): Pair<Boolean, Any?> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Api26.requestFocus(audioManager, listener)
+        } else {
+            @Suppress("DEPRECATION")
+            val granted =
+                audioManager.requestAudioFocus(
+                    listener,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT,
+                ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            granted to null
+        }
+    }
+
+    fun abandonFocus(
+        audioManager: AudioManager,
+        listener: AudioManager.OnAudioFocusChangeListener,
+        token: Any?,
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Api26.abandonFocus(audioManager, token)
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.abandonAudioFocus(listener)
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private object Api26 {
+        fun requestFocus(
+            audioManager: AudioManager,
+            listener: AudioManager.OnAudioFocusChangeListener,
+        ): Pair<Boolean, Any?> {
+            val req =
+                AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build(),
+                    )
+                    .setOnAudioFocusChangeListener(listener)
+                    .build()
+            val granted = audioManager.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            return granted to req
+        }
+
+        fun abandonFocus(
+            audioManager: AudioManager,
+            token: Any?,
+        ) {
+            val req = token as? AudioFocusRequest ?: return
+            audioManager.abandonAudioFocusRequest(req)
+        }
+    }
 }
