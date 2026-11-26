@@ -217,6 +217,8 @@ data class BibBlock(
         if (variant != other.variant) return false
         if (scopeFlags != other.scopeFlags) return false
         if (!signature.contentEquals(other.signature)) return false
+        if (signaturesByTarget.size != other.signaturesByTarget.size) return false
+        if (!signaturesByTarget.all { (k, v) -> other.signaturesByTarget[k]?.contentEquals(v) == true }) return false
         return true
     }
 
@@ -230,6 +232,11 @@ data class BibBlock(
         result = 31 * result + variant
         result = 31 * result + scopeFlags
         result = 31 * result + signature.contentHashCode()
+        val sigMapHash =
+            signaturesByTarget.entries
+                .sortedBy { it.key }
+                .fold(0) { acc, (k, v) -> 31 * (31 * acc + k) + v.contentHashCode() }
+        result = 31 * result + sigMapHash
         return result
     }
 }
@@ -500,12 +507,15 @@ object Bpv7Parser {
 
         // 6. Results
         val resultsArray = CBORObject.NewArray()
-        val targetResults = CBORObject.NewArray()
-        val r1 = CBORObject.NewArray()
-        r1.Add(1)
-        r1.Add(CBORObject.FromObject(block.signature))
-        targetResults.Add(r1)
-        resultsArray.Add(targetResults)
+        for (target in block.targets) {
+            val targetSig = block.signaturesByTarget[target] ?: block.signature
+            val r1 = CBORObject.NewArray()
+            r1.Add(1) // Result ID 1: HMAC Value
+            r1.Add(CBORObject.FromObject(targetSig))
+            val targetResults = CBORObject.NewArray()
+            targetResults.Add(r1)
+            resultsArray.Add(targetResults)
+        }
         resultsArray.WriteTo(stream)
 
         val blockDataBytes = stream.toByteArray()
@@ -692,10 +702,8 @@ object Bpv7Parser {
                     )
                 }
                 else -> {
-                    if ((blockFlags and 0x04L) != 0L) {
-                        throw IllegalArgumentException(
-                            "Unknown canonical block type $type requires bundle deletion (block flag 0x04)",
-                        )
+                    require((blockFlags and 0x04L) == 0L) {
+                        "Unknown canonical block type $type requires bundle deletion (block flag 0x04)"
                     }
                 }
             }

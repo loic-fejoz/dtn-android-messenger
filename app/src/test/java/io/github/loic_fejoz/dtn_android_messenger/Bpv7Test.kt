@@ -757,4 +757,33 @@ class Bpv7Test {
         assertEquals(2, parsedBundle.bibBlocks.size)
         assertArrayEquals(payloadSig, parsedBundle.bibBlock?.signature)
     }
+
+    @Test
+    fun `serializeBibBlock round-trips multi-target signatures and BibBlock equality checks signaturesByTarget`() {
+        val primarySig = ByteArray(32) { 0x11 }
+        val payloadSig = ByteArray(32) { 0x22 }
+        val multiTargetBib =
+            BibBlock(
+                blockNumber = 2,
+                targets = listOf(0, 1),
+                securitySource = Eid("dtn://node-a/chat"),
+                signature = payloadSig,
+                signaturesByTarget = mapOf(0 to primarySig, 1 to payloadSig),
+            )
+
+        val bibCbor = Bpv7Parser.serializeBibBlock(multiTargetBib)
+        val roundTripped = Bpv7Parser.deserializeBibBlock(bibCbor)
+
+        assertEquals(listOf(0, 1), roundTripped.targets)
+        assertArrayEquals(primarySig, roundTripped.signaturesByTarget[0])
+        assertArrayEquals(payloadSig, roundTripped.signaturesByTarget[1])
+        assertEquals(multiTargetBib, roundTripped)
+        assertEquals(multiTargetBib.hashCode(), roundTripped.hashCode())
+
+        val differentMapBib =
+            multiTargetBib.copy(
+                signaturesByTarget = mapOf(0 to ByteArray(32) { 0x99.toByte() }, 1 to payloadSig),
+            )
+        assertNotEquals(multiTargetBib, differentMapBib)
+    }
 }
