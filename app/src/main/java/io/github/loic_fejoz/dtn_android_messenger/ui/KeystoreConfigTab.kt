@@ -17,10 +17,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -43,8 +46,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.edit
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BpsecKeyDao
 import io.github.loic_fejoz.dtn_android_messenger.data.model.BpsecKey
 import io.github.loic_fejoz.dtn_android_messenger.util.CryptoManager
@@ -68,12 +75,17 @@ fun KeystoreConfigTab(
     var policy by remember { mutableStateOf(prefs.getString("bpsec_policy", "none") ?: "none") }
     var policyExpanded by remember { mutableStateOf(false) }
 
-    val localNodeName = remember { prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node" }
+    var localNodeName by remember {
+        mutableStateOf((prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim())
+    }
     var localKeyRecord by remember { mutableStateOf<BpsecKey?>(null) }
     var localKeyHex by remember { mutableStateOf("") }
+    var showLocalKey by remember { mutableStateOf(false) }
+    var showPeerKey by remember { mutableStateOf(false) }
 
     LaunchedEffect(localNodeName) {
-        localKeyRecord = dao.getByKeyId(localNodeName)
+        val targetNode = localNodeName.trim()
+        localKeyRecord = if (targetNode.isNotEmpty()) dao.getByKeyId(targetNode) else null
         val decryptedBytes =
             localKeyRecord?.let {
                 try {
@@ -82,7 +94,14 @@ fun KeystoreConfigTab(
                     null
                 }
             }
-        localKeyHex = decryptedBytes?.let { HexUtils.bytesToHex(it) } ?: ""
+        localKeyHex =
+            decryptedBytes?.let { bytes ->
+                try {
+                    HexUtils.bytesToHex(bytes)
+                } finally {
+                    bytes.fill(0)
+                }
+            } ?: ""
     }
 
     val scrollState = rememberScrollState()
@@ -95,7 +114,10 @@ fun KeystoreConfigTab(
                 .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        LocalNodeIdentityCard(context)
+        LocalNodeIdentityCard(
+            context = context,
+            onLocalNodeNameChanged = { localNodeName = it },
+        )
 
         Card(
             shape = RoundedCornerShape(12.dp),
@@ -123,7 +145,7 @@ fun KeystoreConfigTab(
                                 text = { Text(p.uppercase()) },
                                 onClick = {
                                     policy = p
-                                    prefs.edit().putString("bpsec_policy", p).apply()
+                                    prefs.edit { putString("bpsec_policy", p) }
                                     policyExpanded = false
                                 },
                             )
@@ -160,6 +182,18 @@ fun KeystoreConfigTab(
                     value = localKeyHex,
                     onValueChange = { localKeyHex = it },
                     label = { Text("Local HMAC Key (Hex)", color = TextGray) },
+                    singleLine = true,
+                    visualTransformation = if (showLocalKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrect = false),
+                    trailingIcon = {
+                        IconButton(onClick = { showLocalKey = !showLocalKey }) {
+                            Icon(
+                                imageVector = if (showLocalKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (showLocalKey) "Hide key" else "Show key",
+                                tint = NeonCyan,
+                            )
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 )
 
@@ -171,8 +205,12 @@ fun KeystoreConfigTab(
                         onClick = {
                             val secureRandom = SecureRandom()
                             val keyBytes = ByteArray(32)
-                            secureRandom.nextBytes(keyBytes)
-                            localKeyHex = HexUtils.bytesToHex(keyBytes)
+                            try {
+                                secureRandom.nextBytes(keyBytes)
+                                localKeyHex = HexUtils.bytesToHex(keyBytes)
+                            } finally {
+                                keyBytes.fill(0)
+                            }
                         },
                         modifier = Modifier.weight(1.5f),
                         colors = ButtonDefaults.buttonColors(containerColor = GlassCardColor, contentColor = Color.White),
@@ -222,15 +260,21 @@ fun KeystoreConfigTab(
                                 } catch (_: Exception) {
                                     Toast.makeText(context, "Encryption failed!", Toast.LENGTH_SHORT).show()
                                     return@Button
+                                } finally {
+                                    keyBytes.fill(0)
+                                }
+                            val effectiveNodeId =
+                                localNodeName.trim().ifEmpty {
+                                    (prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node").trim()
                                 }
                             scope.launch {
                                 dao.insert(
                                     BpsecKey(
-                                        nodeEid = localNodeName,
+                                        nodeEid = effectiveNodeId,
                                         secretKey = encryptedKey,
                                     ),
                                 )
-                                localKeyRecord = dao.getByKeyId(localNodeName)
+                                localKeyRecord = dao.getByKeyId(effectiveNodeId)
                                 Toast.makeText(context, "Local key saved successfully!", Toast.LENGTH_SHORT).show()
                             }
                         },
@@ -265,6 +309,18 @@ fun KeystoreConfigTab(
                     value = secretHex,
                     onValueChange = { secretHex = it },
                     label = { Text("Shared Secret Hex Key", color = TextGray) },
+                    singleLine = true,
+                    visualTransformation = if (showPeerKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrect = false),
+                    trailingIcon = {
+                        IconButton(onClick = { showPeerKey = !showPeerKey }) {
+                            Icon(
+                                imageVector = if (showPeerKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (showPeerKey) "Hide key" else "Show key",
+                                tint = NeonCyan,
+                            )
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 )
 
@@ -287,6 +343,8 @@ fun KeystoreConfigTab(
                             } catch (_: Exception) {
                                 Toast.makeText(context, "Encryption failed!", Toast.LENGTH_SHORT).show()
                                 return@Button
+                            } finally {
+                                keyBytes.fill(0)
                             }
                         scope.launch {
                             dao.insert(

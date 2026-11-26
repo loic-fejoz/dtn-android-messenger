@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.edit
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.navigation.NavController
@@ -133,7 +134,10 @@ fun ConfigurationScreen(
 }
 
 @Composable
-fun LocalNodeIdentityCard(context: Context = LocalContext.current) {
+fun LocalNodeIdentityCard(
+    context: Context = LocalContext.current,
+    onLocalNodeNameChanged: ((String) -> Unit)? = null,
+) {
     val prefs = remember { PreferencesHelper.getEncryptedSharedPreferences(context) }
     var localNodeName by remember { mutableStateOf(prefs.getString("local_node_name", "dtn://my-node") ?: "dtn://my-node") }
     var maxBundleSizeMb by remember {
@@ -158,7 +162,9 @@ fun LocalNodeIdentityCard(context: Context = LocalContext.current) {
                 value = localNodeName,
                 onValueChange = {
                     localNodeName = it
-                    prefs.edit().putString("local_node_name", it.trim()).apply()
+                    val trimmed = it.trim()
+                    prefs.edit { putString("local_node_name", trimmed) }
+                    onLocalNodeNameChanged?.invoke(trimmed)
                 },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Local EID (e.g. dtn://my-node)", color = TextGray) },
@@ -171,7 +177,7 @@ fun LocalNodeIdentityCard(context: Context = LocalContext.current) {
                     maxBundleSizeMb = input
                     val parsed = input.toIntOrNull()
                     if (parsed != null && parsed in 1..PreferencesHelper.MAX_BUNDLE_SIZE_MB_LIMIT) {
-                        prefs.edit().putInt(PreferencesHelper.PREF_MAX_BUNDLE_SIZE_MB, parsed).apply()
+                        prefs.edit { putInt(PreferencesHelper.PREF_MAX_BUNDLE_SIZE_MB, parsed) }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
