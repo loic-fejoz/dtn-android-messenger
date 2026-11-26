@@ -136,6 +136,47 @@ class DtnEngineService : Service() {
             return Pair(isLocalNode || matchedLocalServices.isNotEmpty(), matchedLocalServices)
         }
 
+        internal fun buildBibeOuterBundle(
+            innerBundleBytes: ByteArray,
+            innerBundleId: String,
+            bibeGateway: String,
+            localNodeBase: String,
+            creationTimeMillis: Long,
+            sequenceNumber: Long,
+            lifetimeMs: Long,
+            hopCount: Int,
+        ): Bundle {
+            val pduContent =
+                com.upokecenter.cbor.CBORObject.NewArray().apply {
+                    Add(innerBundleId.hashCode() and 0x7FFFFFFF) // transmission-id
+                    Add(0) // retransmission-time
+                    Add(innerBundleBytes) // encapsulated-bundle
+                }
+            val pdu =
+                com.upokecenter.cbor.CBORObject.NewArray().apply {
+                    Add(64443)
+                    Add(pduContent)
+                }
+            val outerPayloadBytes = pdu.EncodeToBytes()
+
+            val cleanGateway = bibeGateway.trim().trimEnd('/')
+            val gatewayBibeEid = if (cleanGateway.endsWith("/bibe")) cleanGateway else "$cleanGateway/bibe"
+            val localBibeEid = "${localNodeBase.trimEnd('/')}/bibe"
+
+            val outerPrimary =
+                PrimaryBlock(
+                    bundleControlFlags = PrimaryBlock.FLAG_ADMIN_RECORD,
+                    destination = Eid(gatewayBibeEid),
+                    source = Eid(localBibeEid),
+                    reportTo = Eid(localBibeEid),
+                    creationTimestamp = Pair(creationTimeMillis - 946684800000L, sequenceNumber),
+                    lifetimeMs = lifetimeMs,
+                )
+            val outerPayload = PayloadBlock(data = outerPayloadBytes)
+            val outerHopCount = HopCountBlock(hopLimit = 64, hopCount = hopCount)
+            return Bundle(outerPrimary, outerPayload, outerHopCount, null)
+        }
+
         @Volatile
         var isRunning = false
     }
@@ -529,7 +570,7 @@ class DtnEngineService : Service() {
                 isLocal &&
                     depth < MAX_BIBE_DEPTH &&
                     (
-                        (primary.bundleControlFlags and 0x02L) != 0L ||
+                        (primary.bundleControlFlags and PrimaryBlock.FLAG_ADMIN_RECORD) != 0L ||
                             primary.destination.uri.trimEnd('/').endsWith("/bibe", ignoreCase = true)
                     )
             if (isBibeCandidate) {
@@ -913,35 +954,17 @@ class DtnEngineService : Service() {
 
                 if (useBibe && bibeGateway != null) {
                     log("INFO", "Encapsulating bundle ${record.bundleId} in a BIBE tunnel via gateway $bibeGateway")
-
-                    // 1. Build the BIBE PDU (CBOR Administrative Record 64443)
-                    val pduContent = com.upokecenter.cbor.CBORObject.NewArray()
-                    pduContent.Add(record.bundleId.hashCode() and 0x7FFFFFFF) // transmission-id
-                    pduContent.Add(0) // retransmission-time
-                    pduContent.Add(bundleBytes) // encapsulated-bundle
-
-                    val pdu = com.upokecenter.cbor.CBORObject.NewArray()
-                    pdu.Add(64443)
-                    pdu.Add(pduContent)
-                    val outerPayloadBytes = pdu.EncodeToBytes()
-
-                    // 2. Build the outer bundle targeting the gateway's bibe service
-                    val cleanGateway = bibeGateway.trim().trimEnd('/')
-                    val gatewayBibeEid = if (cleanGateway.endsWith("/bibe")) cleanGateway else "$cleanGateway/bibe"
-                    val localBibeEid = "${localNodeBase.trimEnd('/')}/bibe"
-
-                    val outerPrimary =
-                        PrimaryBlock(
-                            destination = Eid(gatewayBibeEid),
-                            source = Eid(localBibeEid),
-                            reportTo = Eid(localBibeEid),
-                            creationTimestamp = Pair(dtnTimeFromSystem(System.currentTimeMillis()), bibeSeqCounter.getAndIncrement()),
+                    val outerBundle =
+                        buildBibeOuterBundle(
+                            innerBundleBytes = bundleBytes,
+                            innerBundleId = record.bundleId,
+                            bibeGateway = bibeGateway,
+                            localNodeBase = localNodeBase,
+                            creationTimeMillis = timeProvider.currentTimeMillis(),
+                            sequenceNumber = bibeSeqCounter.getAndIncrement(),
                             lifetimeMs = record.lifetimeMs,
+                            hopCount = record.hopCount + 1,
                         )
-                    val outerPayload = PayloadBlock(data = outerPayloadBytes)
-                    val outerHopCount = HopCountBlock(hopLimit = 64, hopCount = record.hopCount + 1)
-
-                    val outerBundle = Bundle(outerPrimary, outerPayload, outerHopCount, null)
                     bundleBytes = Bpv7Parser.serialize(outerBundle)
                 }
 

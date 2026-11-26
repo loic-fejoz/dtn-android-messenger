@@ -147,6 +147,10 @@ data class PrimaryBlock(
         result = 31 * result + (crc?.contentHashCode() ?: 0)
         return result
     }
+
+    companion object {
+        const val FLAG_ADMIN_RECORD = 0x02L
+    }
 }
 
 data class PayloadBlock(

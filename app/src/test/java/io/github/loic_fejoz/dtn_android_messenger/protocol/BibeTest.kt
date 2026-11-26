@@ -326,4 +326,43 @@ class BibeTest {
             io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService.selectNextHop("dtn://other/chat", rules),
         )
     }
+
+    @Test
+    fun testBuildBibeOuterBundleSetsAdminRecordFlag() {
+        val innerPrimary =
+            PrimaryBlock(
+                destination = Eid("dtn://dest/chat"),
+                source = Eid("dtn://src/chat"),
+                reportTo = Eid("dtn:none"),
+                creationTimestamp = Pair(1000L, 1L),
+                lifetimeMs = 3600_000L,
+            )
+        val innerBytes =
+            Bpv7Parser.serialize(
+                Bundle(innerPrimary, PayloadBlock(data = "inner".toByteArray(Charsets.UTF_8))),
+            )
+
+        val outerBundle =
+            io.github.loic_fejoz.dtn_android_messenger.service.DtnEngineService.buildBibeOuterBundle(
+                innerBundleBytes = innerBytes,
+                innerBundleId = "bundle-1",
+                bibeGateway = "dtn://gw/",
+                localNodeBase = "dtn://my-node",
+                creationTimeMillis = 946684805000L,
+                sequenceNumber = 7L,
+                lifetimeMs = 3600_000L,
+                hopCount = 1,
+            )
+        val serializedOuter = Bpv7Parser.serialize(outerBundle)
+        val deserializedOuter = Bpv7Parser.deserialize(serializedOuter)
+
+        assertTrue((deserializedOuter.primaryBlock.bundleControlFlags and PrimaryBlock.FLAG_ADMIN_RECORD) != 0L)
+        assertEquals("dtn://gw/bibe", deserializedOuter.primaryBlock.destination.uri)
+        assertEquals("dtn://my-node/bibe", deserializedOuter.primaryBlock.source.uri)
+        assertEquals(5000L, deserializedOuter.primaryBlock.creationTimestamp.first)
+        assertEquals(7L, deserializedOuter.primaryBlock.creationTimestamp.second)
+
+        val extractedInner = CBORObject.DecodeFromBytes(deserializedOuter.payloadBlock.data)[1][2].GetByteString()
+        assertArrayEquals(innerBytes, extractedInner)
+    }
 }
