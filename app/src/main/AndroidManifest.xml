@@ -36,6 +36,7 @@
         <activity
             android:name="io.github.loic_fejoz.dtn_android_messenger.ui.MainActivity"
             android:exported="true"
+            android:taskAffinity=""
             android:theme="@style/Theme.DtnMessenger">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

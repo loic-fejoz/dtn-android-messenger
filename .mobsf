@@ -1,0 +1,25 @@
+ignore-paths:
+  - app/build
+  - build
+  - fastlane
+  - scripts
+  - .xdg
+ignore-rules:
+  # targetSdk=35 is set in app/build.gradle.kts (mobsfscan defaults to 26);
+  # MainActivity sets android:taskAffinity="" for API 23-28 (singleInstance degrades SAF picker UX).
+  - android_task_hijacking2
+  # Android 6.0 (API 23) support is an explicit project requirement (see AGENTS.md).
+  - android_manifest_insecure_minsdk_error
+  # Peer-to-peer DTN/BPv7 client (TCPCLv4/BT/File-CLA); no central HTTPS backend.
+  - android_certificate_pinning
+  - android_ssl_pinning
+  - android_certificate_transparency
+  # Deprecated by Google (SafetyNet) or incompatible with amateur-radio / screenshot tooling.
+  - android_safetynet
+  - android_safetynet_api
+  - android_root_detection
+  - android_prevent_screenshot
+  # Mitigated in MainActivity.onCreate via Kotlin property window.decorView.filterTouchesWhenObscured = true
+  # (mobsfscan's Semgrep pattern only matches explicit Java-style setFilterTouchesWhenObscured(true)).
+  - android_tapjacking
+  - android_detect_tapjacking

@@ -23,10 +23,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run MobSF Static Scan
-        uses: MobSF/mobsfscan@main
+        uses: MobSF/mobsfscan@1.2.0
         with:
-          args: '. --sarif --output mobsf-results.sarif'
-        continue-on-error: true # Prevents blocking the build if no GitHub advanced security tab is present
+          args: '. --type android -c .mobsf --sarif --output mobsf-results.sarif'
+
+      - name: Upload MobSF Scan Results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobsf-results
+          path: mobsf-results.sarif
+          if-no-files-found: warn
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
