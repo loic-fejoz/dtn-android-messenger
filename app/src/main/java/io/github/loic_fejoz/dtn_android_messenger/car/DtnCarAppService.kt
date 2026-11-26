@@ -14,7 +14,6 @@ import io.github.loic_fejoz.dtn_android_messenger.BuildConfig
 import io.github.loic_fejoz.dtn_android_messenger.R
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BundleRecordDao
 import io.github.loic_fejoz.dtn_android_messenger.data.model.BundleRecord
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -31,7 +30,7 @@ class DtnCarAppService : CarAppService() {
             HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
         } else {
             HostValidator.Builder(applicationContext)
-                .addAllowedHosts(androidx.car.app.R.array.hosts_allowlist_sample)
+                .addAllowedHosts(R.array.dtn_car_hosts_allowlist)
                 .build()
         }
     }
@@ -50,7 +49,7 @@ class DtnCarSession : Session() {
 class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
     private val bundleRecordDao: BundleRecordDao by inject()
     private var lastBundle: BundleRecord? = null
-    private var lastPayloadText: String = "Contenu Binaire"
+    private var lastPayloadText: String = ""
     private var isLoading = true
     private var dbJob: Job? = null
 
@@ -59,7 +58,7 @@ class DtnCarScreen(carContext: CarContext) : Screen(carContext), KoinComponent {
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {
                     dbJob =
-                        CoroutineScope(Dispatchers.Main).launch {
+                        lifecycleScope.launch {
                             bundleRecordDao.getLatestReceived().collectLatest { bundle ->
                                 lastBundle = bundle
                                 lastPayloadText =

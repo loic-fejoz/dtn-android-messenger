@@ -48,27 +48,41 @@ object OggOpusFixer {
         return crc
     }
 
+    private fun matchesAsciiTag(
+        data: ByteArray,
+        offset: Int,
+        tag: String,
+    ): Boolean {
+        if (offset < 0 || offset + tag.length > data.size) return false
+        for (i in tag.indices) {
+            if (data[offset + i] != tag[i].code.toByte()) return false
+        }
+        return true
+    }
+
+    private fun recomputePageCrc(
+        data: ByteArray,
+        page: PageInfo,
+    ) {
+        data[page.offset + 22] = 0
+        data[page.offset + 23] = 0
+        data[page.offset + 24] = 0
+        data[page.offset + 25] = 0
+        val crc = computeOggCrc(data, page.offset, page.length)
+        writeLittleEndianInt(data, page.offset + 22, crc)
+    }
+
     /**
      * Checks if the byte array begins with an Ogg capture pattern and contains an OpusHead packet.
      */
     fun isOggOpus(data: ByteArray): Boolean {
         if (data.size < 27) return false
-        if (data[0] != 0x4F.toByte() || data[1] != 0x67.toByte() ||
-            data[2] != 0x67.toByte() || data[3] != 0x53.toByte()
-        ) {
+        if (!matchesAsciiTag(data, 0, "OggS")) {
             return false
         }
         val nsegs = data[26].toInt() and 0xFF
         val bodyOffset = 27 + nsegs
-        if (data.size < bodyOffset + 8) return false
-        return data[bodyOffset] == 'O'.code.toByte() &&
-            data[bodyOffset + 1] == 'p'.code.toByte() &&
-            data[bodyOffset + 2] == 'u'.code.toByte() &&
-            data[bodyOffset + 3] == 's'.code.toByte() &&
-            data[bodyOffset + 4] == 'H'.code.toByte() &&
-            data[bodyOffset + 5] == 'e'.code.toByte() &&
-            data[bodyOffset + 6] == 'a'.code.toByte() &&
-            data[bodyOffset + 7] == 'd'.code.toByte()
+        return matchesAsciiTag(data, bodyOffset, "OpusHead")
     }
 
     /**
@@ -173,16 +187,7 @@ object OggOpusFixer {
         // Page 0: OpusHead
         val p0 = pages[0]
         var preskip = MIN_PRE_SKIP
-        if (p0.bodyLength >= 12 &&
-            data[p0.bodyOffset] == 'O'.code.toByte() &&
-            data[p0.bodyOffset + 1] == 'p'.code.toByte() &&
-            data[p0.bodyOffset + 2] == 'u'.code.toByte() &&
-            data[p0.bodyOffset + 3] == 's'.code.toByte() &&
-            data[p0.bodyOffset + 4] == 'H'.code.toByte() &&
-            data[p0.bodyOffset + 5] == 'e'.code.toByte() &&
-            data[p0.bodyOffset + 6] == 'a'.code.toByte() &&
-            data[p0.bodyOffset + 7] == 'd'.code.toByte()
-        ) {
+        if (p0.bodyLength >= 12 && matchesAsciiTag(data, p0.bodyOffset, "OpusHead")) {
             val origPreskip =
                 (data[p0.bodyOffset + 10].toInt() and 0xFF) or
                     ((data[p0.bodyOffset + 11].toInt() and 0xFF) shl 8)
@@ -190,14 +195,7 @@ object OggOpusFixer {
                 preskip = MIN_PRE_SKIP
                 data[p0.bodyOffset + 10] = (preskip and 0xFF).toByte()
                 data[p0.bodyOffset + 11] = ((preskip ushr 8) and 0xFF).toByte()
-
-                // Recalculate Page 0 CRC
-                data[p0.offset + 22] = 0
-                data[p0.offset + 23] = 0
-                data[p0.offset + 24] = 0
-                data[p0.offset + 25] = 0
-                val crc = computeOggCrc(data, p0.offset, p0.length)
-                writeLittleEndianInt(data, p0.offset + 22, crc)
+                recomputePageCrc(data, p0)
             } else {
                 preskip = origPreskip
             }
@@ -213,10 +211,11 @@ object OggOpusFixer {
         }
 
         // Check if granule positions need fixing:
-        // If the first audio page has granulepos == 0 or less than preskip, they are buggy and must be recalculated.
+        // If the first audio page has granulepos in 0 until preskip, it is buggy and must be recalculated.
+        // Note: -1L indicates no packet completed on that page (valid RFC 3533 continuation page).
         val needGranuleFix =
             if (firstAudioIdx < pages.size) {
-                pages[firstAudioIdx].granulePos < preskip
+                pages[firstAudioIdx].granulePos in 0 until preskip.toLong()
             } else {
                 false
             }
@@ -278,12 +277,7 @@ object OggOpusFixer {
             }
 
             if (pageModified) {
-                data[page.offset + 22] = 0
-                data[page.offset + 23] = 0
-                data[page.offset + 24] = 0
-                data[page.offset + 25] = 0
-                val crc = computeOggCrc(data, page.offset, page.length)
-                writeLittleEndianInt(data, page.offset + 22, crc)
+                recomputePageCrc(data, page)
             }
         }
 
@@ -293,12 +287,7 @@ object OggOpusFixer {
             val currentFlags = data[lastPage.offset + 5].toInt() and 0xFF
             if ((currentFlags and 0x04) == 0) {
                 data[lastPage.offset + 5] = (currentFlags or 0x04).toByte()
-                data[lastPage.offset + 22] = 0
-                data[lastPage.offset + 23] = 0
-                data[lastPage.offset + 24] = 0
-                data[lastPage.offset + 25] = 0
-                val crc = computeOggCrc(data, lastPage.offset, lastPage.length)
-                writeLittleEndianInt(data, lastPage.offset + 22, crc)
+                recomputePageCrc(data, lastPage)
             }
         }
 
@@ -310,20 +299,8 @@ object OggOpusFixer {
         page: PageInfo,
     ): Boolean {
         if (page.bodyLength < 8) return false
-        val b = page.bodyOffset
-        val isHead =
-            data[b] == 'O'.code.toByte() && data[b + 1] == 'p'.code.toByte() &&
-                data[b + 2] == 'u'.code.toByte() && data[b + 3] == 's'.code.toByte() &&
-                data[b + 4] == 'H'.code.toByte() && data[b + 5] == 'e'.code.toByte() &&
-                data[b + 6] == 'a'.code.toByte() && data[b + 7] == 'd'.code.toByte()
-
-        val isTags =
-            data[b] == 'O'.code.toByte() && data[b + 1] == 'p'.code.toByte() &&
-                data[b + 2] == 'u'.code.toByte() && data[b + 3] == 's'.code.toByte() &&
-                data[b + 4] == 'T'.code.toByte() && data[b + 5] == 'a'.code.toByte() &&
-                data[b + 6] == 'g'.code.toByte() && data[b + 7] == 's'.code.toByte()
-
-        return isHead || isTags
+        return matchesAsciiTag(data, page.bodyOffset, "OpusHead") ||
+            matchesAsciiTag(data, page.bodyOffset, "OpusTags")
     }
 
     /**

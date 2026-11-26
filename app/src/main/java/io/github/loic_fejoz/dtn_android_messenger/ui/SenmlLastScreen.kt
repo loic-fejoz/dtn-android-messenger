@@ -25,10 +25,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.room.withTransaction
 import io.github.loic_fejoz.dtn_android_messenger.R
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BundleRecordDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.LocalServiceDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.SenmlEntryDao
+import io.github.loic_fejoz.dtn_android_messenger.data.db.AppDatabase
 import io.github.loic_fejoz.dtn_android_messenger.data.model.SenmlEntry
 import io.github.loic_fejoz.dtn_android_messenger.protocol.SenmlIngestionHelper
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +50,7 @@ fun SenmlLastScreen(
     senmlEntryDao: SenmlEntryDao = koinInject(),
     localServiceDao: LocalServiceDao = koinInject(),
     bundleRecordDao: BundleRecordDao = koinInject(),
+    database: AppDatabase = koinInject(),
 ) {
     val coroutineScope = rememberCoroutineScope()
     val entries by senmlEntryDao.getActiveEntries(serviceEid).collectAsState(initial = emptyList())
@@ -105,7 +108,11 @@ fun SenmlLastScreen(
                         IconButton(
                             onClick = {
                                 coroutineScope.launch {
-                                    senmlEntryDao.deleteAllForService(serviceEid)
+                                    database.withTransaction {
+                                        entries.forEach { entry ->
+                                            senmlEntryDao.markDeleted(serviceEid, entry.name)
+                                        }
+                                    }
                                 }
                             },
                         ) {
@@ -152,24 +159,28 @@ fun SenmlLastScreen(
                             canMoveDown = index < entries.size - 1,
                             onMoveUp = {
                                 coroutineScope.launch {
-                                    val prev = entries[index - 1]
-                                    val currentOrder = item.displayOrder
-                                    val prevOrder = prev.displayOrder
-                                    val targetCurrentOrder = if (prevOrder == currentOrder) currentOrder - 1 else prevOrder
-                                    val targetPrevOrder = currentOrder
-                                    senmlEntryDao.updateOrder(serviceEid, item.name, targetCurrentOrder)
-                                    senmlEntryDao.updateOrder(serviceEid, prev.name, targetPrevOrder)
+                                    val reordered = entries.toMutableList()
+                                    val swapped = reordered[index]
+                                    reordered[index] = reordered[index - 1]
+                                    reordered[index - 1] = swapped
+                                    database.withTransaction {
+                                        reordered.forEachIndexed { idx, entry ->
+                                            senmlEntryDao.updateOrder(serviceEid, entry.name, idx)
+                                        }
+                                    }
                                 }
                             },
                             onMoveDown = {
                                 coroutineScope.launch {
-                                    val next = entries[index + 1]
-                                    val currentOrder = item.displayOrder
-                                    val nextOrder = next.displayOrder
-                                    val targetCurrentOrder = if (nextOrder == currentOrder) currentOrder + 1 else nextOrder
-                                    val targetNextOrder = currentOrder
-                                    senmlEntryDao.updateOrder(serviceEid, item.name, targetCurrentOrder)
-                                    senmlEntryDao.updateOrder(serviceEid, next.name, targetNextOrder)
+                                    val reordered = entries.toMutableList()
+                                    val swapped = reordered[index]
+                                    reordered[index] = reordered[index + 1]
+                                    reordered[index + 1] = swapped
+                                    database.withTransaction {
+                                        reordered.forEachIndexed { idx, entry ->
+                                            senmlEntryDao.updateOrder(serviceEid, entry.name, idx)
+                                        }
+                                    }
                                 }
                             },
                             onStartEdit = {
@@ -186,7 +197,7 @@ fun SenmlLastScreen(
                             },
                             onDelete = {
                                 coroutineScope.launch {
-                                    senmlEntryDao.deleteEntry(serviceEid, item.name)
+                                    senmlEntryDao.markDeleted(serviceEid, item.name)
                                 }
                             },
                         )

@@ -262,4 +262,27 @@ class OggOpusFixerTest {
         val empty = ByteArray(0)
         assertArrayEquals(empty, OggOpusFixer.fixOggOpusBytes(empty))
     }
+
+    @Test
+    fun testValidContinuationPageWithMinusOneGranuleUntouched() {
+        val opusHead = ByteArray(19)
+        "OpusHead".toByteArray(Charsets.US_ASCII).copyInto(opusHead, 0)
+        opusHead[8] = 1
+        opusHead[9] = 1
+        opusHead[10] = (312 and 0xFF).toByte()
+        opusHead[11] = ((312 ushr 8) and 0xFF).toByte()
+        val p0 = buildPage(flags = 0x02, granulePos = 0, seq = 0, body = opusHead)
+
+        val opusTags = ByteArray(24)
+        "OpusTags".toByteArray(Charsets.US_ASCII).copyInto(opusTags, 0)
+        val p1 = buildPage(flags = 0x00, granulePos = 0, seq = 1, body = opusTags)
+
+        // Valid RFC 3533 first audio page with no completed packet -> granulePos = -1L
+        val p2 = buildPage(flags = 0x00, granulePos = -1L, seq = 2, body = ByteArray(255) { 0xFC.toByte() }, packetSizes = listOf(255))
+        val p3 = buildPage(flags = 0x05, granulePos = 2272L, seq = 3, body = ByteArray(50) { 0xFC.toByte() })
+
+        val validStream = p0 + p1 + p2 + p3
+        val fixed = OggOpusFixer.fixOggOpusBytes(validStream)
+        assertArrayEquals(validStream, fixed)
+    }
 }

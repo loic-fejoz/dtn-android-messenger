@@ -1067,75 +1067,68 @@ class BluetoothClassicAdapter(
     override suspend fun sendBundles(
         bundles: List<Pair<ByteArray, (suspend () -> Unit)?>>,
         targetAddress: String,
-    ): Boolean {
-        if (bundles.isEmpty()) return true
-        var allSuccess = true
-        for ((bytes, onAck) in bundles) {
-            if (bytes.isEmpty()) continue
-            val ok = sendBundle(bytes, targetAddress, onAck)
-            if (!ok) allSuccess = false
-        }
-        return allSuccess
-    }
-
-    override suspend fun sendBundle(
-        bundleBytes: ByteArray,
-        targetAddress: String,
-        onAcknowledged: (suspend () -> Unit)?,
     ): Boolean =
         withContext(Dispatchers.IO) {
+            val nonEmpty = bundles.filter { it.first.isNotEmpty() }
+            if (nonEmpty.isEmpty()) return@withContext true
             if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
                 log("WARN", "Bluetooth is not supported or currently disabled")
                 return@withContext false
             }
+
             var socket: BluetoothSocket? = null
             var outputStream: OutputStream? = null
+            var allSuccess = true
             try {
                 val device = bluetoothAdapter.getRemoteDevice(targetAddress)
-                log("INFO", "Attempting RFCOMM connection to ${device.name ?: targetAddress}")
+                log("INFO", "Attempting RFCOMM connection to ${device.name ?: targetAddress} for ${nonEmpty.size} bundle(s)")
                 socket = device.createRfcommSocketToServiceRecord(sppUuid)
                 socket.connect()
 
                 outputStream = socket.outputStream
-                val sizeBuf = ByteBuffer.allocate(4).putInt(bundleBytes.size).array()
-                outputStream.write(sizeBuf)
-                outputStream.write(bundleBytes)
-                outputStream.flush()
-
-                // Wait for 1-byte ACK (== 1) from receiver to enforce responsibility transfer.
-                val startWait = System.currentTimeMillis()
                 val inputStream = socket.inputStream
-                var ackReceived = false
-                while ((System.currentTimeMillis() - startWait) < 5000) {
-                    if (inputStream.available() > 0) {
-                        val ackByte = inputStream.read()
-                        if (ackByte == 1) {
-                            ackReceived = true
+
+                for ((bundleBytes, onAcknowledged) in nonEmpty) {
+                    val sizeBuf = ByteBuffer.allocate(4).putInt(bundleBytes.size).array()
+                    outputStream.write(sizeBuf)
+                    outputStream.write(bundleBytes)
+                    outputStream.flush()
+
+                    val activeSocket = socket
+                    val timeoutJob =
+                        launch {
+                            delay(5000)
+                            runCatching { activeSocket.close() }
                         }
+                    val ackByte =
+                        try {
+                            inputStream.read()
+                        } catch (_: Exception) {
+                            -1
+                        } finally {
+                            timeoutJob.cancel()
+                        }
+
+                    if (ackByte != 1) {
+                        log("WARN", "No valid RFCOMM ACK received from $targetAddress (got $ackByte); withholding delivery confirmation")
+                        allSuccess = false
                         break
                     }
-                    delay(50)
-                }
 
-                if (!ackReceived) {
-                    log("WARN", "No valid RFCOMM ACK received from $targetAddress within 5s; withholding delivery confirmation")
-                    return@withContext false
+                    try {
+                        onAcknowledged?.invoke()
+                    } catch (e: Exception) {
+                        log("ERROR", "Error executing onAcknowledged callback: ${e.message}")
+                    }
+                    log("INFO", "Successfully sent and acknowledged bundle of size ${bundleBytes.size} to $targetAddress")
                 }
-
-                try {
-                    onAcknowledged?.invoke()
-                } catch (e: Exception) {
-                    log("ERROR", "Error executing onAcknowledged callback: ${e.message}")
-                }
-
-                log("INFO", "Successfully sent and acknowledged bundle of size ${bundleBytes.size} to $targetAddress")
-                return@withContext true
+                allSuccess
             } catch (e: SecurityException) {
                 log("ERROR", "Bluetooth permission denied for outbound connection: ${e.message}")
-                return@withContext false
+                false
             } catch (e: Exception) {
-                log("ERROR", "Failed to send bundle to $targetAddress: ${e.message}")
-                return@withContext false
+                log("ERROR", "Failed to send bundle(s) to $targetAddress: ${e.message}")
+                false
             } finally {
                 try {
                     outputStream?.close()
@@ -1147,6 +1140,15 @@ class BluetoothClassicAdapter(
                 }
             }
         }
+
+    override suspend fun sendBundle(
+        bundleBytes: ByteArray,
+        targetAddress: String,
+        onAcknowledged: (suspend () -> Unit)?,
+    ): Boolean {
+        if (bundleBytes.isEmpty()) return true
+        return sendBundles(listOf(Pair(bundleBytes, onAcknowledged)), targetAddress)
+    }
 
     override fun stop() {
         try {

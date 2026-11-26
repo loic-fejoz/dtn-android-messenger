@@ -1,7 +1,12 @@
 package io.github.loic_fejoz.dtn_android_messenger.ui
 
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,11 +31,62 @@ fun AudioPlayerCard(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val audioManager = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isPrepared by remember(filePath) { mutableStateOf(false) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var duration by remember { mutableStateOf(0) }
-    var currentPosition by remember { mutableStateOf(0) }
+    var isPlaying by remember(filePath) { mutableStateOf(false) }
+    var duration by remember(filePath) { mutableStateOf(0) }
+    var currentPosition by remember(filePath) { mutableStateOf(0) }
+    var focusRequest by remember(filePath) { mutableStateOf<AudioFocusRequest?>(null) }
+
+    val focusChangeListener =
+        remember(filePath) {
+            AudioManager.OnAudioFocusChangeListener { change ->
+                if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+                    val p = mediaPlayer
+                    if (p != null && isPrepared && isPlaying) {
+                        runCatching { p.pause() }
+                        isPlaying = false
+                    }
+                }
+            }
+        }
+
+    fun abandonFocus() {
+        val am = audioManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            focusRequest?.let { am.abandonAudioFocusRequest(it) }
+            focusRequest = null
+        } else {
+            @Suppress("DEPRECATION")
+            am.abandonAudioFocus(focusChangeListener)
+        }
+    }
+
+    fun requestFocus(): Boolean {
+        val am = audioManager ?: return true
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val req =
+                AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build(),
+                    )
+                    .setOnAudioFocusChangeListener(focusChangeListener)
+                    .build()
+            focusRequest = req
+            am.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        } else {
+            @Suppress("DEPRECATION")
+            am.requestAudioFocus(
+                focusChangeListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT,
+            ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        }
+    }
 
     // Initialize MediaPlayer
     DisposableEffect(filePath) {
@@ -66,6 +122,7 @@ fun AudioPlayerCard(
         player.setOnCompletionListener {
             isPlaying = false
             currentPosition = 0
+            abandonFocus()
             if (isPrepared) {
                 try {
                     player.seekTo(0)
@@ -77,6 +134,7 @@ fun AudioPlayerCard(
         onDispose {
             isPrepared = false
             isPlaying = false
+            abandonFocus()
             try {
                 player.stop()
             } catch (_: IllegalStateException) {
@@ -120,7 +178,9 @@ fun AudioPlayerCard(
                     if (isPlaying) {
                         player.pause()
                         isPlaying = false
+                        abandonFocus()
                     } else {
+                        requestFocus()
                         player.start()
                         isPlaying = true
                     }
