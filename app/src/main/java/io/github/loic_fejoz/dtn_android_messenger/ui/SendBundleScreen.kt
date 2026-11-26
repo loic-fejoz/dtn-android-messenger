@@ -247,7 +247,20 @@ fun SendBundleScreen(
 
     val services by localServiceDao.getAll().collectAsState(initial = emptyList())
 
-    val resolvedSourceEid = "${localNodeName.value.trimEnd('/')}/${sourceService.trimStart('/')}"
+    val resolvedSourceEid =
+        remember(sourceService, localNodeName.value) {
+            val trimmed = sourceService.trim()
+            if (trimmed.startsWith("dtn://", ignoreCase = true) || trimmed.startsWith("ipn:", ignoreCase = true)) {
+                trimmed
+            } else {
+                val base = localNodeName.value.trim()
+                if (base.startsWith("ipn:", ignoreCase = true)) {
+                    "${base.substringBeforeLast('.')}.${trimmed.trimStart('.', '/')}"
+                } else {
+                    "${base.trimEnd('/')}/${trimmed.trimStart('/')}"
+                }
+            }
+        }
 
     Scaffold(
         topBar = {
@@ -312,11 +325,10 @@ fun SendBundleScreen(
                         )
                     } else {
                         services.forEach { s ->
-                            val servicePath = s.serviceEid.substringAfterLast("/")
                             DropdownMenuItem(
                                 text = { Text(s.serviceEid) },
                                 onClick = {
-                                    sourceService = servicePath
+                                    sourceService = s.serviceEid
                                     expanded = false
                                 },
                             )
@@ -661,6 +673,15 @@ fun SendBundleScreen(
                         return@Button
                     }
 
+                    if (!io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isValidEid(resolvedSourceEid)) {
+                        Toast.makeText(
+                            context,
+                            "Invalid Source EID format! (Must be a valid dtn:// or ipn: EID)",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        return@Button
+                    }
+
                     if (!io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isValidEid(destination)) {
                         Toast.makeText(
                             context,
@@ -675,6 +696,11 @@ fun SendBundleScreen(
                             val maxSizeBytes = io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.getMaxBundleSizeBytes(context)
                             val maxMb = maxSizeBytes / (1024 * 1024)
 
+                            if (isFileMode && selectedFileSize > maxSizeBytes) {
+                                Toast.makeText(context, "Payload size ($selectedFileSize bytes) exceeds maximum limit of $maxMb MB", Toast.LENGTH_LONG).show()
+                                return@launch
+                            }
+
                             val payloadFile =
                                 withContext(Dispatchers.IO) {
                                     val payloadsDir = File(context.filesDir, "payloads")
@@ -685,16 +711,25 @@ fun SendBundleScreen(
                                     val file = File(payloadsDir, "$bundleId.$fileExt")
 
                                     if (isFileMode) {
-                                        context.contentResolver.openInputStream(selectedFileUri!!).use { input ->
-                                            file.outputStream().use { output ->
-                                                input!!.copyTo(output)
-                                            }
+                                        val copiedBytes =
+                                            context.contentResolver.openInputStream(selectedFileUri!!)?.use { input ->
+                                                io.github.loic_fejoz.dtn_android_messenger.util.PayloadFileHelper.copyStreamBounded(
+                                                    input = input,
+                                                    destFile = file,
+                                                    maxBytes = maxSizeBytes,
+                                                )
+                                            } ?: error("Unable to read selected file")
+                                        if (copiedBytes < 0L) {
+                                            return@withContext null
                                         }
                                         if (file.extension.equals("ogg", ignoreCase = true) || file.extension.equals("opus", ignoreCase = true)) {
                                             OggOpusFixer.fixOggOpusFile(file)
                                         }
                                     } else {
                                         val textBytes = payloadText.toByteArray(Charsets.UTF_8)
+                                        if (textBytes.size.toLong() > maxSizeBytes) {
+                                            return@withContext null
+                                        }
                                         FileOutputStream(file).use { fos ->
                                             fos.write(textBytes)
                                         }
@@ -702,11 +737,8 @@ fun SendBundleScreen(
                                     file
                                 }
 
-                            if (payloadFile.length() > maxSizeBytes) {
-                                withContext(Dispatchers.IO) {
-                                    if (payloadFile.exists()) payloadFile.delete()
-                                }
-                                Toast.makeText(context, "Payload size (${payloadFile.length()} bytes) exceeds maximum limit of $maxMb MB", Toast.LENGTH_LONG).show()
+                            if (payloadFile == null) {
+                                Toast.makeText(context, "Payload size exceeds maximum limit of $maxMb MB", Toast.LENGTH_LONG).show()
                                 return@launch
                             }
 

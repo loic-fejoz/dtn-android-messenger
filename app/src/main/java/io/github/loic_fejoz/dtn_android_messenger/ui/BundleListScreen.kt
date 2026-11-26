@@ -82,8 +82,7 @@ fun BundleListScreen(
             floatingActionButton = {
                 FloatingActionButton(
                     onClick = {
-                        val sourceSuffix = serviceEid.substringAfterLast("/")
-                        navController.navigate("send_bundle?sourceService=${Uri.encode(sourceSuffix)}")
+                        navController.navigate("send_bundle?sourceService=${Uri.encode(serviceEid)}")
                     },
                     containerColor = NeonCyan,
                     contentColor = Color.Black,
@@ -336,24 +335,11 @@ fun BundleDetailPane(
                     if (io.github.loic_fejoz.dtn_android_messenger.util.PayloadUtils.isAudioPayload(bundle.payloadFilePath)) {
                         return@withContext BundlePayloadPreview(PayloadViewerKind.AUDIO)
                     }
-                    val fileSize = file.length()
-                    val toRead = fileSize.coerceAtMost(MAX_TEXT_PREVIEW_BYTES.toLong()).toInt()
-                    val buffer = ByteArray(toRead)
-                    var offset = 0
-                    file.inputStream().use { input ->
-                        while (offset < toRead) {
-                            val r = input.read(buffer, offset, toRead - offset)
-                            if (r == -1) break
-                            offset += r
-                        }
-                    }
-                    val textContent = String(buffer, 0, offset, Charsets.UTF_8)
                     val finalText =
-                        if (fileSize > MAX_TEXT_PREVIEW_BYTES) {
-                            "$textContent\n\n[Truncated at 256 KB — download file to view full content]"
-                        } else {
-                            textContent
-                        }
+                        io.github.loic_fejoz.dtn_android_messenger.util.PayloadFileHelper.readTextPreviewBounded(
+                            file = file,
+                            maxBytes = MAX_TEXT_PREVIEW_BYTES,
+                        )
                     BundlePayloadPreview(PayloadViewerKind.TEXT, finalText)
                 } catch (e: Exception) {
                     BundlePayloadPreview(PayloadViewerKind.TEXT, "Unable to parse payload as UTF-8 string.")
@@ -380,8 +366,7 @@ fun BundleDetailPane(
                 // 1. Reply
                 IconButton(
                     onClick = {
-                        val sourceSuffix = bundle.destinationEid.substringAfterLast("/")
-                        navController.navigate("send_bundle?dest=${Uri.encode(bundle.sourceEid)}&sourceService=${Uri.encode(sourceSuffix)}")
+                        navController.navigate("send_bundle?dest=${Uri.encode(bundle.sourceEid)}&sourceService=${Uri.encode(bundle.destinationEid)}")
                     },
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Reply", tint = NeonPurple)
@@ -410,11 +395,7 @@ fun BundleDetailPane(
                 IconButton(
                     onClick = {
                         scope.launch {
-                            try {
-                                val file = File(bundle.payloadFilePath)
-                                if (file.exists()) file.delete()
-                            } catch (_: SecurityException) {
-                            }
+                            io.github.loic_fejoz.dtn_android_messenger.util.PayloadFileHelper.safeDelete(bundle.payloadFilePath)
                             bundleRecordDao.delete(bundle)
                             onClose()
                         }

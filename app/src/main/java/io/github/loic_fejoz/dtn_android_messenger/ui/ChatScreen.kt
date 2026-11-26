@@ -202,7 +202,14 @@ fun ChatScreen(
                                         Pair(true, "Audio message")
                                     } else {
                                         val file = File(msg.payloadFilePath)
-                                        if (file.exists()) Pair(false, String(file.readBytes(), Charsets.UTF_8)) else Pair(false, "No content")
+                                        if (file.exists()) {
+                                            Pair(
+                                                false,
+                                                io.github.loic_fejoz.dtn_android_messenger.util.PayloadFileHelper.readTextPreviewBounded(file),
+                                            )
+                                        } else {
+                                            Pair(false, "No content")
+                                        }
                                     }
                                 } catch (e: Exception) {
                                     Pair(false, "Binary data")
