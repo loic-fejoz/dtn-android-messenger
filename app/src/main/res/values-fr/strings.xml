@@ -53,4 +53,18 @@
     <string name="car_quick_reply_arriving">J\'arrive</string>
     <string name="car_quick_reply_enroute">En route</string>
     <string name="car_quick_reply_call_me">Appelle-moi</string>
+
+    <!-- File-CLA -->
+    <string name="file_cla_folder_name_label">Nom du dossier CLA (ex: Foo -&gt; Foo/RX &amp; Foo/TX)</string>
+    <string name="file_cla_poll_interval_label">Intervalle de scan RX (secondes, défaut 300)</string>
+    <string name="file_cla_pick_folder">CHOISIR LE DOSSIER DE BASE</string>
+    <string name="file_cla_no_folder_selected">Aucun dossier de base sélectionné</string>
+    <string name="file_cla_selected_folder_prefix">Dossier de base : %s</string>
+    <string name="file_cla_folders_created">Dossiers %1$s/RX et %1$s/TX créés</string>
+    <string name="file_cla_folders_error">Impossible de créer %1$s/RX et %1$s/TX. Veuillez re-sélectionner le dossier.</string>
+    <string name="file_cla_invalid_name">Nom de dossier invalide</string>
+    <string name="file_cla_invalid_interval">L\'intervalle doit être un nombre (&gt;= 5 secondes)</string>
+    <string name="file_cla_sync_now">Synchroniser le File-CLA maintenant</string>
+    <string name="file_cla_syncing_toast">Synchronisation du File-CLA \'%s\' (RX &amp; TX)...</string>
+    <string name="file_cla_poll_display">Scan : %ss</string>
 </resources>

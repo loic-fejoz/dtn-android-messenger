@@ -53,4 +53,18 @@
     <string name="car_quick_reply_arriving">On my way</string>
     <string name="car_quick_reply_enroute">En route</string>
     <string name="car_quick_reply_call_me">Call me</string>
+
+    <!-- File-CLA -->
+    <string name="file_cla_folder_name_label">CLA Folder Name (e.g. Foo -&gt; Foo/RX &amp; Foo/TX)</string>
+    <string name="file_cla_poll_interval_label">RX Poll Interval (seconds, default 300)</string>
+    <string name="file_cla_pick_folder">PICK BASE FOLDER</string>
+    <string name="file_cla_no_folder_selected">No base folder selected</string>
+    <string name="file_cla_selected_folder_prefix">Base folder: %s</string>
+    <string name="file_cla_folders_created">Created %1$s/RX and %1$s/TX</string>
+    <string name="file_cla_folders_error">Unable to create %1$s/RX and %1$s/TX. Re-pick the base folder.</string>
+    <string name="file_cla_invalid_name">Invalid folder name</string>
+    <string name="file_cla_invalid_interval">Poll interval must be a number (&gt;= 5 seconds)</string>
+    <string name="file_cla_sync_now">Sync File-CLA now</string>
+    <string name="file_cla_syncing_toast">Syncing File-CLA \'%s\' (RX &amp; TX)...</string>
+    <string name="file_cla_poll_display">Poll: %ss</string>
 </resources>

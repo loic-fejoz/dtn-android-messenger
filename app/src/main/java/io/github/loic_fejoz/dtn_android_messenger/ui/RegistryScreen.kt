@@ -40,6 +40,7 @@ fun RegistryScreen(
     val services by localServiceDao.getAll().collectAsState(initial = emptyList())
     val isTcpActive by DtnEngineService.isTcpActive.collectAsState()
     val isBluetoothActive by DtnEngineService.isBluetoothActive.collectAsState()
+    val isFileClaActive by DtnEngineService.isFileClaActive.collectAsState()
 
     Scaffold(
         topBar = {
@@ -61,6 +62,7 @@ fun RegistryScreen(
                         ) {
                             StatusDot(isActive = isTcpActive, label = "TCP")
                             StatusDot(isActive = isBluetoothActive, label = "BT")
+                            StatusDot(isActive = isFileClaActive, label = "FILE")
                         }
                     }
                 },

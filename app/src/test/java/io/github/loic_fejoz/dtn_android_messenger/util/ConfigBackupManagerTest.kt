@@ -580,4 +580,51 @@ class ConfigBackupManagerTest {
         assertEquals(1, res.keysCount)
         assertArrayEquals(rawKey, CryptoManager.decrypt(fakeKeyDao.getByKeyId("dtn://peer")!!.secretKey))
     }
+
+    @Test
+    fun testExportAndImportRoundtrip_FileClaProfile() = runBlocking {
+        val expectedUri = "content://com.android.externalstorage.documents/tree/primary%3ADocuments%2FDtnExchange"
+        fakeProfileDao.insert(
+            ConvergenceProfile(
+                profileId = "dtn://usb-peer",
+                name = "Foo",
+                triggerType = TriggerType.FILE_CLA,
+                targetAddress = expectedUri,
+                triggerCondition = "120",
+                isPaused = true,
+            )
+        )
+
+        val json = ConfigBackupManager.exportConfigJson(
+            context = fakeContext,
+            localServiceDao = fakeServiceDao,
+            convergenceProfileDao = fakeProfileDao,
+            routingRuleDao = fakeRuleDao,
+            bpsecKeyDao = fakeKeyDao,
+            senmlEntryDao = fakeSenmlDao,
+            prefs = fakePrefs,
+        )
+        fakeProfileDao.deleteAll()
+
+        val result = ConfigBackupManager.importConfigJson(
+            jsonString = json,
+            context = fakeContext,
+            localServiceDao = fakeServiceDao,
+            convergenceProfileDao = fakeProfileDao,
+            routingRuleDao = fakeRuleDao,
+            bpsecKeyDao = fakeKeyDao,
+            senmlEntryDao = fakeSenmlDao,
+            prefs = fakePrefs,
+            clearExisting = false,
+        )
+
+        assertEquals(1, result.profilesCount)
+        val restored = profilesList.single()
+        assertEquals("dtn://usb-peer", restored.profileId)
+        assertEquals("Foo", restored.name)
+        assertEquals(TriggerType.FILE_CLA, restored.triggerType)
+        assertEquals(expectedUri, restored.targetAddress)
+        assertEquals("120", restored.triggerCondition)
+        assertTrue(restored.isPaused)
+    }
 }

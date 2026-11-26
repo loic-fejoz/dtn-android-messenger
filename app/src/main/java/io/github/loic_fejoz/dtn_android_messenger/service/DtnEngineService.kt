@@ -12,12 +12,14 @@ import androidx.lifecycle.Observer
 import io.github.loic_fejoz.dtn_android_messenger.R
 import io.github.loic_fejoz.dtn_android_messenger.cla.BluetoothClassicAdapter
 import io.github.loic_fejoz.dtn_android_messenger.cla.ConvergenceLayerAdapter
+import io.github.loic_fejoz.dtn_android_messenger.cla.FileClaAdapter
 import io.github.loic_fejoz.dtn_android_messenger.cla.TcpClAdapter
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.*
 import io.github.loic_fejoz.dtn_android_messenger.data.model.*
 import io.github.loic_fejoz.dtn_android_messenger.protocol.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -42,13 +44,16 @@ class DtnEngineService : Service() {
 
     private lateinit var tcpClAdapter: TcpClAdapter
     private lateinit var bluetoothAdapter: BluetoothClassicAdapter
+    private lateinit var fileClaAdapter: FileClaAdapter
     private val adapters = mutableListOf<ConvergenceLayerAdapter>()
 
     private var flushJob: Job? = null
     private var cleanupJob: Job? = null
     private var pullJob: Job? = null
+    private var fileClaPollJob: Job? = null
     private var periodicFlushJob: Job? = null
     private val lastPullTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val lastFilePollTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val bibeSeqCounter = java.util.concurrent.atomic.AtomicLong(1L)
 
     private val isAndroidAutoActiveFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
@@ -77,6 +82,7 @@ class DtnEngineService : Service() {
         val updateTrigger = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(replay = 1)
         val isTcpActive = kotlinx.coroutines.flow.MutableStateFlow(false)
         val isBluetoothActive = kotlinx.coroutines.flow.MutableStateFlow(false)
+        val isFileClaActive = kotlinx.coroutines.flow.MutableStateFlow(false)
         private const val MAX_BIBE_DEPTH = 3
 
         internal fun selectNextHop(
@@ -146,9 +152,11 @@ class DtnEngineService : Service() {
         // Initialize adapters
         tcpClAdapter = TcpClAdapter(context = this, port = 5051, logDao = logDao)
         bluetoothAdapter = BluetoothClassicAdapter(context = this, logDao = logDao)
+        fileClaAdapter = FileClaAdapter(context = this, logDao = logDao)
 
         adapters.add(tcpClAdapter)
         adapters.add(bluetoothAdapter)
+        adapters.add(fileClaAdapter)
 
         // Initialize CarConnection observer
         try {
@@ -176,6 +184,9 @@ class DtnEngineService : Service() {
                                     (it.triggerType == TriggerType.WIFI_SSID && isProfileEligible(it))
                             )
                     }
+
+                val fileClaEnabled = profiles.any { it.triggerType == TriggerType.FILE_CLA && !it.isPaused }
+                isFileClaActive.value = fileClaEnabled
 
                 // Manage Bluetooth Adapter
                 if (bluetoothEnabled) {
@@ -226,6 +237,38 @@ class DtnEngineService : Service() {
                     flushQueue()
                 } catch (e: Exception) {
                     log("WARN", "Initial queue flush error: ${e.message}")
+                }
+            }
+
+        // Reactive, battery-efficient File-CLA RX polling scheduler
+        fileClaPollJob =
+            serviceScope.launch {
+                convergenceProfileDao.getAll().collectLatest { profiles ->
+                    lastFilePollTimes.keys.retainAll(profiles.mapTo(hashSetOf()) { it.profileId })
+                    val activeFileProfiles = profiles.filter { it.triggerType == TriggerType.FILE_CLA && !it.isPaused }
+                    if (activeFileProfiles.isEmpty()) return@collectLatest
+                    while (isActive) {
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        var minRemainingMs = Long.MAX_VALUE
+                        for (profile in activeFileProfiles) {
+                            val intervalSec =
+                                (profile.triggerCondition?.trim()?.toLongOrNull() ?: FileClaAdapter.DEFAULT_POLL_INTERVAL_SECONDS)
+                                    .coerceAtLeast(FileClaAdapter.MIN_POLL_INTERVAL_SECONDS)
+                            val intervalMs = intervalSec * 1000L
+                            val lastPoll = lastFilePollTimes[profile.profileId]
+                            val elapsed = if (lastPoll == null) intervalMs else now - lastPoll
+                            if (elapsed < 0 || elapsed >= intervalMs) {
+                                lastFilePollTimes[profile.profileId] = now
+                                scanFileClaProfile(profile, contextLabel = "RX poll")
+                                if (intervalMs < minRemainingMs) minRemainingMs = intervalMs
+                            } else {
+                                val remaining = intervalMs - elapsed
+                                if (remaining < minRemainingMs) minRemainingMs = remaining
+                            }
+                        }
+                        val sleepMs = if (minRemainingMs == Long.MAX_VALUE) 60_000L else minRemainingMs.coerceAtLeast(1000L)
+                        delay(sleepMs)
+                    }
                 }
             }
 
@@ -673,13 +716,16 @@ class DtnEngineService : Service() {
         notificationManager.notify(record.bundleId.hashCode(), builder.build())
     }
 
-    private suspend fun flushQueue(): Boolean =
+    private suspend fun flushQueue(forceProfileId: String? = null): Boolean =
         flushMutex.withLock {
             val outbox = bundleRecordDao.getByState(BundleState.OUTBOX)
             val transit = bundleRecordDao.getByState(BundleState.TRANSIT)
             val allOutgoing = outbox + transit
 
             if (allOutgoing.isEmpty()) {
+                if (forceProfileId != null) {
+                    return@withLock false
+                }
                 val profiles = convergenceProfileDao.getAllList()
                 for (profile in profiles) {
                     if (profile.isPaused) continue
@@ -759,9 +805,14 @@ class DtnEngineService : Service() {
                     nextHop = bibeGateway
                 }
 
-                val profile = findProfileForNextHop(nextHop)
+                val profile = findProfileForNextHop(nextHop, allowPausedProfileId = forceProfileId)
                 if (profile == null) {
-                    log("WARN", "No convergence profile found to reach next-hop $nextHop (dest: ${record.destinationEid})")
+                    if (forceProfileId == null) {
+                        log("WARN", "No convergence profile found to reach next-hop $nextHop (dest: ${record.destinationEid})")
+                    }
+                    continue
+                }
+                if (forceProfileId != null && profile.profileId != forceProfileId) {
                     continue
                 }
 
@@ -865,11 +916,42 @@ class DtnEngineService : Service() {
                 batchItems.add(OutgoingBatchItem(record, bundleBytes, profile))
             }
 
-            // Group by trigger type and target address to stream all pending bundles over a single connection
-            val grouped = batchItems.groupBy { Pair(it.profile.triggerType, it.profile.targetAddress) }
+            // Group by trigger type, target address, and (for FILE_CLA) profileId so separate File-CLAs stay isolated
+            val grouped =
+                batchItems.groupBy {
+                    Triple(
+                        it.profile.triggerType,
+                        it.profile.targetAddress,
+                        if (it.profile.triggerType == TriggerType.FILE_CLA) it.profile.profileId else "",
+                    )
+                }
 
             for ((key, items) in grouped) {
-                val (triggerType, targetAddress) = key
+                val (triggerType, targetAddress, _) = key
+                if (triggerType == TriggerType.FILE_CLA) {
+                    val profileName = items.first().profile.name
+                    log("INFO", "Writing ${items.size} bundle(s) via FileCLA '$profileName' to TX")
+                    val namedBundles =
+                        items.map { item ->
+                            FileClaAdapter.NamedBundle(
+                                bundleId = item.record.bundleId,
+                                bundleBytes = item.bundleBytes,
+                                onAcknowledged = {
+                                    val nextState = BundleState.DELIVERED
+                                    bundleRecordDao.updateState(item.record.bundleId, nextState)
+                                    log("INFO", "Bundle ${item.record.bundleId} written to FileCLA '$profileName' TX! State updated to $nextState")
+                                    anySuccess = true
+                                    updateTrigger.emit(Unit)
+                                },
+                            )
+                        }
+                    val success = fileClaAdapter.sendNamedBundles(targetAddress, profileName, namedBundles)
+                    if (success) {
+                        anySuccess = true
+                    }
+                    continue
+                }
+
                 val adapter =
                     adapters.find {
                         it.name.lowercase() == (if (triggerType == TriggerType.BLUETOOTH_ALWAYS) "bluetooth" else "tcpclv4").lowercase()
@@ -898,6 +980,27 @@ class DtnEngineService : Service() {
             }
             return@withLock anySuccess
         }
+
+    private suspend fun scanFileClaProfile(
+        profile: ConvergenceProfile,
+        contextLabel: String,
+    ): Int {
+        return try {
+            val ingested =
+                fileClaAdapter.scanIncoming(profile.targetAddress, profile.name) { bundleBytes ->
+                    onBundleReceived(bundleBytes)
+                }
+            if (ingested > 0) {
+                log("INFO", "File-CLA '${profile.name}' ingested $ingested bundle(s) from RX")
+            }
+            ingested
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("WARN", "File-CLA '${profile.name}' $contextLabel error: ${e.message}")
+            0
+        }
+    }
 
     private suspend fun resolveNextHop(destination: String): String {
         val rules = routingRuleDao.getAllList()
@@ -936,10 +1039,17 @@ class DtnEngineService : Service() {
         }
     }
 
-    private suspend fun findProfileForNextHop(nextHop: String): ConvergenceProfile? {
+    private suspend fun findProfileForNextHop(
+        nextHop: String,
+        allowPausedProfileId: String? = null,
+    ): ConvergenceProfile? {
         val profiles = convergenceProfileDao.getAllList()
+
+        fun isEligible(profile: ConvergenceProfile): Boolean =
+            (allowPausedProfileId != null && profile.profileId == allowPausedProfileId) || isProfileEligible(profile)
+
         // Try direct profile ID or name match
-        var match = profiles.find { (it.profileId == nextHop || it.name == nextHop) && isProfileEligible(it) }
+        var match = profiles.find { (it.profileId == nextHop || it.name == nextHop) && isEligible(it) }
         if (match == null) {
             // Check if profile ID matches node prefix correctly
             val nextHopNode =
@@ -951,7 +1061,7 @@ class DtnEngineService : Service() {
                 } else {
                     nextHop
                 }
-            match = profiles.find { (it.profileId == nextHopNode || it.name == nextHopNode) && isProfileEligible(it) }
+            match = profiles.find { (it.profileId == nextHopNode || it.name == nextHopNode) && isEligible(it) }
         }
         return match
     }
@@ -997,6 +1107,28 @@ class DtnEngineService : Service() {
                     flushQueue()
                 }
             }
+            "SYNC_FILE_CLA" -> {
+                val profileId = intent.getStringExtra("profile_id")
+                if (!profileId.isNullOrBlank()) {
+                    serviceScope.launch {
+                        val profile =
+                            convergenceProfileDao.getAllList()
+                                .find { it.profileId == profileId && it.triggerType == TriggerType.FILE_CLA }
+                        if (profile != null) {
+                            log("INFO", "Manual File-CLA sync triggered for '${profile.name}'")
+                            lastFilePollTimes[profile.profileId] = android.os.SystemClock.elapsedRealtime()
+                            scanFileClaProfile(profile, contextLabel = "Manual RX sync")
+                            try {
+                                flushQueue(forceProfileId = profile.profileId)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                log("WARN", "Manual File-CLA '${profile.name}' TX flush error: ${e.message}")
+                            }
+                        }
+                    }
+                }
+            }
             "FORCE_PULL" -> {
                 val address = intent.getStringExtra("address")
                 if (address != null) {
@@ -1031,9 +1163,11 @@ class DtnEngineService : Service() {
         }
         isTcpActive.value = false
         isBluetoothActive.value = false
+        isFileClaActive.value = false
         flushJob?.cancel()
         cleanupJob?.cancel()
         pullJob?.cancel()
+        fileClaPollJob?.cancel()
         periodicFlushJob?.cancel()
         adapters.forEach { it.stop() }
         serviceScope.cancel()

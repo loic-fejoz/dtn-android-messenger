@@ -45,6 +45,7 @@ enum class TriggerType {
     WIFI_SSID,
     PERIODIC_INTERNET,
     BLUETOOTH_ALWAYS,
+    FILE_CLA,
 }
 
 @Entity(tableName = "local_services")
@@ -103,9 +104,9 @@ data class ConvergenceProfile(
     @PrimaryKey val profileId: String,
     val name: String,
     val triggerType: TriggerType,
-    // IP/Port or Bluetooth MAC
+    // IP/Port, Bluetooth MAC, or SAF Tree URI (FILE_CLA)
     val targetAddress: String,
-    // Wifi SSID or interval in mins
+    // Wifi SSID, interval in mins, or poll interval in seconds (FILE_CLA)
     val triggerCondition: String? = null,
     val isPaused: Boolean = false,
 )

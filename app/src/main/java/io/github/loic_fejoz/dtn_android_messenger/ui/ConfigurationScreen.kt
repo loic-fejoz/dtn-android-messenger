@@ -3,6 +3,7 @@ package io.github.loic_fejoz.dtn_android_messenger.ui
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.Uri
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -24,10 +25,12 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -45,6 +48,7 @@ import androidx.lifecycle.Observer
 import androidx.navigation.NavController
 import androidx.room.withTransaction
 import io.github.loic_fejoz.dtn_android_messenger.R
+import io.github.loic_fejoz.dtn_android_messenger.cla.FileClaAdapter
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.BpsecKeyDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.ConvergenceProfileDao
 import io.github.loic_fejoz.dtn_android_messenger.data.dao.LocalServiceDao
@@ -58,7 +62,27 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private fun formatSafUriForDisplay(uriString: String): String {
+    if (uriString.isBlank()) return ""
+    return try {
+        val decoded = Uri.decode(Uri.parse(uriString).lastPathSegment ?: uriString)
+        val colonIdx = decoded.indexOf(':')
+        if (colonIdx == -1) return decoded
+        val volume = decoded.substring(0, colonIdx)
+        val path = decoded.substring(colonIdx + 1)
+        when {
+            volume.equals("primary", ignoreCase = true) -> path.ifBlank { "primary" }
+            path.isBlank() -> volume
+            else -> "$volume/$path"
+        }
+    } catch (_: Exception) {
+        uriString
+    }
+}
 
 private fun getAvailableWifiSsids(context: Context): List<String> {
     val ssids = mutableSetOf<String>()
@@ -231,6 +255,21 @@ fun ProfilesConfigTab(
     var address by remember { mutableStateOf("") }
     var condition by remember { mutableStateOf("") }
     var profileId by remember { mutableStateOf("") }
+    var editingIsPaused by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
+
+    val pickFileClaFolderLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                try {
+                    val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    context.contentResolver.takePersistableUriPermission(uri, flags)
+                } catch (_: Exception) {
+                    // Best-effort if provider doesn't support persistable grants
+                }
+                address = uri.toString()
+            }
+        }
 
     val scrollState = rememberScrollState()
 
@@ -265,7 +304,16 @@ fun ProfilesConfigTab(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Display Name", color = TextGray) },
+                    label = {
+                        Text(
+                            if (type == TriggerType.FILE_CLA) {
+                                stringResource(R.string.file_cla_folder_name_label)
+                            } else {
+                                "Display Name"
+                            },
+                            color = TextGray,
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 )
 
@@ -289,7 +337,16 @@ fun ProfilesConfigTab(
                             DropdownMenuItem(
                                 text = { Text(t.name) },
                                 onClick = {
+                                    val previousType = type
                                     type = t
+                                    if (t == TriggerType.FILE_CLA && previousType != TriggerType.FILE_CLA) {
+                                        if (!address.startsWith("content://")) {
+                                            address = ""
+                                        }
+                                        if (condition.isBlank()) {
+                                            condition = FileClaAdapter.DEFAULT_POLL_INTERVAL_SECONDS.toString()
+                                        }
+                                    }
                                     typeExpanded = false
                                 },
                             )
@@ -333,6 +390,14 @@ fun ProfilesConfigTab(
                             }
                         }
                     }
+                } else if (type == TriggerType.FILE_CLA) {
+                    OutlinedTextField(
+                        value = condition,
+                        onValueChange = { condition = it },
+                        label = { Text(stringResource(R.string.file_cla_poll_interval_label), color = TextGray) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 } else {
                     OutlinedTextField(
                         value = condition,
@@ -342,33 +407,133 @@ fun ProfilesConfigTab(
                     )
                 }
 
-                OutlinedTextField(
-                    value = address,
-                    onValueChange = { address = it },
-                    label = { Text("Target address (e.g. 192.168.1.10:5051)", color = TextGray) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (type == TriggerType.FILE_CLA) {
+                    OutlinedButton(
+                        onClick = { pickFileClaFolderLauncher.launch(null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.dp, NeonCyan),
+                    ) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, tint = NeonCyan)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.file_cla_pick_folder), color = NeonCyan, fontWeight = FontWeight.Bold)
+                    }
+                    val folderDisplay =
+                        if (address.isBlank()) {
+                            stringResource(R.string.file_cla_no_folder_selected)
+                        } else {
+                            stringResource(R.string.file_cla_selected_folder_prefix, formatSafUriForDisplay(address))
+                        }
+                    Text(
+                        folderDisplay,
+                        color = if (address.isBlank()) TextGray else NeonCyan,
+                        fontSize = 12.sp,
+                    )
+                    val previewFolder = FileClaAdapter.sanitizeFolderName(name)
+                    if (previewFolder.isNotBlank()) {
+                        Text(
+                            "$previewFolder/RX & $previewFolder/TX",
+                            color = TextGray,
+                            fontSize = 11.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        )
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = address,
+                        onValueChange = { address = it },
+                        label = { Text("Target address (e.g. 192.168.1.10:5051)", color = TextGray) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
 
                 Button(
+                    enabled = !isSaving,
                     onClick = {
                         if (profileId.isBlank() || name.isBlank() || address.isBlank()) {
                             Toast.makeText(context, "Fill required fields!", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
-                        scope.launch {
-                            dao.insert(
-                                ConvergenceProfile(
-                                    profileId = profileId.trim(),
-                                    name = name,
-                                    triggerType = type,
-                                    targetAddress = address,
-                                    triggerCondition = condition,
-                                ),
-                            )
-                            name = ""
-                            address = ""
-                            condition = ""
-                            profileId = ""
+                        val trimmedId = profileId.trim()
+                        val preservedPaused =
+                            editingIsPaused || profiles.any { it.profileId == trimmedId && it.isPaused }
+                        if (type == TriggerType.FILE_CLA) {
+                            val sanitized = FileClaAdapter.sanitizeFolderName(name)
+                            if (sanitized.isBlank()) {
+                                Toast.makeText(context, context.getString(R.string.file_cla_invalid_name), Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            val intervalSec =
+                                if (condition.isBlank()) {
+                                    FileClaAdapter.DEFAULT_POLL_INTERVAL_SECONDS
+                                } else {
+                                    condition.trim().toLongOrNull()
+                                }
+                            if (intervalSec == null || intervalSec < FileClaAdapter.MIN_POLL_INTERVAL_SECONDS) {
+                                Toast.makeText(context, context.getString(R.string.file_cla_invalid_interval), Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            isSaving = true
+                            scope.launch {
+                                try {
+                                    val created =
+                                        withContext(Dispatchers.IO) {
+                                            FileClaAdapter.ensureClaFolders(context, address, sanitized)
+                                        }
+                                    if (!created) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.file_cla_folders_error, sanitized),
+                                            Toast.LENGTH_LONG,
+                                        ).show()
+                                        return@launch
+                                    }
+                                    dao.insert(
+                                        ConvergenceProfile(
+                                            profileId = trimmedId,
+                                            name = sanitized,
+                                            triggerType = type,
+                                            targetAddress = address,
+                                            triggerCondition = intervalSec.toString(),
+                                            isPaused = preservedPaused,
+                                        ),
+                                    )
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.file_cla_folders_created, sanitized),
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                    name = ""
+                                    address = ""
+                                    condition = ""
+                                    profileId = ""
+                                    editingIsPaused = false
+                                } finally {
+                                    isSaving = false
+                                }
+                            }
+                        } else {
+                            isSaving = true
+                            scope.launch {
+                                try {
+                                    dao.insert(
+                                        ConvergenceProfile(
+                                            profileId = trimmedId,
+                                            name = name,
+                                            triggerType = type,
+                                            targetAddress = address,
+                                            triggerCondition = condition,
+                                            isPaused = preservedPaused,
+                                        ),
+                                    )
+                                    name = ""
+                                    address = ""
+                                    condition = ""
+                                    profileId = ""
+                                    editingIsPaused = false
+                                } finally {
+                                    isSaving = false
+                                }
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -391,6 +556,7 @@ fun ProfilesConfigTab(
                             type = profile.triggerType
                             condition = profile.triggerCondition ?: ""
                             address = profile.targetAddress
+                            editingIsPaused = profile.isPaused
                             Toast.makeText(context, "Loaded profile for editing", Toast.LENGTH_SHORT).show()
                         },
                 shape = RoundedCornerShape(8.dp),
@@ -430,12 +596,28 @@ fun ProfilesConfigTab(
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                             )
                         }
+                        val destSummary =
+                            if (profile.triggerType == TriggerType.FILE_CLA) {
+                                "${formatSafUriForDisplay(profile.targetAddress)}/${FileClaAdapter.sanitizeFolderName(profile.name)}/{RX,TX}"
+                            } else {
+                                profile.targetAddress
+                            }
                         Text(
-                            "Type: ${profile.triggerType.name} | Dest: ${profile.targetAddress}",
+                            "Type: ${profile.triggerType.name} | Dest: $destSummary",
                             color = if (profile.isPaused || isTemporarilyPaused) Color.Gray else TextGray,
                             fontSize = 12.sp,
                         )
-                        if (!profile.triggerCondition.isNullOrBlank()) {
+                        if (profile.triggerType == TriggerType.FILE_CLA) {
+                            val pollSec =
+                                profile.triggerCondition?.ifBlank {
+                                    FileClaAdapter.DEFAULT_POLL_INTERVAL_SECONDS.toString()
+                                } ?: FileClaAdapter.DEFAULT_POLL_INTERVAL_SECONDS.toString()
+                            Text(
+                                stringResource(R.string.file_cla_poll_display, pollSec),
+                                color = if (profile.isPaused || isTemporarilyPaused) Color.Gray else NeonPurple,
+                                fontSize = 11.sp,
+                            )
+                        } else if (!profile.triggerCondition.isNullOrBlank()) {
                             Text(
                                 "Cond: ${profile.triggerCondition}",
                                 color = if (profile.isPaused || isTemporarilyPaused) Color.Gray else NeonPurple,
@@ -458,7 +640,31 @@ fun ProfilesConfigTab(
                                 tint = if (profile.isPaused) Color.LightGray else NeonCyan,
                             )
                         }
-                        if (!profile.isPaused && (profile.triggerType == TriggerType.PERIODIC_INTERNET || profile.triggerType == TriggerType.WIFI_SSID)) {
+                        if (profile.triggerType == TriggerType.FILE_CLA) {
+                            IconButton(onClick = {
+                                val intent =
+                                    Intent(context, DtnEngineService::class.java).apply {
+                                        action = "SYNC_FILE_CLA"
+                                        putExtra("profile_id", profile.profileId)
+                                    }
+                                try {
+                                    androidx.core.content.ContextCompat.startForegroundService(context, intent)
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.file_cla_syncing_toast, profile.name),
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Unable to start service: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            }) {
+                                Icon(
+                                    Icons.Default.Sync,
+                                    contentDescription = stringResource(R.string.file_cla_sync_now),
+                                    tint = NeonCyan,
+                                )
+                            }
+                        } else if (!profile.isPaused && (profile.triggerType == TriggerType.PERIODIC_INTERNET || profile.triggerType == TriggerType.WIFI_SSID)) {
                             IconButton(onClick = {
                                 val intent =
                                     Intent(context, DtnEngineService::class.java).apply {
@@ -476,7 +682,27 @@ fun ProfilesConfigTab(
                             }
                         }
                         IconButton(onClick = {
-                            scope.launch { dao.delete(profile) }
+                            scope.launch {
+                                dao.delete(profile)
+                                if (profile.triggerType == TriggerType.FILE_CLA) {
+                                    val stillReferenced =
+                                        profiles.any {
+                                            it.profileId != profile.profileId &&
+                                                it.triggerType == TriggerType.FILE_CLA &&
+                                                it.targetAddress == profile.targetAddress
+                                        }
+                                    if (!stillReferenced) {
+                                        runCatching {
+                                            val flags =
+                                                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                            context.contentResolver.releasePersistableUriPermission(
+                                                Uri.parse(profile.targetAddress),
+                                                flags,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = GlowRed)
                         }
