@@ -32,6 +32,9 @@ jobs:
       - name: Run Unit Tests
         run: ./gradlew test
 
+      - name: Check Code Style and Android Lint
+        run: ./gradlew ktlintCheck lintDebug
+
       - name: Build Debug APK
         if: "!startsWith(github.ref, 'refs/tags/v')"
         run: ./gradlew assembleDebug

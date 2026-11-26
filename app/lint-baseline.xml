@@ -41,7 +41,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="72"
+            line="88"
             column="20"/>
     </issue>
 
@@ -52,7 +52,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="73"
+            line="89"
             column="20"/>
     </issue>
 
@@ -63,7 +63,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="74"
+            line="91"
             column="20"/>
     </issue>
 
@@ -74,7 +74,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="75"
+            line="92"
             column="20"/>
     </issue>
 
@@ -85,7 +85,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="76"
+            line="93"
             column="20"/>
     </issue>
 
@@ -96,7 +96,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="85"
+            line="102"
             column="20"/>
     </issue>
 
@@ -107,7 +107,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="90"
+            line="107"
             column="20"/>
     </issue>
 
@@ -118,7 +118,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="91"
+            line="108"
             column="20"/>
     </issue>
 
@@ -129,19 +129,8 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="92"
+            line="109"
             column="9"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
-        message="A newer version of androidx.work:work-runtime-ktx than 2.9.0 is available: 2.12.0"
-        errorLine1="    implementation(&quot;androidx.work:work-runtime-ktx:2.9.0&quot;)"
-        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
-            line="104"
-            column="20"/>
     </issue>
 
     <issue
@@ -151,7 +140,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="107"
+            line="118"
             column="20"/>
     </issue>
 
@@ -162,7 +151,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="110"
+            line="121"
             column="20"/>
     </issue>
 
@@ -173,7 +162,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="123"
+            line="134"
             column="31"/>
     </issue>
 
@@ -184,7 +173,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="124"
+            line="135"
             column="31"/>
     </issue>
 
@@ -195,7 +184,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="125"
+            line="136"
             column="31"/>
     </issue>
 
@@ -206,7 +195,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="126"
+            line="137"
             column="31"/>
     </issue>
 
@@ -217,7 +206,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="127"
+            line="138"
             column="31"/>
     </issue>
 
@@ -228,18 +217,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="95"
-            column="20"/>
-    </issue>
-
-    <issue
-        id="NewerVersionAvailable"
-        message="A newer version of com.squareup.okio:okio than 3.9.0 is available: 3.18.2"
-        errorLine1="    implementation(&quot;com.squareup.okio:okio:3.9.0&quot;)"
-        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
-            line="98"
+            line="112"
             column="20"/>
     </issue>
 
@@ -250,7 +228,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="101"
+            line="115"
             column="20"/>
     </issue>
 
@@ -261,7 +239,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="113"
+            line="124"
             column="20"/>
     </issue>
 
@@ -272,7 +250,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="114"
+            line="125"
             column="20"/>
     </issue>
 
@@ -283,7 +261,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="117"
+            line="128"
             column="20"/>
     </issue>
 
@@ -294,7 +272,7 @@
         errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="121"
+            line="132"
             column="24"/>
     </issue>
 
@@ -305,19 +283,8 @@
         errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="122"
+            line="133"
             column="24"/>
-    </issue>
-
-    <issue
-        id="PrivateResource"
-        message="The resource `@array/hosts_allowlist_sample` is marked as private in androidx.car.app:app:1.4.0"
-        errorLine1="                .addAllowedHosts(androidx.car.app.R.array.hosts_allowlist_sample)"
-        errorLine2="                                                          ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/car/DtnCarAppService.kt"
-            line="37"
-            column="59"/>
     </issue>
 
     <issue
@@ -327,7 +294,7 @@
         errorLine2="         ~~~~~~~">
         <location
             file="src/main/AndroidManifest.xml"
-            line="74"
+            line="75"
             column="10"/>
     </issue>
 
@@ -338,30 +305,30 @@
         errorLine2="                             ~~~~~">
         <location
             file="src/main/AndroidManifest.xml"
-            line="20"
+            line="21"
             column="30"/>
     </issue>
 
     <issue
         id="AutoboxingStateCreation"
         message="Prefer `mutableIntStateOf` instead of `mutableStateOf`"
-        errorLine1="    var duration by remember { mutableStateOf(0) }"
-        errorLine2="                               ~~~~~~~~~~~~~~">
+        errorLine1="    var duration by remember(filePath) { mutableStateOf(0) }"
+        errorLine2="                                         ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/AudioPlayerCard.kt"
-            line="32"
-            column="32"/>
+            line="39"
+            column="42"/>
     </issue>
 
     <issue
         id="AutoboxingStateCreation"
         message="Prefer `mutableIntStateOf` instead of `mutableStateOf`"
-        errorLine1="    var currentPosition by remember { mutableStateOf(0) }"
-        errorLine2="                                      ~~~~~~~~~~~~~~">
+        errorLine1="    var currentPosition by remember(filePath) { mutableStateOf(0) }"
+        errorLine2="                                                ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/AudioPlayerCard.kt"
-            line="33"
-            column="39"/>
+            line="40"
+            column="49"/>
     </issue>
 
     <issue
@@ -371,7 +338,7 @@
         errorLine2="                                       ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
-            line="106"
+            line="105"
             column="40"/>
     </issue>
 
@@ -382,7 +349,7 @@
         errorLine2="                                        ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
-            line="112"
+            line="111"
             column="41"/>
     </issue>
 
@@ -447,7 +414,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/AudioPlayerCard.kt"
-            line="42"
+            line="76"
             column="35"/>
     </issue>
 
@@ -458,7 +425,7 @@
         errorLine2="                ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
-            line="88"
+            line="100"
             column="17"/>
     </issue>
 
@@ -469,19 +436,8 @@
         errorLine2="                ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
-            line="95"
+            line="107"
             column="17"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="                            prefs.edit().putString(prefKey, it.trim()).apply()"
-        errorLine2="                            ~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
-            line="150"
-            column="29"/>
     </issue>
 
     <issue
@@ -491,7 +447,7 @@
         errorLine2="                                        ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
-            line="233"
+            line="249"
             column="41"/>
     </issue>
 
@@ -502,63 +458,19 @@
         errorLine2="                            ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ChatScreen.kt"
-            line="320"
+            line="336"
             column="29"/>
     </issue>
 
     <issue
         id="UseKtx"
         message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="            val editor = prefs.edit()"
-        errorLine2="                         ~~~~~~~~~~~~">
+        errorLine1="                val editor = prefs.edit()"
+        errorLine2="                             ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/util/ConfigBackupManager.kt"
-            line="418"
-            column="26"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="                    prefs.edit().putString(&quot;local_node_name&quot;, it.trim()).apply()"
-        errorLine2="                    ~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
-            line="187"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="                        prefs.edit().putInt(io.github.loic_fejoz.dtn_android_messenger.util.PreferencesHelper.PREF_MAX_BUNDLE_SIZE_MB, parsed).apply()"
-        errorLine2="                        ~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
-            line="200"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="                                    prefs.edit().putString(&quot;bpsec_policy&quot;, p).apply()"
-        errorLine2="                                    ~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
-            line="662"
-            column="37"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="                            PreferencesHelper.getEncryptedSharedPreferences(context).edit().clear().apply()"
-        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/ConfigurationScreen.kt"
-            line="1584"
-            column="29"/>
+            line="445"
+            column="30"/>
     </issue>
 
     <issue
@@ -568,7 +480,7 @@
         errorLine2="                                                           ~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/service/DtnEngineService.kt"
-            line="607"
+            line="791"
             column="60"/>
     </issue>
 
@@ -590,7 +502,7 @@
         errorLine2="        ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/util/PreferencesHelper.kt"
-            line="40"
+            line="43"
             column="9"/>
     </issue>
 
@@ -601,7 +513,7 @@
         errorLine2="                                                                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
-            line="104"
+            line="103"
             column="95"/>
     </issue>
 
@@ -612,7 +524,7 @@
         errorLine2="                            ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/github/loic_fejoz/dtn_android_messenger/ui/SendBundleScreen.kt"
-            line="715"
+            line="743"
             column="29"/>
     </issue>
 

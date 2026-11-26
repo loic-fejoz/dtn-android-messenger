@@ -17,7 +17,6 @@ class OggOpusFixerTest {
         body: ByteArray,
         packetSizes: List<Int> = listOf(body.size),
     ): ByteArray {
-        val nsegs = packetSizes.sumOf { (it / 255) + 1 }
         val segTable = mutableListOf<Byte>()
         for (sz in packetSizes) {
             var rem = sz
