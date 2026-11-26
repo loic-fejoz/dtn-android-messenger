@@ -40,7 +40,7 @@ internal class OutboxDispatcher(
 ) {
     private val flushMutex = Mutex()
 
-    private data class OutgoingBatchItem(
+    private class OutgoingBatchItem(
         val record: BundleRecord,
         val bundleBytes: ByteArray,
         val profile: ConvergenceProfile,

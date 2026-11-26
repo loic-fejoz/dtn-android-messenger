@@ -43,6 +43,7 @@ class BluetoothClassicAdapter(
 
     companion object {
         private const val INBOUND_READ_TIMEOUT_MS = 30_000L
+        private const val INBOUND_IDLE_TIMEOUT_MS = 120_000L
     }
 
     private fun getPeerLock(targetAddress: String): Mutex {
@@ -123,7 +124,20 @@ class BluetoothClassicAdapter(
             inputStream = socket.inputStream
             val sizeBuf = ByteArray(4)
             while (socket.isConnected) {
-                val firstByte = inputStream.read()
+                val firstByte =
+                    coroutineScope {
+                        val idleWatchdog =
+                            launch {
+                                delay(INBOUND_IDLE_TIMEOUT_MS)
+                                log("INFO", "RFCOMM inbound connection idle timeout (${INBOUND_IDLE_TIMEOUT_MS}ms); closing socket")
+                                runCatching { socket.close() }
+                            }
+                        try {
+                            inputStream.read()
+                        } finally {
+                            idleWatchdog.cancel()
+                        }
+                    }
                 if (firstByte == -1) throw IOException("Stream closed")
                 sizeBuf[0] = firstByte.toByte()
 
